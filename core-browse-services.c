@@ -9,8 +9,12 @@
 #include <net/if.h>
 #include <string.h>
 #include <signal.h>
-#include <regex.h>
 #include <ctype.h>
+#include <argp.h>
+
+#include <uci.h>
+
+#include <serval-crypto.h>
 
 #include <avahi-core/core.h>
 #include <avahi-core/lookup.h>
@@ -24,9 +28,15 @@
 #include "escape.h"
 #include "concat.h"
 
+#define FINGERPRINT_LEN 64
+#define SIG_LENGTH 128
+
 static AvahiSimplePoll *simple_poll = NULL;
 static AvahiServer *server = NULL;
-static char *g_filename = NULL;
+struct arguments {
+  int uci;
+  char *output_file;
+} arguments;
 #define DEFAULT_FILENAME "/tmp/avahi-client.out"
 
 /*
@@ -40,6 +50,8 @@ typedef struct ServiceInfo {
     char *name, *type, *domain, *host_name, *txt;
     char address[AVAHI_ADDRESS_STR_MAX];
     uint16_t port;
+    AvahiStringList *txt_lst;
+    AvahiTimeout *timeout;
 
     AvahiSServiceResolver *resolver;
     int resolved;
@@ -63,6 +75,15 @@ static void resolve_callback(
     AvahiLookupResultFlags flags,
     void* userdata);
 
+static int isHex(const char *str, size_t len) {
+  int i;
+  for (i = 0; i < len; ++i) {
+    if (!isxdigit(str[i]))
+      return 0;
+  }
+  return 1;
+}
+
 static int isNumeric (const char *s)
 {
   if (s == NULL || *s == '\0' || isspace(*s))
@@ -72,20 +93,195 @@ static int isNumeric (const char *s)
   return *p == '\0';
 }
 
-/*static ServiceInfo *find_service(AvahiIfIndex interface, AvahiProtocol protocol, const char *name, const char *type, const char *domain) {
-    ServiceInfo *i;
+static int isUCIEncoded(const char *s, size_t s_len) {
+  int i, ret = 0;
+  for(i = 0; i < s_len; ++i) {
+    if (!isalnum(s[i]) && s[i] != '_') {
+      ret = 1;
+      break;
+    }
+  }
+  return ret;
+}
 
-    for (i = services; i; i = i->info_next)
-        if (i->interface == interface &&
-            i->protocol == protocol &&
-            strcasecmp(i->name, name) == 0 &&
-            avahi_domain_equal(i->type, type) &&
-            avahi_domain_equal(i->domain, domain))
+static int cmpstringp(const void *p1, const void *p2) {
+  /* The actual arguments to this function are "pointers to
+   *      pointers to char", but strcmp(3) arguments are "pointers
+   *      to char", hence the following cast plus dereference */
+  
+  return strcmp(* (char * const *) p1, * (char * const *) p2);
+}
 
-            return i;
+int uci_remove(ServiceInfo *i) {
+  int ret = 0;
+  struct uci_context *c;
+  struct uci_ptr sec_ptr;
+  struct uci_package *pak = NULL;
+  char *sid = NULL;
+  char sec_name[78];
+  char *key = NULL;
+  size_t sid_len;
+  
+  avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"fingerprint"),&key,&sid,&sid_len);
+  if (sid_len != FINGERPRINT_LEN && !isHex(sid,sid_len)) {
+    fprintf(stderr,"(UCI_Remove) Invalid fingerprint txt field\n");
+    return 1;
+  }
+  
+  c = uci_alloc_context();
+  assert(c);
+  
+  strcpy(sec_name,"applications.");
+  strncat(sec_name,sid,FINGERPRINT_LEN);
+  sec_name[77] = '\0';
+  
+  if (uci_lookup_ptr(c, &sec_ptr, sec_name, false) != UCI_OK) {
+    uci_perror (c, "(UCI_Remove) Failed application lookup");
+  } else {
+    if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
+      fprintf(stdout,"(UCI_Remove) Found application\n");
+      if (uci_delete(c, &sec_ptr) != UCI_OK) {
+	uci_perror (c, "(UCI_Remove) Failed to delete application");
+	ret = 1;
+      } else {
+	fprintf(stdout,"(UCI_Remove) Successfully deleted application\n");
+	pak = sec_ptr.p;
+	// uci_save
+	if (uci_save(c, pak)) {
+	  uci_perror (c,"(UCI_Remove) Failed to save");
+	  ret = 1;
+	} else {
+	  fprintf(stdout,"(UCI_Remove) Save succeeded\n");
+	  if (uci_commit(c,&pak,false)) {
+	    uci_perror(c,"(UCI_Remove) Failed to commit");
+	    ret = 1;
+	  } else {
+	    fprintf(stdout,"(UCI_Remove) Commit succeeded\n");
+	  }
+	}
+      }
+    } else {
+      fprintf(stdout,"(UCI_Remove) Application not found\n");
+      ret = 1;
+    }
+  }
+  
+  uci_free_context(c);
+  return ret;
+}
 
-    return NULL;
-}*/
+int uci_write(ServiceInfo *i) {
+  struct uci_context *c;
+  struct uci_ptr sec_ptr,sig_ptr;
+  int uci_ret, ret = 0;
+  char sec_name[78], sig_opstr[88];
+  char *key, *sig = NULL;
+  char *sid = NULL;
+  struct uci_package *pak = NULL;
+  struct uci_section *sec = NULL;
+  AvahiStringList *txt;
+  size_t sid_len, sig_len;
+  
+  c = uci_alloc_context();
+  assert(c);
+
+  avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"fingerprint"),&key,&sid,&sid_len);
+  avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"signature"),&key,&sig,&sig_len);
+
+  if (sid_len != FINGERPRINT_LEN ||
+      sig_len != SIG_LENGTH ||
+      !isHex(sid,sid_len) ||
+      !isHex(sig,sig_len)) {
+    fprintf(stderr,"(UCI) Invalid signature or fingerprint txt fields\n");
+    ret = 1;
+    goto abort;
+  }
+  
+  strcpy(sec_name,"applications.");
+  strncat(sec_name,sid,FINGERPRINT_LEN);
+  sec_name[77] = '\0';
+  
+  if (uci_lookup_ptr(c, &sec_ptr, sec_name, false) != UCI_OK) {
+    uci_perror (c, "(UCI) Failed application lookup");
+  } else {
+    if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
+      fprintf(stdout,"(UCI) Found application\n");
+      // check for service == fingerprint. if sig different, update it
+      strcpy(sig_opstr,"applications.");
+      strncat(sig_opstr,sid,FINGERPRINT_LEN);
+      strcat(sig_opstr,".signature");
+      if (uci_lookup_ptr(c, &sig_ptr, sig_opstr, false) != UCI_OK) {
+        uci_perror (c, "(UCI) Failed signature lookup");
+      } else {
+        if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && sig && !strcmp(sig,sig_ptr.o->v.string)) {
+	  // signatures equal: do nothing
+	  fprintf(stdout,"(UCI) Signature the same, not updating\n");
+	  goto abort;
+	} else {
+	  // signatures differ: delete existing app
+	  fprintf(stdout,"(UCI) Signature differs, updating\n");
+	  if (uci_delete(c, &sec_ptr) != UCI_OK) {
+	    uci_perror (c, "(UCI) Failed to delete application");
+	  }
+	}
+      }
+    } else {
+      fprintf(stdout,"(UCI) Application not found, creating\n");
+    }
+
+    pak = sec_ptr.p;
+    memset(&sec_ptr, 0, sizeof(struct uci_ptr));
+    
+    // uci_add_section
+    sec_ptr.package = "applications";
+    sec_ptr.section = sid;
+    sec_ptr.value = "application";
+    if (uci_set(c, &sec_ptr)) {
+      uci_perror(c,"(UCI) Failed to set section");
+      ret = 1;
+      goto abort;
+    } else {
+      fprintf(stdout,"(UCI) Section set succeeded\n");
+    }
+    
+    // uci set options/values
+    txt = i->txt_lst;
+    do {
+      if (avahi_string_list_get_pair(txt,(char **)&(sec_ptr.option),(char **)&(sec_ptr.value),NULL))
+	continue;
+      if (!strcmp(sec_ptr.option,"type")) {
+	uci_ret = uci_add_list(c, &sec_ptr);
+      } else {
+	uci_ret = uci_set(c, &sec_ptr);
+      }
+      if (uci_ret) {
+	uci_perror(c,"(UCI) Failed to set");
+	ret = 1;
+	goto abort;
+      } else {
+	fprintf(stdout,"(UCI) Set succeeded\n");
+      }
+    } while (txt = avahi_string_list_get_next(txt));
+    
+    // uci_save
+    if (uci_save(c, pak)) {
+      uci_perror (c,"(UCI) Failed to save");
+      ret = 1;
+    } else {
+      fprintf(stdout,"(UCI) Save succeeded\n");
+      if (uci_commit(c,&pak,false)) {
+	uci_perror(c,"(UCI) Failed to commit");
+	ret = 1;
+      } else {
+	fprintf(stdout,"(UCI) Commit succeeded\n");
+      }
+    }
+  }
+
+abort:
+  uci_free_context(c);
+  return ret;
+}
 
 static ServiceInfo *find_service(const char *name) {
   ServiceInfo *i;
@@ -119,9 +315,20 @@ static ServiceInfo *add_service(AvahiIfIndex interface, AvahiProtocol protocol, 
     return i;
 }
 
-static void remove_service(ServiceInfo *i) {
-    assert(i);
+static void remove_service(AvahiTimeout *t, void *userdata) {
+    assert(userdata);
+    ServiceInfo *i = (ServiceInfo*)userdata;
 
+    fprintf(stdout, "(Remove_Service) Removing service announcement: %s\n",i->name);
+    
+    /* Cancel expiration event */
+    if (!t && i->timeout)
+      avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
+    
+    if (arguments.uci && uci_remove(i)) {
+      fprintf(stderr, "(Remove_Service) Could not remove from UCI\n");
+    }
+    
     AVAHI_LLIST_REMOVE(ServiceInfo, info, services, i);
 
     if (i->resolver)
@@ -132,15 +339,8 @@ static void remove_service(ServiceInfo *i) {
     avahi_free(i->domain);
     avahi_free(i->host_name);
     avahi_free(i->txt);
+    avahi_free(i->txt_lst);
     avahi_free(i);
-}
-
-static void expire_service(AvahiTimeout *t, void *userdata) {
-  struct timeval tv;
-  ServiceInfo *i = (ServiceInfo*)userdata;
-  
-  fprintf(stdout, "(Expiration) Expiring service announcement: %s\n",i->name);
-  remove_service(i);
 }
 
 static void print_service(FILE *f, ServiceInfo *service) {
@@ -169,24 +369,113 @@ void sig_handler(int signal) {
     ServiceInfo *i;
     FILE *f = NULL;
 
-    if (!(f = fopen(g_filename, "w+"))) {
-        fprintf(stderr, "Could not open %s. Using stdout instead.\n", g_filename);
+    if (!(f = fopen(arguments.output_file, "w+"))) {
+        fprintf(stderr, "Could not open %s. Using stdout instead.\n", arguments.output_file);
         f = stdout;
     }
-    
-    /* TODO: write to UCI depending on cmdline flag */
 
     for (i = services; i; i = i->info_next) {
         if (i->resolved)
             print_service(f, i);
     }
 
-    // TODO: check known_applications list, approved or blacklisted
+    // TODO: For OpenWRT: check known_applications list, approved or blacklisted
     
     if (f != stdout) {
         fclose(f);
     }
 }
+
+static int verify_announcement(ServiceInfo *i) {
+  char type_template[] = "<txt-record>type=%s</txt-record>";
+  char template[] = "<type>%s</type>\n\
+  <domain-name>%s</domain-name>\n\
+  <port>%d</port>\n\
+  <txt-record>application=%s</txt-record>\n\
+  <txt-record>ttl=%s</txt-record>\n\
+  <txt-record>ipaddr=%s</txt-record>\n\
+  %s\n\
+  <txt-record>icon=%s</txt-record>\n\
+  <txt-record>description=%s</txt-record>\n\
+  <txt-record>expiration=%s</txt-record>";
+  AvahiStringList *txt;
+  char *msg = NULL;
+  char *type_str = NULL;
+  char *type = NULL;
+  char **types_list = NULL;
+  int types_list_len = 0;
+  char *key, *val, *app, *ttl, *ipaddr, *icon, *desc, *expr, *sid, *sig;
+  int j, verdict = 1;
+  size_t val_len;
+  
+  assert(i->txt_lst);
+  
+  txt = i->txt_lst;
+  do {
+    if (avahi_string_list_get_pair(txt,&key,&val,&val_len))
+      continue;
+    if (!strcmp(key,"type")) {
+      if (!(types_list = (char**)realloc(types_list,(types_list_len + 1)*sizeof(char*)))) {
+	fprintf(stderr,"(Verify) Failed to allocate space for types_list\n");
+	return -1;
+      }
+      types_list[types_list_len] = val;
+      types_list_len++;
+    } else if (!strcmp(key,"application")) {
+      app = val;
+    } else if (!strcmp(key,"ttl")) {
+      ttl = val;
+    } else if (!strcmp(key,"ipaddr")) {
+      ipaddr = val;
+    } else if (!strcmp(key,"icon")) {
+      icon = val;
+    } else if (!strcmp(key,"description")) {
+      desc = val;
+    } else if (!strcmp(key,"expiration")) {
+      expr = val;
+    } else if (!strcmp(key,"fingerprint")) {
+      sid = val;
+    } else if (!strcmp(key,"signature")) {
+      sig = val;
+    }
+  } while (txt = avahi_string_list_get_next(txt));
+  
+  qsort(&types_list[0],types_list_len,sizeof(char*),cmpstringp); /* Sort types into alphabetical order */
+  
+  for (j = 0; j < types_list_len; ++j) {
+    if (type)
+      free(type);
+    int prev_len = type_str ? strlen(type_str) : 0;
+    if ((asprintf(&type,type_template,types_list[j]) < 0) ||
+      !(type_str = (char*)realloc(type_str,prev_len + strlen(type) + 1))) {
+      fprintf(stderr,"(Verify) Failed to allocate space for buffer\n");
+      if (type_str)
+        free(type_str);
+      if (type)
+        free(type);
+      free(types_list);
+      return -1;
+    }
+    if (prev_len)
+      strcat(type_str,type);
+    else
+      strcpy(type_str,type);
+  }
+  
+  if (asprintf(&msg,template,i->type,i->domain,i->port,app,ttl,ipaddr,type_str,icon,desc,expr) < 0) {
+    fprintf(stderr,"(Verify) Failed to allocate space for msg\n");
+    verdict = -1;
+  } else {
+    verdict = verify(sid,strlen(sid),msg,strlen(msg),sig,strlen(sig));
+    // printf("%s\n",msg);
+  }
+  
+  free(type);
+  free(type_str);
+  free(types_list);
+  return verdict;
+}
+
 static void resolve_callback(
     AvahiSServiceResolver *r,
     AVAHI_GCC_UNUSED AvahiIfIndex interface,
@@ -203,19 +492,15 @@ static void resolve_callback(
     void* userdata) {
     
     ServiceInfo *i = (ServiceInfo*)userdata;
-    AvahiStringList *txt_entry;
-    char *txt_str, *expiration_str;
-    regex_t fingerprint_re, signature_re;
-    const char fingerprint_pattern[] = "^fingerprint=[[:xdigit:]]{64}$";
-    const char signature_pattern[] = "^signature=[[:xdigit:]]{128}$";
+    char *expiration_str = NULL;
+    char *val = NULL;
+    size_t val_size = 0;
     struct timeval tv;
+    time_t current_time;
+    char* c_time_string;
+    struct tm *timestr;
     
     assert(r);
-    if (regcomp(&fingerprint_re, fingerprint_pattern, REG_NEWLINE | REG_EXTENDED | REG_NOSUB) ||
-      regcomp(&signature_re, signature_pattern, REG_NEWLINE | REG_EXTENDED | REG_NOSUB)) {
-      fprintf(stderr,"(Resolver) Failed to compile regexes\n");
-      return;
-    }
 
     switch (event) {
         case AVAHI_RESOLVER_FAILURE:
@@ -223,23 +508,6 @@ static void resolve_callback(
             break;
 
         case AVAHI_RESOLVER_FOUND: {
-	    /*int match = 0;
-	    regex_t application_re, ipaddr_re, icon_re, desc_re, ttl_re, exp_re;
-	    const char application[] = "^application=.+$";
-	    const char ttl[] = "^ttl=\d+$";
-	    const char exp[] = "^expiration=\d+$";
-	    const char ipaddr[] = "^(?:[[:alpha:]]+://)?([^/:]+)";
-	    const char icon[] = "^icon=.+$";
-	    const char desc[] = "^description=.+$";
-	    if (regcomp(&application_re, application, REG_NEWLINE | REG_EXTENDED | REG_NOSUB) || 
-	      regcomp(&ttl_re, ttl, REG_NEWLINE | REG_EXTENDED | REG_NOSUB) || 
-	      regcomp(&exp_re, exp, REG_NEWLINE | REG_EXTENDED | REG_NOSUB) || 
-	      regcomp(&ipaddr_re, ipaddr, REG_NEWLINE | REG_EXTENDED) || 
-	      regcomp(&icon_re, icon, REG_NEWLINE | REG_EXTENDED | REG_NOSUB) || 
-	      regcomp(&desc_re, desc, REG_NEWLINE | REG_EXTENDED | REG_NOSUB)) {
-	      fprintf(stderr,"(Resolver) Failed to compile regexes\n");
-	    }*/
-	  
             avahi_address_snprint(i->address, 
                 sizeof(i->address),
                 address);
@@ -249,11 +517,7 @@ static void resolve_callback(
 	      break;
 	    }
 	    i->port = port;
-	    
-	    /*char *test = avahi_string_list_to_string(txt);
-	    fprintf(stdout,"%s\n",test);
-	    avahi_free(test);
-	    */
+	    i->txt_lst = avahi_string_list_copy(txt);
 	    
 	    if (!avahi_string_list_find(txt,"application") ||
 	      !avahi_string_list_find(txt,"icon") ||
@@ -261,60 +525,76 @@ static void resolve_callback(
 	      !avahi_string_list_find(txt,"ttl") ||
 	      !avahi_string_list_find(txt,"expiration") ||
 	      !avahi_string_list_find(txt,"signature") ||
-	      !avahi_string_list_find(txt,"fingerprint")) { // TODO: This might not include local-only apps (w/ TTL == 0)
+	      !avahi_string_list_find(txt,"fingerprint")) {
 	      fprintf(stderr,"(Resolver) Missing TXT field(s): %s\n", name);
 	      break;
 	    }
 	    
-	    txt_entry = avahi_string_list_find(txt,"ttl");
-	    txt_str = avahi_string_list_get_text(txt_entry) + 4*sizeof(char);
-	    if (!isNumeric(txt_str) || atoi(txt_str) < 0) {
-	      fprintf(stderr,"(Resolver) Invalid TTL value: %s -> %s\n",name,txt_str);
+	    avahi_string_list_get_pair(avahi_string_list_find(txt,"ttl"),NULL,&val,NULL);
+	    if (!isNumeric(val) || atoi(val) < 0) {
+	      fprintf(stderr,"(Resolver) Invalid TTL value: %s -> %s\n",name,val);
 	      break;
 	    }
 	    
-	    txt_entry = avahi_string_list_find(txt,"expiration");
-	    expiration_str = avahi_string_list_get_text(txt_entry) + 11*sizeof(char);
+	    avahi_string_list_get_pair(avahi_string_list_find(txt,"expiration"),NULL,&expiration_str,NULL);
 	    if (!isNumeric(expiration_str) || atoi(expiration_str) < 0) {
 	      fprintf(stderr,"(Resolver) Invalid expiration value: %s -> %s\n",name,expiration_str);
 	      break;
 	    }
 	    
-	    txt_entry = avahi_string_list_find(txt,"fingerprint");
-	    txt_str = avahi_string_list_get_text(txt_entry);
-	    if (regexec(&fingerprint_re, txt_str, 0, NULL, 0)) {
-	      fprintf(stderr,"(Resolver) Invalid fingerprint: %s -> %s\n",name,txt_str);
+	    avahi_string_list_get_pair(avahi_string_list_find(txt,"fingerprint"),NULL,&val,&val_size);
+	    if (val_size != FINGERPRINT_LEN && !isHex(val,val_size)) {
+	      fprintf(stderr,"(Resolver) Invalid fingerprint: %s -> %s\n",name,val);
 	      break;
 	    }
 	    
-	    txt_entry = avahi_string_list_find(txt,"signature");
-	    txt_str = avahi_string_list_get_text(txt_entry);
-	    if (regexec(&signature_re, txt_str, 0, NULL, 0)) {
-	      fprintf(stderr,"(Resolver) Invalid signature: %s -> %s\n",name,txt_str);
+	    avahi_string_list_get_pair(avahi_string_list_find(txt,"signature"),NULL,&val,&val_size);
+	    if (val_size != SIG_LENGTH && !isHex(val,val_size)) {
+	      fprintf(stderr,"(Resolver) Invalid signature: %s -> %s\n",name,val);
 	      break;
 	    }
 
-	    // TODO: check connectivity, using commotiond socket API
+	    // TODO: check connectivity, using commotiond socket library
 	    
 	    // TODO: verify signature, using commotiond serval key mgmt API
-	    
-	    // TODO: if signature verifies:
+
+	    if (verify_announcement(i)) {
+	      fprintf(stderr,"(Resolver) Announcement signature verification failed\n");
+	      break;
+	    } else
+	      fprintf(stdout,"(Resolver) Announcement signature verification succeeded\n");
+
 	    avahi_elapse_time(&tv, 1000*atoi(expiration_str), 0);
-	    avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, expire_service, i); // create expiration event for service
-	    if (!(i->txt = txt_list_to_string(txt))) {
-	      fprintf(stderr, "Could not resolve the text field!\n");
+	    current_time = time(NULL);
+	    i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, remove_service, i); // create expiration event for service
+	    
+	    /* Convert expiration period into timestamp */
+	    if (current_time != ((time_t)-1)) {
+	      timestr = localtime(&current_time);
+	      timestr->tm_sec += atoi(expiration_str);
+	      current_time = mktime(timestr);
+	      if (c_time_string = ctime(&current_time))
+		c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
+	        i->txt_lst = avahi_string_list_add_printf(i->txt_lst,"expiration_time=%s",c_time_string);
+	    }
+	    
+	    if (!(i->txt = txt_list_to_string(i->txt_lst))) {
+	      fprintf(stderr, "(Resolver) Could not convert txt fields to string\n");
 	      break;
 	    }
+	    
+	    if (arguments.uci && uci_write(i)) {
+	      fprintf(stderr, "(Resolver) Could not write to UCI\n");
+	    }
+            
             i->resolved = 1;
         }
     }
     avahi_s_service_resolver_free(i->resolver);
     i->resolver = NULL;
     if (event == AVAHI_RESOLVER_FOUND && !i->resolved) {
-      remove_service(i);
+      remove_service(NULL, i);
     }
-    regfree(&fingerprint_re);
-    regfree(&signature_re);
 }
 static void browse_service_callback(
     AvahiSServiceBrowser *b,
@@ -355,7 +635,7 @@ static void browse_service_callback(
             if (event == AVAHI_BROWSER_REMOVE && found_service) {
                 /* remove the service.
                  */
-                remove_service(found_service);
+                remove_service(NULL, found_service);
             }
             break;
         }
@@ -407,6 +687,21 @@ static void browse_type_callback(
     }
 }
 
+static error_t parse_opt (int key, char *arg, struct argp_state *state) {
+  struct arguments *arguments = state->input;
+
+  switch (key) {
+    case 'u':
+      arguments->uci = 1;
+      break;
+    case 'o':
+      arguments->output_file = arg;
+      break;
+    default:
+      return ARGP_ERR_UNKNOWN;
+  }
+  return 0;
+}
 
 int main(int argc, char*argv[]) {
     AvahiServerConfig config;
@@ -415,20 +710,23 @@ int main(int argc, char*argv[]) {
     int error;
     int ret = 1;
 
-    /* TODO: Parse command line parameters using argp 
-     -u/--uci write out to /etc/config/applications */
+    const char *argp_program_version = "1.0";
+    static char doc[] = "Commotion Service Manager";
+    static struct argp_option options[] = {
+      {"uci", 'u', 0, 0, "Store service cache in UCI" },
+      {"out", 'o', "FILE", 0, "Output file to write services to when USR1 signal is received" },
+      { 0 }
+    };
     
-    if (argc == 2) {
-        /* 
-         * we are going to use this for our filename.
-         */
-        g_filename = strdup(argv[1]);
-    }
-    else {
-        g_filename = DEFAULT_FILENAME;
-    }
-    fprintf(stderr, "g_filename: %s\n", g_filename);
-
+    /* Set defaults */
+    arguments.uci = 0;
+    arguments.output_file = DEFAULT_FILENAME;
+    
+    static struct argp argp = { options, parse_opt, NULL, doc };
+    
+    argp_parse (&argp, argc, argv, 0, 0, &arguments);
+    fprintf(stdout,"uci: %d, out: %s\n",arguments.uci,arguments.output_file);
+    
     signal(SIGUSR1, sig_handler);
 
     /* Initialize the psuedo-RNG */
