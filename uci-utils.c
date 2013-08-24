@@ -1,6 +1,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef USESYSLOG
+#include <syslog.h>
+#endif
 
 #include <uci.h>
 
@@ -18,7 +21,7 @@ int uci_remove(ServiceInfo *i) {
   size_t sid_len;
   
   avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"fingerprint"),&key,&sid,&sid_len);
-  CHECK(sid_len == FINGERPRINT_LEN && isHex(sid,sid_len),"Invalid fingerprint txt field\n");
+  CHECK(sid_len == FINGERPRINT_LEN && isHex(sid,sid_len),"Invalid fingerprint txt field");
   
   c = uci_alloc_context();
   assert(c);
@@ -29,20 +32,20 @@ int uci_remove(ServiceInfo *i) {
   
   CHECK(uci_lookup_ptr(c, &sec_ptr, sec_name, false) == UCI_OK,"(UCI_Remove) Failed application lookup");
   
-  CHECK(sec_ptr.flags & UCI_LOOKUP_COMPLETE,"(UCI_Remove) Application not found\n");
-  LOG("UCI_Remove","Found application\n");
+  CHECK(sec_ptr.flags & UCI_LOOKUP_COMPLETE,"(UCI_Remove) Application not found");
+  INFO("(UCI_Remove) Found application");
   
   CHECK(uci_delete(c, &sec_ptr) != UCI_OK,"(UCI_Remove) Failed to delete application");
-  LOG("UCI_Remove","Successfully deleted application\n");
+  INFO("(UCI_Remove) Successfully deleted application");
   
   pak = sec_ptr.p;
   
   // uci_save
   CHECK(!uci_save(c, pak),"(UCI_Remove) Failed to save");
-  LOG("UCI_Remove","Save succeeded\n");
+  INFO("(UCI_Remove) Save succeeded");
   
   CHECK(!uci_commit(c,&pak,false),"(UCI_Remove) Failed to commit");
-  LOG("UCI_Remove","Commit succeeded\n");
+  INFO("(UCI_Remove) Commit succeeded");
   
   ret = 0;
   
@@ -74,7 +77,7 @@ int uci_write(ServiceInfo *i) {
       sig_len == SIG_LENGTH &&
       isHex(sid,sid_len) &&
       isHex(sig,sig_len),
-      "(UCI) Invalid signature or fingerprint txt fields\n");
+      "(UCI) Invalid signature or fingerprint txt fields");
   
   strcpy(sec_name,"applications.");
   strncat(sec_name,sid,FINGERPRINT_LEN);
@@ -83,7 +86,7 @@ int uci_write(ServiceInfo *i) {
   CHECK(uci_lookup_ptr(c, &sec_ptr, sec_name, false) == UCI_OK,"(UCI) Failed application lookup");
   
   if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
-    LOG("UCI","Found application\n");
+    INFO("(UCI) Found application");
     // check for service == fingerprint. if sig different, update it
     strcpy(sig_opstr,"applications.");
     strncat(sig_opstr,sid,FINGERPRINT_LEN);
@@ -91,15 +94,15 @@ int uci_write(ServiceInfo *i) {
     CHECK(uci_lookup_ptr(c, &sig_ptr, sig_opstr, false) == UCI_OK,"(UCI) Failed signature lookup");
     if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && sig && !strcmp(sig,sig_ptr.o->v.string)) {
       // signatures equal: do nothing
-      LOG("UCI","Signature the same, not updating\n");
+      INFO("(UCI) Signature the same, not updating");
       uci_free_context(c);
       return 0;
     }
     // signatures differ: delete existing app
-    LOG("UCI","Signature differs, updating\n");
+    INFO("(UCI) Signature differs, updating");
     CHECK(uci_delete(c, &sec_ptr) == UCI_OK,"(UCI) Failed to delete application");
   } else {
-    LOG("UCI","Application not found, creating\n");
+    INFO("(UCI) Application not found, creating");
   }
 
   pak = sec_ptr.p;
@@ -110,7 +113,7 @@ int uci_write(ServiceInfo *i) {
   sec_ptr.section = sid;
   sec_ptr.value = "application";
   CHECK(!uci_set(c, &sec_ptr),"(UCI) Failed to set section");
-  LOG("UCI","Section set succeeded\n");
+  INFO("(UCI) Section set succeeded");
     
   // uci set options/values
   txt = i->txt_lst;
@@ -123,15 +126,15 @@ int uci_write(ServiceInfo *i) {
       uci_ret = uci_set(c, &sec_ptr);
     }
     CHECK(!uci_ret,"(UCI) Failed to set");
-    LOG("UCI","Set succeeded\n");
+    INFO("(UCI) Set succeeded");
   } while (txt = avahi_string_list_get_next(txt));
   
   // uci_save
   CHECK(!uci_save(c, pak),"(UCI) Failed to save");
-  LOG("UCI","Save succeeded\n");
+  INFO("(UCI) Save succeeded");
   
   CHECK(!uci_commit(c,&pak,false),"(UCI) Failed to commit");
-  LOG("UCI","Commit succeeded\n");
+  INFO("(UCI) Commit succeeded");
 
   ret = 0;
   

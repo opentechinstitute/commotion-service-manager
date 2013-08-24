@@ -11,13 +11,10 @@
 #define SIG_LENGTH 128
 
 #define DEFAULT_FILENAME "/tmp/avahi-client.out"
+#define PIDFILE "/var/run/commotion-service-manager.pid"
 
 static AvahiSimplePoll *simple_poll = NULL;
 static AvahiServer *server = NULL;
-struct arguments {
-  int uci;
-  char *output_file;
-} arguments;
 
 /*
  * This is a compiler trick for the LLIST

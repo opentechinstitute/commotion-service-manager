@@ -11,6 +11,11 @@
 #include <signal.h>
 #include <ctype.h>
 #include <argp.h>
+#include <unistd.h>
+#include <fcntl.h>
+#ifdef USESYSLOG
+#include <syslog.h>
+#endif
 
 #include <serval-crypto.h>
 
@@ -21,6 +26,14 @@
 #include "util.h"
 #include "uci-utils.h"
 #include "debug.h"
+
+struct arguments {
+  int uci;
+  int nodaemon;
+  char *output_file;
+};
+static struct arguments arguments;
+static int pid_filehandle;
 
 static void resolve_callback(
     AvahiSServiceResolver *r,
@@ -54,7 +67,7 @@ static ServiceInfo *add_service(AvahiIfIndex interface, AvahiProtocol protocol, 
 
     if (!(i->resolver = avahi_s_service_resolver_new(server, interface, protocol, name, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, i))) {
         avahi_free(i);
-        LOG("ADD_SERVICE", "Failed to resolve service '%s' of type '%s' in domain '%s': %s\n", name, type, domain, avahi_strerror(avahi_server_errno(server)));
+        INFO("Failed to resolve service '%s' of type '%s' in domain '%s': %s", name, type, domain, avahi_strerror(avahi_server_errno(server)));
         return NULL;
     }
     i->interface = interface;
@@ -73,14 +86,14 @@ static void remove_service(AvahiTimeout *t, void *userdata) {
     assert(userdata);
     ServiceInfo *i = (ServiceInfo*)userdata;
 
-    LOG("Remove_Service","Removing service announcement: %s\n",i->name);
+    INFO("Removing service announcement: %s",i->name);
     
     /* Cancel expiration event */
     if (!t && i->timeout)
       avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
     
     if (arguments.uci && uci_remove(i))
-      ERROR("(Remove_Service) Could not remove from UCI\n");
+      ERROR("(Remove_Service) Could not remove from UCI");
     
     AVAHI_LLIST_REMOVE(ServiceInfo, info, services, i);
 
@@ -102,10 +115,10 @@ static void print_service(FILE *f, ServiceInfo *service) {
     const char *protocol_string;
 
     if (!if_indextoname(service->interface, interface_string))
-        WARN("Could not resolve the interface name!\n");
+        WARN("Could not resolve the interface name!");
 
     if (!(protocol_string = avahi_proto_to_string(service->protocol)))
-        WARN("Could not resolve the protocol name!\n");
+        WARN("Could not resolve the protocol name!");
 
     fprintf(f, "%s;%s;%s;%s;%s;%s;%s;%u;%s\n", interface_string,
                                protocol_string,
@@ -123,7 +136,7 @@ static void sig_handler(int signal) {
     FILE *f = NULL;
 
     if (!(f = fopen(arguments.output_file, "w+"))) {
-        WARN("Could not open %s. Using stdout instead.\n", arguments.output_file);
+        WARN("Could not open %s. Using stdout instead.", arguments.output_file);
         f = stdout;
     }
 
@@ -207,7 +220,7 @@ static int verify_announcement(ServiceInfo *i) {
   CHECK_MEM(asprintf(&msg,template,i->type,i->domain,i->port,app,ttl,ipaddr,type_str,icon,desc,expr) != -1);
   
   verdict = verify(sid,strlen(sid),msg,strlen(msg),sig,strlen(sig));
-  //DEBUG("%s\n",msg);
+  //DEBUG("%s",msg);
   
 error:
   if (type)
@@ -247,7 +260,7 @@ static void resolve_callback(
 
     switch (event) {
         case AVAHI_RESOLVER_FAILURE:
-            ERROR("(Resolver) Failed to resolve service '%s' of type '%s' in domain '%s': %s\n", name, type, domain, avahi_strerror(avahi_server_errno(server)));
+            ERROR("(Resolver) Failed to resolve service '%s' of type '%s' in domain '%s': %s", name, type, domain, avahi_strerror(avahi_server_errno(server)));
             break;
 
         case AVAHI_RESOLVER_FOUND: {
@@ -256,7 +269,7 @@ static void resolve_callback(
                 address);
 	    i->host_name = strdup(host_name);
 	    if (port < 0 || port > 65535) {
-	      WARN("(Resolver) Invalid port: %s\n",name);
+	      WARN("(Resolver) Invalid port: %s",name);
 	      break;
 	    }
 	    i->port = port;
@@ -269,31 +282,31 @@ static void resolve_callback(
 	      !avahi_string_list_find(txt,"expiration") ||
 	      !avahi_string_list_find(txt,"signature") ||
 	      !avahi_string_list_find(txt,"fingerprint")) {
-	      WARN("(Resolver) Missing TXT field(s): %s\n", name);
+	      WARN("(Resolver) Missing TXT field(s): %s", name);
 	      break;
 	    }
 	    
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"ttl"),NULL,&val,NULL);
 	    if (!isNumeric(val) || atoi(val) < 0) {
-	      WARN("(Resolver) Invalid TTL value: %s -> %s\n",name,val);
+	      WARN("(Resolver) Invalid TTL value: %s -> %s",name,val);
 	      break;
 	    }
 	    
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"expiration"),NULL,&expiration_str,NULL);
 	    if (!isNumeric(expiration_str) || atoi(expiration_str) < 0) {
-	      WARN("(Resolver) Invalid expiration value: %s -> %s\n",name,expiration_str);
+	      WARN("(Resolver) Invalid expiration value: %s -> %s",name,expiration_str);
 	      break;
 	    }
 	    
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"fingerprint"),NULL,&val,&val_size);
 	    if (val_size != FINGERPRINT_LEN && !isHex(val,val_size)) {
-	      WARN("(Resolver) Invalid fingerprint: %s -> %s\n",name,val);
+	      WARN("(Resolver) Invalid fingerprint: %s -> %s",name,val);
 	      break;
 	    }
 	    
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"signature"),NULL,&val,&val_size);
 	    if (val_size != SIG_LENGTH && !isHex(val,val_size)) {
-	      WARN("(Resolver) Invalid signature: %s -> %s\n",name,val);
+	      WARN("(Resolver) Invalid signature: %s -> %s",name,val);
 	      break;
 	    }
 
@@ -302,10 +315,10 @@ static void resolve_callback(
 	    // TODO: verify signature, using commotiond serval key mgmt API
 
 	    if (verify_announcement(i)) {
-	      LOG("Resolver","Announcement signature verification failed\n");
+	      INFO("Announcement signature verification failed");
 	      break;
 	    } else
-	      LOG("Resolver","Announcement signature verification succeeded\n");
+	      INFO("Announcement signature verification succeeded");
 
 	    avahi_elapse_time(&tv, 1000*atoi(expiration_str), 0);
 	    current_time = time(NULL);
@@ -322,12 +335,12 @@ static void resolve_callback(
 	    }
 	    
 	    if (!(i->txt = txt_list_to_string(i->txt_lst))) {
-	      ERROR("(Resolver) Could not convert txt fields to string\n");
+	      ERROR("(Resolver) Could not convert txt fields to string");
 	      break;
 	    }
 	    
 	    if (arguments.uci && uci_write(i)) {
-	      ERROR("(Resolver) Could not write to UCI\n");
+	      ERROR("(Resolver) Could not write to UCI");
 	    }
             
             i->resolved = 1;
@@ -360,14 +373,14 @@ static void browse_service_callback(
 
         case AVAHI_BROWSER_FAILURE:
 
-            ERROR("(Browser) %s\n", avahi_strerror(avahi_server_errno(server)));
+            ERROR("(Browser) %s", avahi_strerror(avahi_server_errno(server)));
             avahi_simple_poll_quit(simple_poll);
             return;
 
         case AVAHI_BROWSER_NEW:
         case AVAHI_BROWSER_REMOVE: {
             ServiceInfo *found_service = NULL;
-            LOG("Browser","%s: service '%s' of type '%s' in domain '%s'\n",event == AVAHI_BROWSER_NEW ? "NEW" : "REMOVE", name, type, domain);
+            INFO("Browser: %s: service '%s' of type '%s' in domain '%s'",event == AVAHI_BROWSER_NEW ? "NEW" : "REMOVE", name, type, domain);
 
             //found_service=find_service(interface, protocol, name, type, domain);
 	    found_service=find_service(name); // name is fingerprint, so should be unique
@@ -384,7 +397,7 @@ static void browse_service_callback(
             break;
         }
         case AVAHI_BROWSER_CACHE_EXHAUSTED:
-            INFO("(Browser) %s\n", "CACHE_EXHAUSTED");
+            INFO("(Browser) %s", "CACHE_EXHAUSTED");
             break;
     }
 }
@@ -402,10 +415,10 @@ static void browse_type_callback(
     AvahiServer *s = (AvahiServer*)userdata;
     assert(b);
 
-    INFO("Type browser got an event: %d\n", event);
+    INFO("Type browser got an event: %d", event);
     switch (event) {
         case AVAHI_BROWSER_FAILURE:
-            ERROR("(Browser) %s\n", 
+            ERROR("(Browser) %s", 
                 avahi_strerror(avahi_server_errno(s)));
             avahi_simple_poll_quit(simple_poll);
             return;
@@ -419,14 +432,14 @@ static void browse_type_callback(
                                            browse_service_callback, 
                                            s)) {
                 ERROR("Service Browser: Failed to create a service " 
-                                "browser for type (%s) in domain (%s)\n", 
+                                "browser for type (%s) in domain (%s)", 
                                                                 type, 
                                                                 domain);
                 avahi_simple_poll_quit(simple_poll);
             }
             break;
         case AVAHI_BROWSER_CACHE_EXHAUSTED:
-            INFO("Cache exhausted\n");
+            INFO("Cache exhausted");
             break;
     }
 }
@@ -441,16 +454,106 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     case 'o':
       arguments->output_file = arg;
       break;
+    case 'n':
+      arguments->nodaemon = 1;
+      break;
     default:
       return ARGP_ERR_UNKNOWN;
   }
   return 0;
 }
 
+/**
+ * @brief starts the daemon
+ * @param statedir directory in which to store lock file
+ * @param pidfile name of lock file (stores process id)
+ * @warning ensure that there is only one copy 
+ */
+static void daemon_start(char *pidfile) {
+  int pid, sid, i;
+  char str[10];
+    
+  /*
+   * Check if parent process id is set
+   * 
+   * If PPID exists, we are already a daemon
+   */
+  if (getppid() == 1) {
+    return;
+  }
+    
+  pid = fork(); /* Fork parent process */
+  
+  if (pid < 0) {
+    exit(EXIT_FAILURE);
+  }
+  
+  if (pid > 0) {
+    /* Child created correctly */
+    printf("Child process created: %d\n", pid);
+    exit(EXIT_SUCCESS); /* exit parent process */
+  }
+  
+  /* Child continues from here */
+  
+  /* 
+   * Set file permissions to 750 
+   * -- Owner may read/write/execute
+   * -- Group may read/write
+   * -- World has no permissions
+   */
+  umask(027);
+  
+#ifdef USESYSLOG
+  openlog("Commotion",LOG_PID,LOG_USER); 
+#endif
+  
+  /* Get a new process group */
+  sid = setsid();
+  
+  if (sid < 0) {
+    exit(EXIT_FAILURE);
+  }
+  
+  /* Close all descriptors */
+  for (i = getdtablesize(); i >=0; --i) {
+    close(i);
+  }
+  
+  /* Route i/o connections */
+  close(STDIN_FILENO);
+  close(STDOUT_FILENO);
+  close(STDERR_FILENO);
+  
+  if ((chdir("/")) < 0) {
+    exit(EXIT_FAILURE);
+  }
+  
+  /*
+   * Open lock file
+   * Ensure that there is only one copy
+   */
+  pid_filehandle = open(pidfile, O_RDWR|O_CREAT, 0644);
+  
+  if(pid_filehandle == -1) {
+    /* Couldn't open lock file */
+    ERROR("Could not lock PID lock file %s, exiting", pidfile);
+    exit(EXIT_FAILURE);
+  }
+  
+  /* Get and format PID */
+  sprintf(str, "%d\n", getpid());
+  
+  /* Write PID to lockfile */
+  write(pid_filehandle, str, strlen(str));
+  
+}
+
 int main(int argc, char*argv[]) {
     AvahiServerConfig config;
     AvahiSServiceTypeBrowser *stb = NULL;
     struct timeval tv;
+    char *pidfile = PIDFILE;
     int error;
     int ret = 1;
 
@@ -459,11 +562,13 @@ int main(int argc, char*argv[]) {
     static struct argp_option options[] = {
       {"uci", 'u', 0, 0, "Store service cache in UCI" },
       {"out", 'o', "FILE", 0, "Output file to write services to when USR1 signal is received" },
+      {"nodaemon", 'n', 0, 0, "Do not fork into the background" },
       { 0 }
     };
     
     /* Set defaults */
     arguments.uci = 0;
+    arguments.nodaemon = 0;
     arguments.output_file = DEFAULT_FILENAME;
     
     static struct argp argp = { options, parse_opt, NULL, doc };
@@ -471,13 +576,16 @@ int main(int argc, char*argv[]) {
     argp_parse (&argp, argc, argv, 0, 0, &arguments);
     //fprintf(stdout,"uci: %d, out: %s\n",arguments.uci,arguments.output_file);
     
+    if (!arguments.nodaemon)
+      daemon_start((char *)pidfile);
+    
     signal(SIGUSR1, sig_handler);
 
     /* Initialize the psuedo-RNG */
     srand(time(NULL));
 
     /* Allocate main loop object */
-    CHECK((simple_poll = avahi_simple_poll_new()),"Failed to create simple poll object.\n");
+    CHECK((simple_poll = avahi_simple_poll_new()),"Failed to create simple poll object.");
 
     /* Do not publish any local records */
     avahi_server_config_init(&config);
@@ -498,11 +606,11 @@ int main(int argc, char*argv[]) {
     avahi_server_config_free(&config);
 
     /* Check wether creating the server object succeeded */
-    CHECK(server,"Failed to create server: %s\n", avahi_strerror(error));
+    CHECK(server,"Failed to create server: %s", avahi_strerror(error));
 
     /* Create the service browser */
     CHECK((stb = avahi_s_service_type_browser_new(server, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback, server)),
-        "Failed to create service browser: %s\n", avahi_strerror(avahi_server_errno(server)));
+        "Failed to create service browser: %s", avahi_strerror(avahi_server_errno(server)));
     
     /* Run the main loop */
     avahi_simple_poll_loop(simple_poll);
