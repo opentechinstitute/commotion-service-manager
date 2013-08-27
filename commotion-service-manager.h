@@ -12,6 +12,7 @@
 
 #define DEFAULT_FILENAME "/tmp/avahi-client.out"
 #define PIDFILE "/var/run/commotion-service-manager.pid"
+#define UCIPATH "/opt/luci-commotion/etc/config"
 
 static AvahiSimplePoll *simple_poll = NULL;
 static AvahiServer *server = NULL;
@@ -21,7 +22,7 @@ static AvahiServer *server = NULL;
  * macros to work.
  */
 typedef struct ServiceInfo ServiceInfo;
-typedef struct ServiceInfo {
+static struct ServiceInfo {
     AvahiIfIndex interface;
     AvahiProtocol protocol;
     char *name, *type, *domain, *host_name, *txt;
@@ -34,7 +35,6 @@ typedef struct ServiceInfo {
     int resolved;
 
     AVAHI_LLIST_FIELDS(ServiceInfo, info);
-};
-static ServiceInfo *services;
+} *services;
 
 #endif

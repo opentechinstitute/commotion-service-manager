@@ -21,6 +21,7 @@ int isHex(const char *str, size_t len);
 int isNumeric (const char *s);
 int isUCIEncoded(const char *s, size_t s_len);
 int cmpstringp(const void *p1, const void *p2);
+char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len);
 char *escape(char *to_escape, int *escaped_len);
 char *txt_list_to_string(AvahiStringList *txt);
 

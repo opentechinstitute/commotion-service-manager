@@ -18,7 +18,7 @@
 #endif
 
 #include <serval-crypto.h>
-
+#include <uci.h>
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
 
@@ -155,22 +155,22 @@ static void sig_handler(int signal) {
 static int verify_announcement(ServiceInfo *i) {
   char type_template[] = "<txt-record>type=%s</txt-record>";
   char template[] = "<type>%s</type>\n\
-  <domain-name>%s</domain-name>\n\
-  <port>%d</port>\n\
-  <txt-record>application=%s</txt-record>\n\
-  <txt-record>ttl=%s</txt-record>\n\
-  <txt-record>ipaddr=%s</txt-record>\n\
-  %s\n\
-  <txt-record>icon=%s</txt-record>\n\
-  <txt-record>description=%s</txt-record>\n\
-  <txt-record>expiration=%s</txt-record>";
+<domain-name>%s</domain-name>\n\
+<port>%s</port>\n\
+<txt-record>application=%s</txt-record>\n\
+<txt-record>ttl=%s</txt-record>\n\
+<txt-record>ipaddr=%s</txt-record>\n\
+%s\n\
+<txt-record>icon=%s</txt-record>\n\
+<txt-record>description=%s</txt-record>\n\
+<txt-record>expiration=%s</txt-record>";
   AvahiStringList *txt;
   char *msg = NULL;
   char *type_str = NULL;
   char *type = NULL;
   char **types_list = NULL;
   int types_list_len = 0;
-  char *key, *val, *app, *ttl, *ipaddr, *icon, *desc, *expr, *sid, *sig;
+  char *key, *val, *app, *ttl, *ipaddr, *icon, *desc, *expr, *sid, *sig, portstr[6] = "";
   int j, verdict = 1;
   size_t val_len;
   
@@ -217,10 +217,11 @@ static int verify_announcement(ServiceInfo *i) {
       strcpy(type_str,type);
   }
   
-  CHECK_MEM(asprintf(&msg,template,i->type,i->domain,i->port,app,ttl,ipaddr,type_str,icon,desc,expr) != -1);
+  if (i->port > 0)
+    sprintf(portstr,"%d",i->port);
+  CHECK_MEM(asprintf(&msg,template,i->type,i->domain,portstr,app,ttl,ipaddr,types_list_len ? type_str : "",icon,desc,expr) != -1);
   
   verdict = verify(sid,strlen(sid),msg,strlen(msg),sig,strlen(sig));
-  //DEBUG("%s",msg);
   
 error:
   if (type)
@@ -553,7 +554,6 @@ int main(int argc, char*argv[]) {
     AvahiServerConfig config;
     AvahiSServiceTypeBrowser *stb = NULL;
     struct timeval tv;
-    char *pidfile = PIDFILE;
     int error;
     int ret = 1;
 
@@ -577,7 +577,7 @@ int main(int argc, char*argv[]) {
     //fprintf(stdout,"uci: %d, out: %s\n",arguments.uci,arguments.output_file);
     
     if (!arguments.nodaemon)
-      daemon_start((char *)pidfile);
+      daemon_start(PIDFILE);
     
     signal(SIGUSR1, sig_handler);
 

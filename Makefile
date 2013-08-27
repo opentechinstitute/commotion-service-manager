@@ -1,4 +1,4 @@
-CFLAGS=-I../serval-dna -I../serval-crypto
+CFLAGS=-I../serval-dna -I../serval-crypto -g
 LDFLAGS=-lserval-crypto -lavahi-core -lavahi-common -luci
 OBJS=uci-utils.o util.o commotion-service-manager.o
 DEPS=Makefile commotion-service-manager.h debug.h

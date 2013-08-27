@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 
 #include <avahi-core/core.h>
 
@@ -41,6 +42,43 @@ int cmpstringp(const void *p1, const void *p2) {
    *      to char", hence the following cast plus dereference */
   
   return strcmp(* (char * const *) p1, * (char * const *) p2);
+}
+
+char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len) {
+  char *escaped = NULL;
+  char escaped_char[5];
+  int replacement_len = 0;
+  int i = 0;
+  
+  *escaped_len = 0;
+  while (i<to_escape_len) {
+    
+    /*
+     * Our alloc'd size is always one ahead 
+     * of the string length to accommodate 
+     * the NULL for the NULL-termination.
+     */
+    if (isalnum(to_escape[i])) {
+      escaped = (char*)realloc(escaped, (*escaped_len)+1+1);
+      escaped[*escaped_len] = to_escape[i];
+      *escaped_len = *escaped_len + 1;
+    } else {
+      if (to_escape[i] < 10)
+	replacement_len = 1;
+      else if (to_escape[i] < 100)
+	replacement_len = 2;
+      else
+	replacement_len = 3;
+      sprintf(escaped_char,"%d",to_escape[i]);
+      escaped = (char*)realloc(escaped, (*escaped_len) + replacement_len + 1 + 1);
+      strncpy(escaped + *escaped_len, "_", 1);
+      strncpy(escaped + *escaped_len + 1, escaped_char, replacement_len);
+      *escaped_len = *escaped_len + replacement_len + 1;
+    }
+    escaped[*escaped_len] = '\0';
+    i++;
+  }
+  return escaped;
 }
 
 char *escape(char *to_escape, int *escaped_len) {
