@@ -10,9 +10,8 @@
 #define FINGERPRINT_LEN 64
 #define SIG_LENGTH 128
 
-#define DEFAULT_FILENAME "/tmp/avahi-client.out"
-#define PIDFILE "/var/run/commotion-service-manager.pid"
-#define UCIPATH "/opt/luci-commotion/etc/config"
+#define DEFAULT_FILENAME "/tmp/local-services.out"
+#define PIDFILE "/var/run/commotion/commotion-service-manager.pid"
 
 static AvahiSimplePoll *simple_poll = NULL;
 static AvahiServer *server = NULL;

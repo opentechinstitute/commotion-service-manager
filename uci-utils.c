@@ -7,6 +7,7 @@
 
 #include <uci.h>
 
+#include "uci-utils.h"
 #include "debug.h"
 #include "util.h"
 #include "commotion-service-manager.h"
@@ -65,7 +66,6 @@ int uci_write(ServiceInfo *i) {
   avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"signature"),NULL,&sig,&sig_len);
   
   uci_name = get_name(i,&uci_name_len);
-  INFO("UCI_NAME: %s %d",uci_name,(int)uci_name_len);
 
   CHECK(sig_len == SIG_LENGTH &&
       isHex(sig,sig_len),

@@ -18,17 +18,22 @@
 #endif
 
 #include <serval-crypto.h>
-#include <uci.h>
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
 
 #include "commotion-service-manager.h"
 #include "util.h"
-#include "uci-utils.h"
 #include "debug.h"
 
+#ifdef USE_UCI
+#include <uci.h>
+#include "uci-utils.h"
+#endif
+
 struct arguments {
+#ifdef USE_UCI
   int uci;
+#endif
   int nodaemon;
   char *output_file;
 };
@@ -89,11 +94,14 @@ static void remove_service(AvahiTimeout *t, void *userdata) {
     INFO("Removing service announcement: %s",i->name);
     
     /* Cancel expiration event */
+    // TODO: remove avahi service file
     if (!t && i->timeout)
       avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
     
+#ifdef USE_UCI
     if (arguments.uci && uci_remove(i))
       ERROR("(Remove_Service) Could not remove from UCI");
+#endif
     
     AVAHI_LLIST_REMOVE(ServiceInfo, info, services, i);
 
@@ -294,7 +302,7 @@ static void resolve_callback(
 	    }
 	    
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"expiration"),NULL,&expiration_str,NULL);
-	    if (!isNumeric(expiration_str) || atoi(expiration_str) < 0) {
+	    if (!isNumeric(expiration_str) || atoi(expiration_str) <= 0) {
 	      WARN("(Resolver) Invalid expiration value: %s -> %s",name,expiration_str);
 	      break;
 	    }
@@ -340,9 +348,10 @@ static void resolve_callback(
 	      break;
 	    }
 	    
-	    if (arguments.uci && uci_write(i)) {
+#ifdef USE_UCI
+	    if (arguments.uci && uci_write(i))
 	      ERROR("(Resolver) Could not write to UCI");
-	    }
+#endif
             
             i->resolved = 1;
         }
@@ -449,9 +458,11 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
   struct arguments *arguments = state->input;
 
   switch (key) {
+#ifdef USE_UCI
     case 'u':
       arguments->uci = 1;
       break;
+#endif
     case 'o':
       arguments->output_file = arg;
       break;
@@ -560,14 +571,18 @@ int main(int argc, char*argv[]) {
     const char *argp_program_version = "1.0";
     static char doc[] = "Commotion Service Manager";
     static struct argp_option options[] = {
+#ifdef USE_UCI
       {"uci", 'u', 0, 0, "Store service cache in UCI" },
+#endif
       {"out", 'o', "FILE", 0, "Output file to write services to when USR1 signal is received" },
       {"nodaemon", 'n', 0, 0, "Do not fork into the background" },
       { 0 }
     };
     
     /* Set defaults */
+#ifdef USE_UCI
     arguments.uci = 0;
+#endif
     arguments.nodaemon = 0;
     arguments.output_file = DEFAULT_FILENAME;
     

@@ -1,0 +1,5 @@
+commotion-service-manager (0.1-1) unstable; urgency=low
+
+  * Initial release (Closes: #nnnn)  <nnnn is the bug number of your ITP>
+
+ -- Dan Staples <danstaples@opentechinstitute.org>  Tue, 27 Aug 2013 14:11:36 -0400

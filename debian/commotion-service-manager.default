@@ -1,0 +1,31 @@
+# Defaults for commotion-service-manager initscript
+# sourced by /etc/init.d/commotion-service-manager
+# installed at /etc/default/commotion-service-manager by the maintainer scripts
+
+#
+# This is a POSIX shell fragment
+#
+
+# START_DAEMON
+# Set this to 'yes' to allow the daemon to start at boot time.  Any other value
+# means the /etc/init.d/commotion-service-manager script will not start the daemon.
+#START_DAEMON=yes
+
+# USER
+# Set this to start the daemon running as the given user.
+#USER=commotion
+
+# UCI_INSTANCE_PATH
+# Set this to make the daemon use a UCI path other than the default.
+#UCI_INSTANCE_PATH=/opt/luci-commotion/etc/config
+
+# DAEMON
+# Set to use an executable installed in a non-standard location, eg,
+# /usr/local/sbin.
+#DAEMON=/usr/sbin/commotion-service-manager
+
+# Additional arguments that are passed to the Daemon.
+#DAEMON_ARGS="-u"
+
+# Output file to write services to when USR1 signal is received
+#OUTPUT_FILE=/tmp/local-services.out

@@ -1,0 +1,14 @@
+Source: commotion-service-manager
+Section: net
+Priority: optional
+Maintainer: Dan Staples <danstaples@opentechinstitute.org>
+Build-Depends: debhelper (>= 8.0.0), libavahi-core-dev, libavahi-common-dev, luci-commotion, serval-crypto
+Standards-Version: 3.9.4
+Homepage: https://commotionwireless.net/
+
+Package: commotion-service-manager
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, luci-commotion, serval-crypto
+Description: An mDNS client for the Commotion Linux client
+ Receives, parses, verifies, and caches service
+ announcements on a local mesh network
