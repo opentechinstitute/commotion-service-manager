@@ -16,7 +16,8 @@ DESC=commotion-service-manager             # Introduce a short description here
 NAME=commotion-service-manager             # Introduce the short server's name here
 DEFAULTFILE=/etc/default/$NAME
 DAEMON=/usr/sbin/commotion-service-manager # Introduce the server's location here
-PIDFILE=/var/run/commotion/$NAME.pid
+PIDDIR=/var/run/commotion
+PIDFILE=$PIDDIR/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
 USER=commotion
 START_DAEMON=yes
@@ -44,6 +45,10 @@ if ! id $USER >/dev/null 2>&1; then
     log_failure_msg "Cannot start $DESC, user '$USER' does not exist"
     exit 1
 fi
+
+[ -d $PIDDIR ] || { \
+  mkdir -p $PIDDIR && chown $USER:$USER $PIDDIR
+}
 
 export UCI_INSTANCE_PATH
 
