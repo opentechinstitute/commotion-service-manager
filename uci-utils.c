@@ -137,11 +137,25 @@ int uci_write(ServiceInfo *i) {
       if (type_state != TYPE_MATCH_FOUND)
 	uci_ret = uci_add_list(c, &sec_ptr);
     } else {
+      if (!strcmp(sec_ptr.option,"application"))
+	sec_ptr.option = "name";
       uci_ret = uci_set(c, &sec_ptr);
     }
     UCI_CHECK(!uci_ret,"(UCI) Failed to set");
     INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
   } while (txt = avahi_string_list_get_next(txt));
+  
+  // set uuid and approved fields
+  sec_ptr.option = "uuid";
+  sec_ptr.value = uci_name;
+  uci_ret = uci_set(c, &sec_ptr);
+  UCI_CHECK(!uci_ret,"(UCI) Failed to set");
+  INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
+  sec_ptr.option = "approved";
+  sec_ptr.value = "1";
+  uci_ret = uci_set(c, &sec_ptr);
+  UCI_CHECK(!uci_ret,"(UCI) Failed to set");
+  INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
   
   // if no type fields in new announcement, remove section from UCI (part of stupid workaround)
   if (type_state == NO_TYPE_SECTION)
