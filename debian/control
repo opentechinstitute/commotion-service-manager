@@ -12,3 +12,13 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, luci-commotion, serval-crypto
 Description: An mDNS client for the Commotion Linux client
  Receives, parses, verifies, and caches service
  announcements on a local mesh network
+
+Package: commotion-service-manager-dbg
+Architecture: any
+Section: debug
+Depends: commotion-service-manager (= ${binary:Version}), ${misc:Depends}
+Description: Debugging symbols for commotion-service-manager
+ Receives, parses, verifies, and caches service
+ announcements on a local mesh network
+ .
+ This package contains debuggin symbols for commotion-service-manager

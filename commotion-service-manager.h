@@ -12,6 +12,7 @@
 
 #define DEFAULT_FILENAME "/tmp/local-services.out"
 #define PIDFILE "/var/run/commotion/commotion-service-manager.pid"
+#define avahiDir "/etc/avahi/services/"
 
 static AvahiSimplePoll *simple_poll = NULL;
 static AvahiServer *server = NULL;

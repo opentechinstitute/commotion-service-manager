@@ -94,9 +94,24 @@ static void remove_service(AvahiTimeout *t, void *userdata) {
     INFO("Removing service announcement: %s",i->name);
     
     /* Cancel expiration event */
-    // TODO: remove avahi service file
     if (!t && i->timeout)
       avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
+    
+#ifdef OPENWRT
+    // Delete Avahi service file
+    size_t uci_name_len = 0;
+    char *uci_name = NULL, *serviceFile = NULL;
+    uci_name = get_name(i,&uci_name_len);
+    serviceFile = malloc(sizeof(char) * (strlen(avahiDir) + uci_name_len + strlen(".service") + 1));
+    strcpy(serviceFile,avahiDir);
+    strncat(serviceFile,uci_name,uci_name_len);
+    strcat(serviceFile,".service");
+    if (remove(serviceFile))
+      ERROR("(Remove_Service) Could not delete service file: %s", serviceFile);
+    else
+      INFO("(Remove_Service) Successfully deleted service file: %s", serviceFile);
+    if (uci_name) free(uci_name);
+#endif
     
 #ifdef USE_UCI
     if (arguments.uci && uci_remove(i))

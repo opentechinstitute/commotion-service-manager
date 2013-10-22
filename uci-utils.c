@@ -14,7 +14,7 @@
 
 #define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
 
-static char *get_name(ServiceInfo *i, size_t *name_len) {
+char *get_name(ServiceInfo *i, size_t *name_len) {
   char *uci_name = NULL;
   char *ip = NULL;
   char *ip_escaped = NULL;

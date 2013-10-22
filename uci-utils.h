@@ -3,8 +3,11 @@
 
 #include "commotion-service-manager.h"
 
-#define UCIPATH "/opt/luci-commotion/etc/config"
+#ifndef UCIPATH
+#define UCIPATH "/etc/config"
+#endif
 
+char *get_name(ServiceInfo *i, size_t *name_len);
 int uci_remove(ServiceInfo *i);
 int uci_write(ServiceInfo *i);
 
