@@ -33,12 +33,16 @@ define Package/$(PKG_NAME)/description
 endef
 
 define Build/Compile
-	$(call Build/Compile/Default, openwrt)
+	$(call Build/Compile/Default, \
+		TARGET=openwrt \
+	)
 endef
 
 define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/commotion-service-manager $(1)/usr/sbin/commotion-service-manager
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/openwrt/etc/init.d/commotion-service-manager $(1)/etc/init.d
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

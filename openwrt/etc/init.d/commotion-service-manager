@@ -1,0 +1,15 @@
+#!/bin/sh /etc/rc.common
+
+START=66
+
+OUTPUT_FILE=/tmp/local-services.out
+DAEMON_ARGS="-u -o $OUTPUT_FILE"
+
+boot() {
+  mkdir -p /var/run/commotion
+  commotion-service-manager $DAEMON_ARGS
+}
+
+start() {
+  boot
+}
