@@ -13,7 +13,7 @@
 	dh $@ 
 
 override_dh_auto_build:
-	$(MAKE) CFLAGS='-I/usr/include/serval -g -DUSE_UCI -DUSESYSLOG -DUCIPATH="\"/opt/luci-commotion/etc/config\""'
+	$(MAKE) linux
 
 override_dh_strip:
 	dh_strip --dbg-package=commotion-service-manager-dbg

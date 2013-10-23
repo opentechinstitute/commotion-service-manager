@@ -1,14 +1,9 @@
-CFLAGS=-I../serval-dna -I../serval-dna/nacl/include -I../serval-crypto -g
-LDFLAGS=-lserval-crypto -lavahi-core -lavahi-common -luci
+CFLAGS+=-g
+LDFLAGS+=-lserval-crypto -lavahi-core -lavahi-common -luci
 OBJS=util.o commotion-service-manager.o
-DEPS=Makefile commotion-service-manager.h debug.h
+DEPS=Makefile commotion-service-manager.h debug.h util.h uci-utils.h
 
-USE_UCI=true
-
-ifdef USE_UCI
-CFLAGS+=-DUSE_UCI
-OBJS+=uci-utils.o
-endif
+MAKELINE=$(CC) $(CFLAGS) -o commotion-service-manager $(OBJS) $(LDFLAGS)
 
 all: commotion-service-manager
 
@@ -16,9 +11,15 @@ all: commotion-service-manager
 	$(CC) -fPIC -c -o $@ $< $(CFLAGS)
 
 commotion-service-manager: $(DEPS) $(OBJS)
-	$(CC) $(CFLAGS) -o commotion-service-manager $(OBJS) $(LDFLAGS)
+	$(MAKELINE)
+
+linux: $(DEPS) $(OBJS) uci-utils.o
+	$(MAKELINE) -DUSE_UCI -DUSESYSLOG -DUCIPATH="\"/opt/luci-commotion/etc/config\""
+
+openwrt: $(DEPS) $(OBJS) uci-utils.o
+	$(MAKELINE) -DUSE_UCI -DOPENWRT
 
 clean:
 	rm -f commotion-service-manager *.o
 
-.PHONY: all clean
+.PHONY: all clean linux openwrt

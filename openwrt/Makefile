@@ -14,13 +14,15 @@ PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 
+TARGET_LDFLAGS += -largp
+
 define Package/$(PKG_NAME)
   SECTION:=commotion
   CATEGORY:=Commotion
   SUBMENU:=Utilities
   TITLE:=Commotion Service Manager
   MAINTAINER:=Open Technology Institute
-  DEPENDS:=+libavahi +libuci +serval-dna +libserval-crypto
+  DEPENDS:=+libavahi +libuci +serval-dna +libserval-crypto +argp-standalone
 endef
 
 define Package/$(PKG_NAME)/description
@@ -30,8 +32,9 @@ define Package/$(PKG_NAME)/description
   SIGUSR1, and optionally writes them to UCI.
 endef
 
-TARGET_CFLAGS += $(TLS_CFLAGS) -I/usr/include/serval -DUSE_UCI -DOPENWRT -g
-TARGET_LDFLAGS += -Wl,-rpath-link=$(STAGING_DIR)/usr/lib -lavahi-core -lavahi-common -lserval-crypto -luci
+define Package/$(PKG_NAME)/compile
+	$(MAKE) openwrt
+endef
 
 define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/usr/sbin
