@@ -32,8 +32,8 @@ define Package/$(PKG_NAME)/description
   SIGUSR1, and optionally writes them to UCI.
 endef
 
-define Package/$(PKG_NAME)/compile
-	$(MAKE) openwrt
+define Build/Compile
+	$(call Build/Compile/Default, openwrt)
 endef
 
 define Package/$(PKG_NAME)/install
