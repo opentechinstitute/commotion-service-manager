@@ -3,7 +3,13 @@ LDFLAGS+=-lserval-crypto -lavahi-core -lavahi-common -luci
 OBJS=util.o commotion-service-manager.o
 DEPS=Makefile commotion-service-manager.h debug.h util.h uci-utils.h
 
-MAKELINE=$(CC) $(CFLAGS) -o commotion-service-manager $(OBJS) $(LDFLAGS)
+ifeq ($(TARGET), openwrt)
+CFLAGS+=-DUSE_UCI -DOPENWRT
+OBJS+=uci-utils.o
+else ifeq ($(TARGET), linux)
+CFLAGS+=-DUSE_UCI -DUSESYSLOG -DUCIPATH="\"/opt/luci-commotion/etc/config\""
+OBJS+=uci-utils.o
+endif
 
 all: commotion-service-manager
 
@@ -11,13 +17,7 @@ all: commotion-service-manager
 	$(CC) -fPIC -c -o $@ $< $(CFLAGS)
 
 commotion-service-manager: $(DEPS) $(OBJS)
-	$(MAKELINE)
-
-linux: $(DEPS) $(OBJS) uci-utils.o
-	$(MAKELINE) -DUSE_UCI -DUSESYSLOG -DUCIPATH="\"/opt/luci-commotion/etc/config\""
-
-openwrt: $(DEPS) $(OBJS) uci-utils.o
-	$(MAKELINE) -DUSE_UCI -DOPENWRT
+	$(CC) $(CFLAGS) -o commotion-service-manager $(OBJS) $(LDFLAGS)
 
 clean:
 	rm -f commotion-service-manager *.o
