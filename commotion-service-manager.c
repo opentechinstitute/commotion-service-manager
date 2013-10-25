@@ -55,6 +55,10 @@ static void resolve_callback(
     AvahiLookupResultFlags flags,
     void* userdata);
 
+/**
+ * Check if a service name is in the current list of local services
+ * @see browse_service_callback
+ */
 static ServiceInfo *find_service(const char *name) {
   ServiceInfo *i;
   
@@ -65,6 +69,16 @@ static ServiceInfo *find_service(const char *name) {
     return NULL;
 }
 
+/**
+ * Add a service to the list of local services
+ * @param interface
+ * @param protocol
+ * @param name service name
+ * @param type service type (e.g. _commotion._tcp)
+ * @param domain domain service is advertised on (e.g. mesh.local)
+ * @return ServiceInfo struct representing the service that was added
+ * @see browse_service_callback
+ */
 static ServiceInfo *add_service(AvahiIfIndex interface, AvahiProtocol protocol, const char *name, const char *type, const char *domain) {
     ServiceInfo *i;
 
@@ -87,6 +101,16 @@ static ServiceInfo *add_service(AvahiIfIndex interface, AvahiProtocol protocol, 
     return i;
 }
 
+/**
+ * Remove service from list of local services
+ * @param t timer set to service's expiration data. This param is only passed 
+ *          when the service is being expired, otherwise it is NULL.
+ * @param userdata should be cast as the ServiceInfo object of the service to remove
+ * @note If compiled for OpenWRT, the Avahi service file for the local service is removed
+ * @note If compiled with UCI support, service is also removed from UCI list
+ * @see resolve_callback
+ * @see browse_service_callback
+ */
 static void remove_service(AvahiTimeout *t, void *userdata) {
     assert(userdata);
     ServiceInfo *i = (ServiceInfo*)userdata;
@@ -132,6 +156,12 @@ static void remove_service(AvahiTimeout *t, void *userdata) {
     avahi_free(i);
 }
 
+/**
+ * Output service fields to a file
+ * @param f File to output to
+ * @param service the service to print
+ * @see sig_handler
+ */
 static void print_service(FILE *f, ServiceInfo *service) {
     char a[AVAHI_ADDRESS_STR_MAX];
     char interface_string[IF_NAMESIZE];
@@ -154,6 +184,9 @@ static void print_service(FILE *f, ServiceInfo *service) {
                                service->txt ? service->txt : "");
 }
 
+/**
+ * Upon resceiving the USR1 signal, print local services
+ */
 static void sig_handler(int signal) {
     ServiceInfo *i;
     FILE *f = NULL;
@@ -175,6 +208,12 @@ static void sig_handler(int signal) {
     }
 }
 
+/**
+ * Verify the Serval signature in a service announcement
+ * @param i the service to verify (includes signature and fingerprint txt fields)
+ * @returns 0 if the signature is valid, 1 if it is invalid
+ * @see resolve_callback
+ */
 static int verify_announcement(ServiceInfo *i) {
   char type_template[] = "<txt-record>type=%s</txt-record>";
   char template[] = "<type>%s</type>\n\
@@ -186,7 +225,7 @@ static int verify_announcement(ServiceInfo *i) {
 %s\n\
 <txt-record>icon=%s</txt-record>\n\
 <txt-record>description=%s</txt-record>\n\
-<txt-record>expiration=%s</txt-record>";
+<txt-record>expiration=%s</txt-record>"; /**< Template for signing/verifying service announcements */
   AvahiStringList *txt;
   char *msg = NULL;
   char *type_str = NULL;
@@ -200,10 +239,12 @@ static int verify_announcement(ServiceInfo *i) {
   assert(i->txt_lst);
   
   txt = i->txt_lst;
+  /* Loop through txt fields, to be added to the template for verification */
   do {
     if (avahi_string_list_get_pair(txt,&key,&val,&val_len))
       continue;
     if (!strcmp(key,"type")) {
+      /* Add 'type' fields to a list to be sorted alphabetically later */
       CHECK_MEM((types_list = (char**)realloc(types_list,(types_list_len + 1)*sizeof(char*))));
       types_list[types_list_len] = val;
       types_list_len++;
@@ -228,6 +269,7 @@ static int verify_announcement(ServiceInfo *i) {
   
   qsort(&types_list[0],types_list_len,sizeof(char*),cmpstringp); /* Sort types into alphabetical order */
   
+  /* Concat the types into a single string to add to template */
   for (j = 0; j < types_list_len; ++j) {
     if (type)
       free(type);
@@ -242,8 +284,11 @@ static int verify_announcement(ServiceInfo *i) {
   
   if (i->port > 0)
     sprintf(portstr,"%d",i->port);
+  
+  /* Add the fields into the template */
   CHECK_MEM(asprintf(&msg,template,i->type,i->domain,portstr,app,ttl,ipaddr,types_list_len ? type_str : "",icon,desc,expr) != -1);
   
+  /* Is the signature valid? 0=yes, 1=no */
   verdict = verify(sid,strlen(sid),msg,strlen(msg),sig,strlen(sig));
   
 error:
@@ -256,6 +301,15 @@ error:
   return verdict;
 }
 
+/**
+ * Handler called whenever a service is (potentially) resolved
+ * @param userdata the ServiceFile object of the service in question
+ * @note if compiled with UCI support, write the service to UCI if
+ *       it successfully resolves
+ * @note if txt fields fail verification, the service is removed from
+ *       the local list
+ * @see add_service
+ */
 static void resolve_callback(
     AvahiSServiceResolver *r,
     AVAHI_GCC_UNUSED AvahiIfIndex interface,
@@ -299,6 +353,7 @@ static void resolve_callback(
 	    i->port = port;
 	    i->txt_lst = avahi_string_list_copy(txt);
 	    
+	    /* Make sure all the required fields are there */
 	    if (!avahi_string_list_find(txt,"application") ||
 	      !avahi_string_list_find(txt,"icon") ||
 	      !avahi_string_list_find(txt,"description") ||
@@ -310,24 +365,28 @@ static void resolve_callback(
 	      break;
 	    }
 	    
+	    /* Validate TTL field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"ttl"),NULL,&val,NULL);
 	    if (!isNumeric(val) || atoi(val) < 0) {
 	      WARN("(Resolver) Invalid TTL value: %s -> %s",name,val);
 	      break;
 	    }
 	    
+	    /* Validate expiration field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"expiration"),NULL,&expiration_str,NULL);
 	    if (!isNumeric(expiration_str) || atoi(expiration_str) <= 0) {
 	      WARN("(Resolver) Invalid expiration value: %s -> %s",name,expiration_str);
 	      break;
 	    }
 	    
+	    /* Validate fingerprint field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"fingerprint"),NULL,&val,&val_size);
 	    if (val_size != FINGERPRINT_LEN && !isHex(val,val_size)) {
 	      WARN("(Resolver) Invalid fingerprint: %s -> %s",name,val);
 	      break;
 	    }
 	    
+	    /* Validate (but not verify) signature field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"signature"),NULL,&val,&val_size);
 	    if (val_size != SIG_LENGTH && !isHex(val,val_size)) {
 	      WARN("(Resolver) Invalid signature: %s -> %s",name,val);
@@ -336,14 +395,14 @@ static void resolve_callback(
 
 	    // TODO: check connectivity, using commotiond socket library
 	    
-	    // TODO: verify signature, using commotiond serval key mgmt API
-
+	    /* Verify signature */
 	    if (verify_announcement(i)) {
 	      INFO("Announcement signature verification failed");
 	      break;
 	    } else
 	      INFO("Announcement signature verification succeeded");
-
+	    
+	    /* Set expiration timer on the service */
 	    avahi_elapse_time(&tv, 1000*atoi(expiration_str), 0);
 	    current_time = time(NULL);
 	    i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, remove_service, i); // create expiration event for service
@@ -378,6 +437,11 @@ static void resolve_callback(
     }
 }
 
+/**
+ * Handler for Avahi service browser events. Called whenever a new 
+ * services becomes available on the LAN or is removed from the LAN
+ * @see browse_type_callback
+ */
 static void browse_service_callback(
     AvahiSServiceBrowser *b,
     AvahiIfIndex interface,
@@ -392,8 +456,6 @@ static void browse_service_callback(
     AvahiServer *s = userdata;
     assert(b);
 
-    /* Called whenever a new services becomes available on the LAN or is removed from the LAN */
-
     switch (event) {
 
         case AVAHI_BROWSER_FAILURE:
@@ -406,17 +468,15 @@ static void browse_service_callback(
         case AVAHI_BROWSER_REMOVE: {
             ServiceInfo *found_service = NULL;
             INFO("Browser: %s: service '%s' of type '%s' in domain '%s'",event == AVAHI_BROWSER_NEW ? "NEW" : "REMOVE", name, type, domain);
-
-            //found_service=find_service(interface, protocol, name, type, domain);
+	    
+	    /* Lookup the service to see if it's already in our list */
 	    found_service=find_service(name); // name is fingerprint, so should be unique
             if (event == AVAHI_BROWSER_NEW && !found_service) {
-                /* add the service.
-                 */
+                /* add the service.*/
                 add_service(interface, protocol, name, type, domain);
             }
             if (event == AVAHI_BROWSER_REMOVE && found_service) {
-                /* remove the service.
-                 */
+                /* remove the service.*/
                 remove_service(NULL, found_service);
             }
             break;
@@ -469,6 +529,7 @@ static void browse_type_callback(
     }
 }
 
+/** Parse commandline options */
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
   struct arguments *arguments = state->input;
 
@@ -491,10 +552,11 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 }
 
 /**
- * @brief starts the daemon
+ * Starts the daemon
  * @param statedir directory in which to store lock file
  * @param pidfile name of lock file (stores process id)
  * @warning ensure that there is only one copy 
+ * @note if compiled with Syslog support, sets up syslog logging log
  */
 static void daemon_start(char *pidfile) {
   int pid, sid, i;

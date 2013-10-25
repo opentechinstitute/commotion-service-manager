@@ -36,6 +36,9 @@ int isUCIEncoded(const char *s, size_t s_len) {
   return ret;
 }
 
+/**
+ * Compare strings alphabetically, used in qsort
+ */
 int cmpstringp(const void *p1, const void *p2) {
   /* The actual arguments to this function are "pointers to
    *      pointers to char", but strcmp(3) arguments are "pointers
@@ -44,6 +47,14 @@ int cmpstringp(const void *p1, const void *p2) {
   return strcmp(* (char * const *) p1, * (char * const *) p2);
 }
 
+/**
+ * UCI-escape a string. Alphanum and underscores are only chars allowed in UCI section titles
+ * @param[in] to_escape the string to escape
+ * @param[in] to_escape_len the length of the string to escape
+ * @param[out] escaped_len length of escaped string
+ * @return pointer to escaped string
+ * @warning returned string must be freed by caller
+ */
 char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len) {
   char *escaped = NULL;
   char escaped_char[5];
@@ -81,6 +92,14 @@ char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len) {
   return escaped;
 }
 
+/**
+ * Escape a string for use in printing service to file. Escapes ",\n,\r.
+ * @param[in] to_escape the string to escape
+ * @param[in] to_escape_len the length of the string to escape
+ * @param[out] escaped_len length of escaped string
+ * @return pointer to escaped string
+ * @warning returned string must be freed by caller
+ */
 char *escape(char *to_escape, int *escaped_len) {
   char *escaped = NULL;
   char *escape_quote = ESCAPE_QUOTE;
@@ -124,6 +143,9 @@ char *escape(char *to_escape, int *escaped_len) {
   return escaped;
 }
 
+/**
+ * Convert an AvahiStringList to a string
+ */
 char *txt_list_to_string(AvahiStringList *txt) {
   char *list = NULL;
   char *open_delimiter = OPEN_DELIMITER;

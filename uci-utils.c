@@ -14,6 +14,12 @@
 
 #define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
 
+/**
+ * Derives the UCI-encoded name of a service, as a concatenation of IP address/URL and port
+ * @param i ServiceInfo object of the service
+ * @param[out] name_len Length of the UCI-encoded name
+ * @return UCI-encoded name
+ */
 char *get_name(ServiceInfo *i, size_t *name_len) {
   char *uci_name = NULL;
   char *ip = NULL;
@@ -36,6 +42,11 @@ char *get_name(ServiceInfo *i, size_t *name_len) {
   return uci_name;
 }
 
+/**
+ * Write a service to UCI
+ * @param i ServiceInfo object of the service
+ * @return 0=success, 1=fail
+ */
 int uci_write(ServiceInfo *i) {
   struct uci_context *c = NULL;
   struct uci_ptr sec_ptr,sig_ptr,type_ptr;
@@ -71,7 +82,7 @@ int uci_write(ServiceInfo *i) {
       isHex(sig,sig_len),
       "(UCI) Invalid signature txt field");
   
-  /* Lookup application by name (concatination of ip + port) */
+  /* Lookup application by name (concatenation of ip + port) */
   sec_name = (char*)calloc(13 + uci_name_len + 1,sizeof(char));
   strcpy(sec_name,"applications.");
   strncat(sec_name,uci_name, uci_name_len);
@@ -179,6 +190,11 @@ error:
   return ret;
 }
 
+/**
+ * Remove a service from UCI
+ * @param i ServiceInfo object of the service
+ * @return 0=success, 1=fail
+ */
 int uci_remove(ServiceInfo *i) {
   int ret = 1;
   struct uci_context *c = NULL;
