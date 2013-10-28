@@ -1,3 +1,27 @@
+/**
+ *       @file  commotion-service-manager.c
+ *      @brief  main functionality of the Commotion Service Manager
+ *
+ *     @author  Dan Staples (dismantl), danstaples@opentechinstitute.org
+ *
+ * This file is part of Commotion, Copyright (c) 2013, Josh King 
+ * 
+ * Commotion is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published 
+ * by the Free Software Foundation, either version 3 of the License, 
+ * or (at your option) any later version.
+ * 
+ * Commotion is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Commotion.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * =====================================================================================
+ */
+
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
@@ -57,7 +81,6 @@ static void resolve_callback(
 
 /**
  * Check if a service name is in the current list of local services
- * @see browse_service_callback
  */
 static ServiceInfo *find_service(const char *name) {
   ServiceInfo *i;
@@ -77,7 +100,6 @@ static ServiceInfo *find_service(const char *name) {
  * @param type service type (e.g. _commotion._tcp)
  * @param domain domain service is advertised on (e.g. mesh.local)
  * @return ServiceInfo struct representing the service that was added
- * @see browse_service_callback
  */
 static ServiceInfo *add_service(AvahiIfIndex interface, AvahiProtocol protocol, const char *name, const char *type, const char *domain) {
     ServiceInfo *i;
@@ -108,8 +130,6 @@ static ServiceInfo *add_service(AvahiIfIndex interface, AvahiProtocol protocol, 
  * @param userdata should be cast as the ServiceInfo object of the service to remove
  * @note If compiled for OpenWRT, the Avahi service file for the local service is removed
  * @note If compiled with UCI support, service is also removed from UCI list
- * @see resolve_callback
- * @see browse_service_callback
  */
 static void remove_service(AvahiTimeout *t, void *userdata) {
     assert(userdata);
@@ -160,7 +180,6 @@ static void remove_service(AvahiTimeout *t, void *userdata) {
  * Output service fields to a file
  * @param f File to output to
  * @param service the service to print
- * @see sig_handler
  */
 static void print_service(FILE *f, ServiceInfo *service) {
     char a[AVAHI_ADDRESS_STR_MAX];
@@ -212,7 +231,6 @@ static void sig_handler(int signal) {
  * Verify the Serval signature in a service announcement
  * @param i the service to verify (includes signature and fingerprint txt fields)
  * @returns 0 if the signature is valid, 1 if it is invalid
- * @see resolve_callback
  */
 static int verify_announcement(ServiceInfo *i) {
   char type_template[] = "<txt-record>type=%s</txt-record>";
@@ -308,7 +326,6 @@ error:
  *       it successfully resolves
  * @note if txt fields fail verification, the service is removed from
  *       the local list
- * @see add_service
  */
 static void resolve_callback(
     AvahiSServiceResolver *r,
@@ -440,7 +457,6 @@ static void resolve_callback(
 /**
  * Handler for Avahi service browser events. Called whenever a new 
  * services becomes available on the LAN or is removed from the LAN
- * @see browse_type_callback
  */
 static void browse_service_callback(
     AvahiSServiceBrowser *b,
@@ -487,6 +503,9 @@ static void browse_service_callback(
     }
 }
 
+/**
+ * Handler for creating Avahi service browser
+ */
 static void browse_type_callback(
     AvahiSServiceTypeBrowser *b,
     AvahiIfIndex interface,
