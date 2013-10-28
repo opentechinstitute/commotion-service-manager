@@ -21,6 +21,7 @@ Build and Install
 -----------------
 
 To build for Linux:
+
     $ git clone git://github.com/opentechinstitute/commotion-service-manager.git
     $ cd commotion-service-manager
     $ make TARGET=linux
