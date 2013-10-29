@@ -572,7 +572,6 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 
 /**
  * Starts the daemon
- * @param statedir directory in which to store lock file
  * @param pidfile name of lock file (stores process id)
  * @warning ensure that there is only one copy 
  * @note if compiled with Syslog support, sets up syslog logging log

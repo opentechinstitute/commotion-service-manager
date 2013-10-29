@@ -117,9 +117,8 @@ char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len) {
 }
 
 /**
- * Escape a string for use in printing service to file. Escapes ",\n,\r.
+ * Escape a string for use in printing service to file. Escapes \",\\n,\\r.
  * @param[in] to_escape the string to escape
- * @param[in] to_escape_len the length of the string to escape
  * @param[out] escaped_len length of escaped string
  * @return pointer to escaped string
  * @warning returned string must be freed by caller
