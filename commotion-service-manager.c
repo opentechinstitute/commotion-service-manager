@@ -61,8 +61,14 @@ struct arguments {
   int nodaemon;
   char *output_file;
 };
+
+/** Linked list of all the local services */
+ServiceInfo *services = NULL;
+
 static struct arguments arguments;
 static int pid_filehandle;
+static AvahiSimplePoll *simple_poll = NULL;
+static AvahiServer *server = NULL;
 
 static void resolve_callback(
     AvahiSServiceResolver *r,
@@ -206,7 +212,7 @@ static void print_service(FILE *f, ServiceInfo *service) {
 /**
  * Upon resceiving the USR1 signal, print local services
  */
-static void sig_handler(int signal) {
+void sig_handler(int signal) {
     ServiceInfo *i;
     FILE *f = NULL;
 
@@ -506,7 +512,7 @@ static void browse_service_callback(
 /**
  * Handler for creating Avahi service browser
  */
-static void browse_type_callback(
+void browse_type_callback(
     AvahiSServiceTypeBrowser *b,
     AvahiIfIndex interface,
     AvahiProtocol protocol,
@@ -656,6 +662,7 @@ static void daemon_start(char *pidfile) {
   
 }
 
+#ifndef TESTING
 int main(int argc, char*argv[]) {
     AvahiServerConfig config;
     AvahiSServiceTypeBrowser *stb = NULL;
@@ -741,3 +748,4 @@ error:
 
     return ret;
 }
+#endif

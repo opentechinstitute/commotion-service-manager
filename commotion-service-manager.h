@@ -42,13 +42,9 @@
 /** Directory where Avahi service files are stored */
 #define avahiDir "/etc/avahi/services/"
 
-static AvahiSimplePoll *simple_poll = NULL;
-static AvahiServer *server = NULL;
-
-/** Struct used to hold info about a service */
 typedef struct ServiceInfo ServiceInfo;
-/** Linked list of all the local services */
-static struct ServiceInfo {
+/** Struct used to hold info about a service */
+struct ServiceInfo {
     AvahiIfIndex interface;
     AvahiProtocol protocol;
     char *name, 
@@ -65,6 +61,16 @@ static struct ServiceInfo {
     int resolved; /**< Flag indicating whether all the fields have been resolved */
 
     AVAHI_LLIST_FIELDS(ServiceInfo, info);
-} *services;
+};
+
+void browse_type_callback(
+  AvahiSServiceTypeBrowser *b,
+  AvahiIfIndex interface,
+  AvahiProtocol protocol,
+  AvahiBrowserEvent event,
+  const char *type,
+  const char *domain,
+  AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
+  void* userdata);
 
 #endif

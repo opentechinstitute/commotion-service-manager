@@ -28,6 +28,38 @@ uninstall:
 	rm -f $(BINDIR)/commotion-service-manager
 
 clean:
-	rm -f commotion-service-manager *.o
+	rm -f commotion-service-manager *.o *.a test
+
+#
+#  Google C++ Testing Framework
+#
+
+GTEST_DIR=gtest
+CPPFLAGS += -isystem $(GTEST_DIR)/include -DGTEST_HAS_PTHREAD=0
+CXXFLAGS += -g -Wall -Wextra
+GTEST_HEADERS = $(GTEST_DIR)/include/gtest/gtest.h \
+                $(GTEST_DIR)/include/gtest/internal/*.h
+GTEST_SRCS_ = $(GTEST_DIR)/src/*.cc $(GTEST_DIR)/src/*.h $(GTEST_HEADERS)
+
+gtest-all.o : $(GTEST_SRCS_)
+	$(CXX) $(CPPFLAGS) -I$(GTEST_DIR) $(CXXFLAGS) -c \
+            $(GTEST_DIR)/src/gtest-all.cc
+
+gtest_main.o : $(GTEST_SRCS_)
+	$(CXX) $(CPPFLAGS) -I$(GTEST_DIR) $(CXXFLAGS) -c \
+            $(GTEST_DIR)/src/gtest_main.cc
+
+gtest.a : gtest-all.o
+	$(AR) $(ARFLAGS) $@ $^
+
+gtest_main.a : gtest-all.o gtest_main.o
+	$(AR) $(ARFLAGS) $@ $^
+
+test.o : test.cpp $(GTEST_HEADERS)
+	$(MAKE) $(OBJS) CFLAGS+=-DTESTING
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c test.cpp
+
+test : test.o gtest_main.a
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OBJS) $^ -o $@ $(LDFLAGS)
 
 .PHONY: all clean install uninstall
