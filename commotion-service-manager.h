@@ -63,14 +63,48 @@ struct ServiceInfo {
     AVAHI_LLIST_FIELDS(ServiceInfo, info);
 };
 
+/** Linked list of all the local services */
+extern ServiceInfo *services;
+extern AvahiSimplePoll *simple_poll;
+extern AvahiServer *server;
+
 void browse_type_callback(
-  AvahiSServiceTypeBrowser *b,
-  AvahiIfIndex interface,
-  AvahiProtocol protocol,
-  AvahiBrowserEvent event,
+    AvahiSServiceTypeBrowser *b,
+    AvahiIfIndex interface,
+    AvahiProtocol protocol,
+    AvahiBrowserEvent event,
+    const char *type,
+    const char *domain,
+    AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
+    void* userdata);
+void browse_service_callback(
+    AvahiSServiceBrowser *b,
+    AvahiIfIndex interface,
+    AvahiProtocol protocol,
+    AvahiBrowserEvent event,
+    const char *name,
+    const char *type,
+    const char *domain,
+    AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
+    void* userdata);
+ServiceInfo *find_service(const char *name);
+ServiceInfo *add_service(AvahiIfIndex interface, AvahiProtocol protocol, const char *name, const char *type, const char *domain);
+void remove_service(AvahiTimeout *t, void *userdata);
+int verify_announcement(ServiceInfo *i);
+void resolve_callback(
+  AvahiSServiceResolver *r,
+  AVAHI_GCC_UNUSED AvahiIfIndex interface,
+  AVAHI_GCC_UNUSED AvahiProtocol protocol,
+  AvahiResolverEvent event,
+  const char *name,
   const char *type,
   const char *domain,
-  AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
+  const char *host_name,
+  const AvahiAddress *address,
+  uint16_t port,
+  AvahiStringList *txt,
+  AvahiLookupResultFlags flags,
   void* userdata);
+void print_service(FILE *f, ServiceInfo *service);
 
 #endif
