@@ -1,4 +1,27 @@
-extern "C" {
+/**
+ *       @file  test.cpp
+ *      @brief  unit tests for the Commotion Service Manager
+ *
+ *     @author  Dan Staples (dismantl), danstaples@opentechinstitute.org
+ *
+ * This file is part of Commotion, Copyright (c) 2013, Josh King 
+ * 
+ * Commotion is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published 
+ * by the Free Software Foundation, either version 3 of the License, 
+ * or (at your option) any later version.
+ * 
+ * Commotion is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Commotion.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * =====================================================================================
+ */
+
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <avahi-core/lookup.h>
@@ -6,6 +29,7 @@ extern "C" {
 #include <avahi-common/llist.h>
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
+extern "C" {
 #include <serval-crypto.h>
 #include "commotion-service-manager.h"
 #include "util.h"
@@ -33,7 +57,7 @@ class CSMTest : public ::testing::Test {
     const char *ipaddr;
     const char *icon;
     const char *description;
-    int expiration;
+    long expiration;
     const char *type1;
     const char *type2;
     char signature[SIG_LENGTH + 1];
@@ -41,7 +65,7 @@ class CSMTest : public ::testing::Test {
     void CreateAvahiServer();
     void CreateServiceBrowser();
     ServiceInfo *AddService();
-    void CreateAnnouncement();
+    void GenerateSignature();
     void CreateServiceInfo();
     void CreateTxtList();
     
@@ -66,8 +90,8 @@ class CSMTest : public ::testing::Test {
       icon = "http://a.b/c.d";
       description = "test description";
       expiration = 86400;
-      type1 = "Collaboration"; /** Make sure these are in alphabetical order */
-      type2 = "Community";
+      type1 = "Community";
+      type2 = "Collaboration";
       
       srand(time(NULL));
       
@@ -108,30 +132,31 @@ class CSMTest : public ::testing::Test {
     }
 };
 
-void CSMTest::CreateAnnouncement() {
-  const char type_template[] = "<txt-record>type=%s</txt-record>";
-  const char *str_template = "<type>%s</type>\n\
-<domain-name>%s</domain-name>\n\
-<port>%d</port>\n\
-<txt-record>application=%s</txt-record>\n\
-<txt-record>ttl=%d</txt-record>\n\
-<txt-record>ipaddr=%s</txt-record>\n\
-%s\n\
-<txt-record>icon=%s</txt-record>\n\
-<txt-record>description=%s</txt-record>\n\
-<txt-record>expiration=%d</txt-record>";
-  char *type_str = NULL, *str = NULL;
+void CSMTest::GenerateSignature() {
+  char *sign_block = NULL;
+  const char *app_types[2] = {type1, type2};
+  int sign_block_len = 0;
   
-  type_str = (char*)malloc(sizeof(char) * (2*(strlen(type_template)-2) + strlen(type1) + strlen(type2) + 1));
-  sprintf(type_str,type_template,type1);
-  sprintf(type_str + strlen(type_template)-2 + strlen(type1),type_template,type2);
+  sign_block = createSigningTemplate(
+    type,
+    domain,
+    port,
+    name,
+    ttl,
+    ipaddr,
+    app_types,
+    2,
+    icon,
+    description,
+    expiration,
+    &sign_block_len);
   
-  asprintf(&str,str_template,type,domain,port,name,ttl,ipaddr,type_str,icon,description,expiration);
+  ASSERT_FALSE(serval_sign(sid, strlen(sid), sign_block, sign_block_len, signature, SIG_LENGTH + 1));
   
-  ASSERT_FALSE(serval_sign(sid, strlen(sid), str, strlen(str), signature, SIG_LENGTH + 1));
+  ASSERT_FALSE(serval_verify(sid,strlen(sid),sign_block,sign_block_len,signature,strlen(signature)));
   
-  free(type_str);
-  free(str);
+  if (sign_block)
+    free(sign_block);
 }
 
 void CSMTest::CreateServiceInfo() {
@@ -158,7 +183,7 @@ void CSMTest::CreateTxtList() {
   char fing_str[256];
   char sig_str[256];
 
-  CreateAnnouncement();
+  GenerateSignature();
   
   ASSERT_TRUE(sprintf(app_str,"application=%s",name));
   ASSERT_TRUE(sprintf(ttl_str,"ttl=%d",ttl));
@@ -167,7 +192,7 @@ void CSMTest::CreateTxtList() {
   ASSERT_TRUE(sprintf(type2_str,"type=%s",type2));
   ASSERT_TRUE(sprintf(icon_str,"icon=%s",icon));
   ASSERT_TRUE(sprintf(desc_str,"description=%s",description));
-  ASSERT_TRUE(sprintf(exp_str,"expiration=%d",expiration));
+  ASSERT_TRUE(sprintf(exp_str,"expiration=%ld",expiration));
   ASSERT_TRUE(sprintf(fing_str,"fingerprint=%s",sid));
   ASSERT_TRUE(sprintf(sig_str,"signature=%s",signature));
   
@@ -276,8 +301,8 @@ TEST_F(CSMTest, BrowseServiceCallback2) {
   ASSERT_FALSE(find_service(name));
 }
 
-TEST_F(CSMTest, CreateAnnouncementTest) {
-  CreateAnnouncement();
+TEST_F(CSMTest, GenerateSignatureTest) {
+  GenerateSignature();
 }
 
 TEST_F(CSMTest, CreateServiceInfoTest) {
@@ -302,8 +327,7 @@ TEST_F(CSMTest, ResolveCallbackTest) {
   
   ASSERT_TRUE(service->resolver);
   
-  AvahiAddress *addr = NULL;
-  addr = (AvahiAddress*)malloc(sizeof(AvahiAddress));
+  AvahiAddress *addr = (AvahiAddress*)malloc(sizeof(AvahiAddress));
   avahi_address_parse("127.0.0.1",AVAHI_PROTO_INET,addr);
   
   ASSERT_EQ(service,find_service(name));

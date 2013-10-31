@@ -242,25 +242,14 @@ void sig_handler(int signal) {
  * @returns 0 if the signature is valid, 1 if it is invalid
  */
 int verify_announcement(ServiceInfo *i) {
-  const char type_template[] = "<txt-record>type=%s</txt-record>";
-  const char template[] = "<type>%s</type>\n\
-<domain-name>%s</domain-name>\n\
-<port>%s</port>\n\
-<txt-record>application=%s</txt-record>\n\
-<txt-record>ttl=%s</txt-record>\n\
-<txt-record>ipaddr=%s</txt-record>\n\
-%s\n\
-<txt-record>icon=%s</txt-record>\n\
-<txt-record>description=%s</txt-record>\n\
-<txt-record>expiration=%s</txt-record>"; /**< Template for signing/verifying service announcements */
   AvahiStringList *txt;
-  char *msg = NULL;
-  char *type_str = NULL;
-  char *type = NULL;
+  char *to_verify = NULL;
   char **types_list = NULL;
   int types_list_len = 0;
-  char *key, *val, *app, *ttl, *ipaddr, *icon, *desc, *expr, *sid, *sig, portstr[6] = "";
-  int j, verdict = 1;
+  char *key, *val, *app, *ipaddr, *icon, *desc, *sid, *sig, portstr[6] = "";
+  unsigned int ttl = 0;
+  unsigned long expr = 0;
+  int j, verdict = 1, to_verify_len = 0;
   size_t val_len;
   
   assert(i->txt_lst);
@@ -278,7 +267,7 @@ int verify_announcement(ServiceInfo *i) {
     } else if (!strcmp(key,"application"))
       app = val;
     else if (!strcmp(key,"ttl"))
-      ttl = val;
+      ttl = atoi(val);
     else if (!strcmp(key,"ipaddr"))
       ipaddr = val;
     else if (!strcmp(key,"icon"))
@@ -286,7 +275,7 @@ int verify_announcement(ServiceInfo *i) {
     else if (!strcmp(key,"description"))
       desc = val;
     else if (!strcmp(key,"expiration"))
-      expr = val;
+      expr = atol(val);
     else if (!strcmp(key,"fingerprint"))
       sid = val;
     else if (!strcmp(key,"signature"))
@@ -296,56 +285,40 @@ int verify_announcement(ServiceInfo *i) {
     avahi_free(key);
   } while (txt = avahi_string_list_get_next(txt));
   
-  qsort(&types_list[0],types_list_len,sizeof(char*),cmpstringp); /* Sort types into alphabetical order */
-  
-  /* Concat the types into a single string to add to template */
-  for (j = 0; j < types_list_len; ++j) {
-    if (type) {
-      free(type);
-      type = NULL;
-    }
-    int prev_len = type_str ? strlen(type_str) : 0;
-    CHECK_MEM(asprintf(&type,type_template,types_list[j]) != -1 &&
-      (type_str = (char*)realloc(type_str,prev_len + strlen(type) + 1)));
-    if (prev_len)
-      strcat(type_str,type);
-    else
-      strcpy(type_str,type);
-  }
-  
-  if (i->port > 0)
-    sprintf(portstr,"%d",i->port);
-  
-  /* Add the fields into the template */
-  CHECK_MEM(asprintf(&msg,template,i->type,i->domain,portstr,app,ttl,ipaddr,types_list_len ? type_str : "",icon,desc,expr) != -1);
+  to_verify = createSigningTemplate(
+    i->type,
+    i->domain,
+    i->port,
+    app,
+    ttl,
+    ipaddr,
+    (const char**)types_list,
+    types_list_len,
+    icon,
+    desc,
+    expr,
+    &to_verify_len);
   
   /* Is the signature valid? 0=yes, 1=no */
-  verdict = serval_verify(sid,strlen(sid),msg,strlen(msg),sig,strlen(sig));
+  if (to_verify)
+    verdict = serval_verify(sid,strlen(sid),to_verify,to_verify_len,sig,strlen(sig));
   
 error:
-  if (type)
-    free(type);
-  if (type_str)
-    free(type_str);
   if (types_list) {
     for (j = 0; j <types_list_len; ++j)
       avahi_free(types_list[j]);
     free(types_list);
   }
-  if (msg)
-    free(msg);
+  if (to_verify)
+    free(to_verify);
   if (app)
     avahi_free(app);
-  if (ttl)
-    avahi_free(ttl);
   if (ipaddr)
     avahi_free(ipaddr);
   if (icon)
     avahi_free(icon);
   if (desc)
     avahi_free(desc);
-  if (expr)
-    avahi_free(expr);
   if (sid)
     avahi_free(sid);
   if (sig)
@@ -427,7 +400,7 @@ void resolve_callback(
 	    
 	    /* Validate expiration field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"expiration"),NULL,&expiration_str,NULL);
-	    if (!isNumeric(expiration_str) || atoi(expiration_str) <= 0) {
+	    if (!isNumeric(expiration_str) || atol(expiration_str) <= 0) {
 	      WARN("(Resolver) Invalid expiration value: %s -> %s",name,expiration_str);
 	      avahi_free(expiration_str);
 	      break;
@@ -461,14 +434,14 @@ void resolve_callback(
 	      INFO("Announcement signature verification succeeded");
 	    
 	    /* Set expiration timer on the service */
-	    avahi_elapse_time(&tv, 1000*atoi(expiration_str), 0);
+	    avahi_elapse_time(&tv, 1000*atol(expiration_str), 0);
 	    current_time = time(NULL);
 	    i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, remove_service, i); // create expiration event for service
 	    
 	    /* Convert expiration period into timestamp */
 	    if (current_time != ((time_t)-1)) {
 	      timestr = localtime(&current_time);
-	      timestr->tm_sec += atoi(expiration_str);
+	      timestr->tm_sec += atol(expiration_str);
 	      current_time = mktime(timestr);
 	      if (c_time_string = ctime(&current_time))
 		c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */

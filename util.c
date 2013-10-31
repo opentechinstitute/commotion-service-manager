@@ -30,6 +30,7 @@
 #include <avahi-core/core.h>
 
 #include "util.h"
+#include "debug.h"
 
 int isHex(const char *str, size_t len) {
   int i;
@@ -45,7 +46,7 @@ int isNumeric (const char *s)
   if (s == NULL || *s == '\0' || isspace(*s))
     return 0;
   char * p;
-  strtod (s, &p);
+  strtoll (s, &p, 10);
   return *p == '\0';
 }
 
@@ -203,4 +204,63 @@ char *txt_list_to_string(AvahiStringList *txt) {
     free(escaped);
   }
   return list;
+}
+
+// TODO document
+char *createSigningTemplate(
+    const char *type,
+    const char *domain,
+    const int port,
+    const char *name,
+    const int ttl,
+    const char *ipaddr,
+    const char **app_types,
+    const int app_types_len,
+    const char *icon,
+    const char *description,
+    const long expiration,
+    int *ret_len) {
+    
+    const char type_template[] = "<txt-record>type=%s</txt-record>";
+    const char *str_template = "<type>%s</type>\n\
+<domain-name>%s</domain-name>\n\
+<port>%d</port>\n\
+<txt-record>application=%s</txt-record>\n\
+<txt-record>ttl=%d</txt-record>\n\
+<txt-record>ipaddr=%s</txt-record>\n\
+%s\n\
+<txt-record>icon=%s</txt-record>\n\
+<txt-record>description=%s</txt-record>\n\
+<txt-record>expiration=%d</txt-record>";
+    char *type_str = NULL, *sign_block = NULL, *app_type = NULL;
+    int j, prev_len = 0;
+    
+    *ret_len = 0;
+    
+    qsort(&app_types[0],app_types_len,sizeof(char*),cmpstringp); /* Sort types into alphabetical order */
+    
+    /* Concat the types into a single string to add to template */
+    for (j = 0; j < app_types_len; ++j) {
+      if (app_type) {
+	free(app_type);
+	app_type = NULL;
+      }
+      prev_len = type_str ? strlen(type_str) : 0;
+      CHECK_MEM(asprintf(&app_type,type_template,app_types[j]) != -1 &&
+      (type_str = (char*)realloc(type_str,prev_len + strlen(app_type) + 1)));
+      type_str[prev_len] = '\0';
+      strcat(type_str,app_type);
+    }
+    
+    /* Add the fields into the template */
+    CHECK_MEM(asprintf(&sign_block,str_template,type,domain,port,name,ttl,ipaddr,app_types_len ? type_str : "",icon,description,expiration) != -1);
+    
+    *ret_len = strlen(sign_block);
+    
+error:
+    if (app_type)
+      free(app_type);
+    if (type_str)
+      free(type_str);
+    return sign_block;
 }

@@ -74,4 +74,19 @@ char *escape(char *to_escape, int *escaped_len);
  */
 char *txt_list_to_string(AvahiStringList *txt);
 
+// TODO document
+char *createSigningTemplate(
+  const char *type,
+  const char *domain,
+  const int port,
+  const char *name,
+  const int ttl,
+  const char *ipaddr,
+  const char **app_types,
+  const int app_types_len,
+  const char *icon,
+  const char *description,
+  const long expiration,
+  int *ret_len);
+
 #endif

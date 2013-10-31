@@ -68,6 +68,7 @@ extern ServiceInfo *services;
 extern AvahiSimplePoll *simple_poll;
 extern AvahiServer *server;
 
+// TODO document these
 void browse_type_callback(
     AvahiSServiceTypeBrowser *b,
     AvahiIfIndex interface,
