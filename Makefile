@@ -56,7 +56,7 @@ gtest_main.a : gtest-all.o gtest_main.o
 	$(AR) $(ARFLAGS) $@ $^
 
 test.o : test.cpp $(GTEST_HEADERS) $(DEPS)
-	$(MAKE) $(OBJS) CFLAGS+=-DTESTING
+	$(MAKE) $(OBJS) CFLAGS+="-DTESTING -g"
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DSID="\"`sudo -u serval servald id self |tail -n1`\"" -c test.cpp
 
 test : test.o gtest_main.a

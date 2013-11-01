@@ -71,21 +71,6 @@ static int pid_filehandle;
 AvahiSimplePoll *simple_poll = NULL;
 AvahiServer *server = NULL;
 
-// static void resolve_callback(
-//     AvahiSServiceResolver *r,
-//     AVAHI_GCC_UNUSED AvahiIfIndex interface,
-//     AVAHI_GCC_UNUSED AvahiProtocol protocol,
-//     AvahiResolverEvent event,
-//     const char *name,
-//     const char *type,
-//     const char *domain,
-//     const char *host_name,
-//     const AvahiAddress *address,
-//     uint16_t port,
-//     AvahiStringList *txt,
-//     AvahiLookupResultFlags flags,
-//     void* userdata);
-
 /**
  * Check if a service name is in the current list of local services
  */
@@ -257,31 +242,38 @@ int verify_announcement(ServiceInfo *i) {
   txt = i->txt_lst;
   /* Loop through txt fields, to be added to the template for verification */
   do {
-    if (avahi_string_list_get_pair(txt,&key,&val,&val_len))
+    if (avahi_string_list_get_pair(txt,&key,&val,&val_len)) {
+      if (key)
+	avahi_free(key);
+      if (val)
+	avahi_free(val);
       continue;
+    }
     if (!strcmp(key,"type")) {
       /* Add 'type' fields to a list to be sorted alphabetically later */
       CHECK_MEM((types_list = (char**)realloc(types_list,(types_list_len + 1)*sizeof(char*))));
-      types_list[types_list_len] = val;
+      types_list[types_list_len] = avahi_strdup(val);
       types_list_len++;
     } else if (!strcmp(key,"application"))
-      app = val;
-    else if (!strcmp(key,"ttl"))
+      app = avahi_strdup(val);
+    else if (!strcmp(key,"ttl")) {
       ttl = atoi(val);
-    else if (!strcmp(key,"ipaddr"))
-      ipaddr = val;
+//       avahi_free(val);
+    } else if (!strcmp(key,"ipaddr"))
+      ipaddr = avahi_strdup(val);
     else if (!strcmp(key,"icon"))
-      icon = val;
+      icon = avahi_strdup(val);
     else if (!strcmp(key,"description"))
-      desc = val;
-    else if (!strcmp(key,"expiration"))
+      desc = avahi_strdup(val);
+    else if (!strcmp(key,"expiration")) {
       expr = atol(val);
-    else if (!strcmp(key,"fingerprint"))
-      sid = val;
+//       avahi_free(val);
+    } else if (!strcmp(key,"fingerprint"))
+      sid = avahi_strdup(val);
     else if (!strcmp(key,"signature"))
-      sig = val;
-    else
-      avahi_free(val);
+      sig = avahi_strdup(val);
+//     else
+    avahi_free(val);
     avahi_free(key);
   } while (txt = avahi_string_list_get_next(txt));
   
@@ -357,6 +349,7 @@ void resolve_callback(
     time_t current_time;
     char* c_time_string;
     struct tm *timestr;
+    long expiration = 0;
     
     assert(r);
 
@@ -400,11 +393,13 @@ void resolve_callback(
 	    
 	    /* Validate expiration field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"expiration"),NULL,&expiration_str,NULL);
-	    if (!isNumeric(expiration_str) || atol(expiration_str) <= 0) {
+	    expiration = atol(expiration_str);
+	    if (!isNumeric(expiration_str) || expiration <= 0) {
 	      WARN("(Resolver) Invalid expiration value: %s -> %s",name,expiration_str);
 	      avahi_free(expiration_str);
 	      break;
 	    }
+	    avahi_free(expiration_str);
 	    
 	    /* Validate fingerprint field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"fingerprint"),NULL,&val,&val_size);
@@ -434,14 +429,14 @@ void resolve_callback(
 	      INFO("Announcement signature verification succeeded");
 	    
 	    /* Set expiration timer on the service */
-	    avahi_elapse_time(&tv, 1000*atol(expiration_str), 0);
+	    avahi_elapse_time(&tv, 1000*expiration, 0);
 	    current_time = time(NULL);
 	    i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, remove_service, i); // create expiration event for service
 	    
 	    /* Convert expiration period into timestamp */
 	    if (current_time != ((time_t)-1)) {
 	      timestr = localtime(&current_time);
-	      timestr->tm_sec += atol(expiration_str);
+	      timestr->tm_sec += expiration;
 	      current_time = mktime(timestr);
 	      if (c_time_string = ctime(&current_time))
 		c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
@@ -461,7 +456,6 @@ void resolve_callback(
             i->resolved = 1;
         }
     }
-    avahi_free(expiration_str);
     avahi_s_service_resolver_free(i->resolver);
     i->resolver = NULL;
     if (event == AVAHI_RESOLVER_FOUND && !i->resolved) {

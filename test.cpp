@@ -212,6 +212,16 @@ void CSMTest::CreateTxtList() {
   ASSERT_TRUE(txt_lst);
 }
 
+TEST_F(CSMTest, TxtListToStringTest) {
+  char *txt = NULL;
+  const char expect[] = "\"signature=A0A3F668382BB04CCC82231A9D7D9BDD67E758C416C84219F0205F568934B26464DF81961FD5BFFDE7C9576306B0D0FA20651450F2416E267EB0ABDEF16C0708\",\"fingerprint=19ACB8E500520E095D9A38592EE24F17E95544856194726232A60637ACA7697D\",\"expiration=86400\",\"description=test description\",\"icon=http://a.b/c.d\",\"type=Collaboration\",\"type=Community\",\"ipaddr=https://commotionwireless.net\",\"ttl=5\",\"application=service name\"";
+  CreateTxtList();
+  txt = txt_list_to_string(txt_lst);
+//   printf("%s\n",txt);
+  EXPECT_STREQ(expect,txt);
+  free(txt);
+}
+
 void CSMTest::CreateAvahiServer() {
   simple_poll = avahi_simple_poll_new();
   ASSERT_TRUE(simple_poll);
