@@ -23,6 +23,7 @@
  */
 
 #include <stdio.h>
+// #include <list>
 #include <arpa/inet.h>
 #include <avahi-core/lookup.h>
 #include <avahi-common/simple-watch.h>
@@ -61,13 +62,14 @@ class CSMTest : public ::testing::Test {
     const char *type1;
     const char *type2;
     char signature[SIG_LENGTH + 1];
+    AvahiAddress *addr;
     
     void CreateAvahiServer();
     void CreateServiceBrowser();
-    ServiceInfo *AddService();
+    void CreateService();
     void GenerateSignature();
-    void CreateServiceInfo();
     void CreateTxtList();
+    void ResolveCallbackTestSetup();
     
     CSMTest() {
       server = NULL;
@@ -93,6 +95,9 @@ class CSMTest : public ::testing::Test {
       type1 = "Community";
       type2 = "Collaboration";
       
+      addr = (AvahiAddress*)malloc(sizeof(AvahiAddress));
+      avahi_address_parse("127.0.0.1",AVAHI_PROTO_INET,addr);
+      
       srand(time(NULL));
       
       avahi_server_config_init(&config);
@@ -106,20 +111,11 @@ class CSMTest : public ::testing::Test {
       config.enable_wide_area = 1;
     }
     virtual ~CSMTest() {
-      if (service) {
-	avahi_free(service->name);
-	avahi_free(service->type);
-	avahi_free(service->domain);
-	if (service->host_name)
-	  avahi_free(service->host_name);
-	if (service->txt_lst)
-	  avahi_string_list_free(service->txt_lst);
-	if (service->txt)
-          free(service->txt);
-        avahi_free(service);
-      }
+      free(addr);
       if (txt_lst)
 	avahi_string_list_free(txt_lst);
+      if (service)
+	remove_service(NULL, service);
       avahi_server_config_free(&config);
       if (stb)
 	avahi_s_service_type_browser_free(stb);
@@ -159,16 +155,11 @@ void CSMTest::GenerateSignature() {
     free(sign_block);
 }
 
-void CSMTest::CreateServiceInfo() {
-  service = AddService();
+void CSMTest::CreateService() {
+  CreateAvahiServer();
+  service = add_service(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, name, type, domain);
   ASSERT_TRUE(service);
-  
   service->port = port;
-  service->resolved = 0;
-  service->txt_lst = NULL;
-  service->txt = NULL;
-  service->timeout = NULL;
-  memset(service->address,0,AVAHI_ADDRESS_STR_MAX);
 }
 
 void CSMTest::CreateTxtList() {
@@ -250,26 +241,23 @@ TEST_F(CSMTest, BrowseTypeCallbackTest2) {
   ASSERT_EQ(1,avahi_simple_poll_iterate(simple_poll,0));
 }
 
-ServiceInfo *CSMTest::AddService() {
-  CreateAvahiServer();
-  ServiceInfo *i = NULL;
-  i = add_service(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, name, type, domain);
-  return i;
-}
 TEST_F(CSMTest, AddFindRemoveServiceTest) {
-  ServiceInfo *i = NULL;
+  ASSERT_FALSE(service);
   ASSERT_FALSE(services);
-  
-  i = AddService();
-  
-  ASSERT_TRUE(i);
+
+  CreateService();
+
+  ASSERT_TRUE(service);
   ASSERT_TRUE(services);
-  
-  ASSERT_EQ(i,find_service(name));
-  
-  remove_service(NULL, i);
-  
+
+  ASSERT_EQ(service,find_service(name));
+
+  remove_service(NULL, service);
+  service = NULL;
+
+  ASSERT_FALSE(service);
   ASSERT_FALSE(services);
+
   ASSERT_FALSE(find_service(name));
 }
 
@@ -316,33 +304,64 @@ TEST_F(CSMTest, GenerateSignatureTest) {
 }
 
 TEST_F(CSMTest, CreateServiceInfoTest) {
-  CreateServiceInfo();
+  CreateService();
 }
 
 TEST_F(CSMTest, VerifyAnnouncementTest) {
-  CreateServiceInfo();
+  CreateService();
   CreateTxtList();
   ASSERT_TRUE(txt_lst);
   
   service->txt_lst = avahi_string_list_copy(txt_lst);
+  service->resolved = true;
   
   ASSERT_EQ(0,verify_announcement(service));
 }
 
-TEST_F(CSMTest, ResolveCallbackTest) {
-  CreateServiceInfo();
+TEST(UtilTest, TtlTest) {
+  EXPECT_TRUE(isValidTtl("0"));
+  EXPECT_TRUE(isValidTtl("5"));
+  EXPECT_FALSE(isValidTtl("-1"));
+  EXPECT_FALSE(isValidTtl("a"));
+}
+
+TEST(UtilTest, ExpirationTest) {
+  EXPECT_TRUE(isValidExpiration("86400"));
+  EXPECT_FALSE(isValidExpiration("0"));
+  EXPECT_FALSE(isValidExpiration("-1"));
+  EXPECT_FALSE(isValidExpiration("a"));
+}
+
+TEST(UtilTest, FingerprintTest) {
+  EXPECT_TRUE(isValidFingerprint("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",64));
+  EXPECT_FALSE(isValidFingerprint("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",63)); // len = 63
+  EXPECT_FALSE(isValidFingerprint("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",65)); // len = 65
+  EXPECT_FALSE(isValidFingerprint("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE",64)); // strlen = 63
+  EXPECT_FALSE(isValidFingerprint("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0",64)); // strlen = 65
+  EXPECT_FALSE(isValidFingerprint("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEG",64)); // non-hex
+}
+
+TEST(UtilTest, SignatureTest) {
+  EXPECT_TRUE(isValidSignature("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",128));
+  EXPECT_FALSE(isValidSignature("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",127)); // len = 127
+  EXPECT_FALSE(isValidSignature("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",129)); // len = 129
+  EXPECT_FALSE(isValidSignature("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE",128)); // strlen = 127
+  EXPECT_FALSE(isValidSignature("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0",128)); // strlen = 129
+  EXPECT_FALSE(isValidSignature("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEG",128)); // non-hex
+}
+
+void CSMTest::ResolveCallbackTestSetup() {
+  CreateService();
   CreateTxtList();
   
   ASSERT_TRUE(txt_lst);
-  
   ASSERT_TRUE(service->resolver);
-  
-  AvahiAddress *addr = (AvahiAddress*)malloc(sizeof(AvahiAddress));
-  avahi_address_parse("127.0.0.1",AVAHI_PROTO_INET,addr);
-  
   ASSERT_EQ(service,find_service(name));
-  
   ASSERT_EQ(0,service->resolved);
+}
+
+TEST_F(CSMTest, ResolveCallbackTest) {
+  ResolveCallbackTestSetup();
   
   resolve_callback(
     service->resolver,
@@ -359,7 +378,119 @@ TEST_F(CSMTest, ResolveCallbackTest) {
     AVAHI_LOOKUP_RESULT_MULTICAST,
     service);
   
-  ASSERT_EQ(1,service->resolved);
+  EXPECT_FALSE(service->resolver);
+  EXPECT_EQ(1,service->resolved);
+}
+
+TEST_F(CSMTest, ResolveCallbackTest2) {
+  ResolveCallbackTestSetup();
+    
+  resolve_callback(
+    service->resolver,
+    AVAHI_IF_UNSPEC,
+    AVAHI_PROTO_UNSPEC,
+    AVAHI_RESOLVER_FAILURE,
+    name,
+    type,
+    domain,
+    host_name,
+    addr,
+    port,
+    txt_lst,
+    AVAHI_LOOKUP_RESULT_MULTICAST,
+    service);
   
-  free(addr);
+  EXPECT_TRUE(service);
+  EXPECT_TRUE(services);
+  EXPECT_TRUE(find_service(name));
+  EXPECT_EQ(0,service->resolved);
+}
+
+TEST_F(CSMTest, ResolveCallbackTest3) {
+  ResolveCallbackTestSetup();
+  
+  resolve_callback(
+    service->resolver,
+    AVAHI_IF_UNSPEC,
+    AVAHI_PROTO_UNSPEC,
+    AVAHI_RESOLVER_FOUND,
+    name,
+    type,
+    domain,
+    host_name,
+    addr,
+    -1,
+    txt_lst,
+    AVAHI_LOOKUP_RESULT_MULTICAST,
+    service);
+  
+  EXPECT_FALSE(services);
+  EXPECT_FALSE(find_service(name));
+  EXPECT_EQ(0,service->resolved);
+  
+  service = NULL; // was freed by resolve_callback
+}
+
+TEST_F(CSMTest, ResolveCallbackTest4) {
+  ResolveCallbackTestSetup();
+  
+  resolve_callback(
+    service->resolver,
+    AVAHI_IF_UNSPEC,
+    AVAHI_PROTO_UNSPEC,
+    AVAHI_RESOLVER_FOUND,
+    name,
+    type,
+    domain,
+    host_name,
+    addr,
+    65536,
+    txt_lst,
+    AVAHI_LOOKUP_RESULT_MULTICAST,
+    service);
+  
+  EXPECT_FALSE(services);
+  EXPECT_FALSE(find_service(name));
+  EXPECT_EQ(0,service->resolved);
+  
+  service = NULL; // was freed by resolve_callback
+}
+
+TEST_F(CSMTest, ResolveCallbackTest5) {
+  char badsig[] = "signature=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+  AvahiStringList *oldtxt = NULL;
+  
+  ResolveCallbackTestSetup();
+
+  oldtxt = avahi_string_list_find(txt_lst,"signature");
+  ASSERT_TRUE(oldtxt);
+  
+  txt_lst = avahi_string_list_add(oldtxt,badsig);
+  ASSERT_TRUE(txt_lst);
+  
+  txt_lst->next = oldtxt->next;
+  oldtxt->next = NULL;
+  avahi_string_list_free(oldtxt);
+  oldtxt = NULL;
+  
+  resolve_callback(
+    service->resolver,
+    AVAHI_IF_UNSPEC,
+    AVAHI_PROTO_UNSPEC,
+    AVAHI_RESOLVER_FOUND,
+    name,
+    type,
+    domain,
+    host_name,
+    addr,
+    port,
+    txt_lst,
+    AVAHI_LOOKUP_RESULT_MULTICAST,
+    service);
+  
+  EXPECT_FALSE(services);
+  EXPECT_FALSE(find_service(name));
+  EXPECT_EQ(0,service->resolved);
+  
+  service = NULL; // was freed by resolve_callback
 }

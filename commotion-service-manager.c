@@ -163,9 +163,12 @@ void remove_service(AvahiTimeout *t, void *userdata) {
     avahi_free(i->type);
     avahi_free(i->domain);
     if (i->resolved) {
-      avahi_free(i->host_name);
-      avahi_free(i->txt);
-      avahi_free(i->txt_lst);
+      if (i->host_name)
+	avahi_free(i->host_name);
+      if (i->txt)
+	avahi_free(i->txt);
+      if (i->txt_lst)
+        avahi_string_list_free(i->txt_lst);
     }
     avahi_free(i);
 }
@@ -231,7 +234,7 @@ int verify_announcement(ServiceInfo *i) {
   char *to_verify = NULL;
   char **types_list = NULL;
   int types_list_len = 0;
-  char *key, *val, *app, *ipaddr, *icon, *desc, *sid, *sig, portstr[6] = "";
+  char *key, *val, *app, *ipaddr, *icon, *desc, *sid, *sig;
   unsigned int ttl = 0;
   unsigned long expr = 0;
   int j, verdict = 1, to_verify_len = 0;
@@ -258,7 +261,6 @@ int verify_announcement(ServiceInfo *i) {
       app = avahi_strdup(val);
     else if (!strcmp(key,"ttl")) {
       ttl = atoi(val);
-//       avahi_free(val);
     } else if (!strcmp(key,"ipaddr"))
       ipaddr = avahi_strdup(val);
     else if (!strcmp(key,"icon"))
@@ -267,14 +269,13 @@ int verify_announcement(ServiceInfo *i) {
       desc = avahi_strdup(val);
     else if (!strcmp(key,"expiration")) {
       expr = atol(val);
-//       avahi_free(val);
     } else if (!strcmp(key,"fingerprint"))
       sid = avahi_strdup(val);
     else if (!strcmp(key,"signature"))
       sig = avahi_strdup(val);
-//     else
     avahi_free(val);
     avahi_free(key);
+    val = key = NULL;
   } while (txt = avahi_string_list_get_next(txt));
   
   to_verify = createSigningTemplate(
@@ -336,7 +337,7 @@ void resolve_callback(
     const char *domain,
     const char *host_name,
     const AvahiAddress *address,
-    uint16_t port,
+    long port,
     AvahiStringList *txt,
     AvahiLookupResultFlags flags,
     void* userdata) {
@@ -384,7 +385,7 @@ void resolve_callback(
 	    
 	    /* Validate TTL field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"ttl"),NULL,&val,NULL);
-	    if (!isNumeric(val) || atoi(val) < 0) {
+	    if (!isValidTtl(val)) {
 	      WARN("(Resolver) Invalid TTL value: %s -> %s",name,val);
 	      avahi_free(val);
 	      break;
@@ -394,7 +395,7 @@ void resolve_callback(
 	    /* Validate expiration field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"expiration"),NULL,&expiration_str,NULL);
 	    expiration = atol(expiration_str);
-	    if (!isNumeric(expiration_str) || expiration <= 0) {
+	    if (!isValidExpiration(expiration_str)) {
 	      WARN("(Resolver) Invalid expiration value: %s -> %s",name,expiration_str);
 	      avahi_free(expiration_str);
 	      break;
@@ -403,7 +404,7 @@ void resolve_callback(
 	    
 	    /* Validate fingerprint field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"fingerprint"),NULL,&val,&val_size);
-	    if (val_size != FINGERPRINT_LEN || !isHex(val,val_size)) {
+	    if (!isValidFingerprint(val,val_size)) {
 	      WARN("(Resolver) Invalid fingerprint: %s -> %s",name,val);
 	      avahi_free(val);
 	      break;
@@ -412,7 +413,7 @@ void resolve_callback(
 	    
 	    /* Validate (but not verify) signature field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"signature"),NULL,&val,&val_size);
-	    if (val_size != SIG_LENGTH || !isHex(val,val_size)) {
+	    if (!isValidSignature(val,val_size)) {
 	      WARN("(Resolver) Invalid signature: %s -> %s",name,val);
 	      avahi_free(val);
 	      break;
@@ -438,9 +439,10 @@ void resolve_callback(
 	      timestr = localtime(&current_time);
 	      timestr->tm_sec += expiration;
 	      current_time = mktime(timestr);
-	      if (c_time_string = ctime(&current_time))
+	      if (c_time_string = ctime(&current_time)) {
 		c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
 	        i->txt_lst = avahi_string_list_add_printf(i->txt_lst,"expiration_time=%s",c_time_string);
+	      }
 	    }
 	    
 	    if (!(i->txt = txt_list_to_string(i->txt_lst))) {

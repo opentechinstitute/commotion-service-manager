@@ -29,6 +29,7 @@
 
 #include <avahi-core/core.h>
 
+#include "commotion-service-manager.h"
 #include "util.h"
 #include "debug.h"
 
@@ -59,6 +60,22 @@ int isUCIEncoded(const char *s, size_t s_len) {
     }
   }
   return ret;
+}
+
+int isValidTtl(const char *ttl) {
+  return isNumeric(ttl) && atoi(ttl) >= 0;
+}
+
+int isValidExpiration(const char *expiration_str) {
+  return isNumeric(expiration_str) && atol(expiration_str) > 0;
+}
+
+int isValidFingerprint(const char *sid, size_t sid_len) {
+  return sid_len == FINGERPRINT_LEN && strlen(sid) == FINGERPRINT_LEN && isHex(sid,sid_len);
+}
+
+int isValidSignature(const char *sig, size_t sig_len) {
+  return sig_len == SIG_LENGTH && strlen(sig) == SIG_LENGTH && isHex(sig,sig_len);
 }
 
 /**
