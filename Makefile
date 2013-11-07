@@ -2,6 +2,7 @@ CFLAGS+=-g
 LDFLAGS+=-lserval-crypto -lavahi-core -lavahi-common -luci
 OBJS=util.o commotion-service-manager.o
 DEPS=Makefile commotion-service-manager.h debug.h util.h uci-utils.h
+C_DEPS=commotion-service-manager.c util.c uci-utils.c
 BINDIR=$(DESTDIR)/usr/bin
 
 ifeq ($(TARGET), openwrt)
@@ -55,9 +56,20 @@ gtest.a : gtest-all.o
 gtest_main.a : gtest-all.o gtest_main.o
 	$(AR) $(ARFLAGS) $@ $^
 
-test.o : test.cpp $(GTEST_HEADERS) $(DEPS)
-	$(MAKE) $(OBJS) CFLAGS+="-DTESTING -g"
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DSID="\"`sudo -u serval servald id self |tail -n1`\"" -c test.cpp
+ifeq ($(MAKECMDGOALS),test)
+include sid.mk
+endif
+
+test.o : CFLAGS += -DTESTING
+test.o : test.cpp $(GTEST_HEADERS) $(DEPS) $(C_DEPS)
+ifeq ($(SID),)
+	@echo Was not able to determine Serval ID. Make sure servald is running!
+	@exit 1
+else
+	$(MAKE) clean
+	$(MAKE) $(OBJS) CFLAGS="$(CFLAGS)"
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DSID="\"$(SID)\"" -c test.cpp
+endif
 
 test : test.o gtest_main.a
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OBJS) $^ -o $@ $(LDFLAGS)

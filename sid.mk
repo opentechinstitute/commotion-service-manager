@@ -1,0 +1,1 @@
+SID = $(shell sudo -u serval servald id self |tail -n1)
