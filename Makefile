@@ -1,4 +1,4 @@
-CFLAGS+=-g
+CFLAGS+=-g -Wall -Wextra
 LDFLAGS+=-lserval-crypto -lavahi-core -lavahi-common -luci
 OBJS=util.o commotion-service-manager.o
 DEPS=Makefile commotion-service-manager.h debug.h util.h uci-utils.h

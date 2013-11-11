@@ -37,6 +37,8 @@
 #include <argp.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #ifdef USESYSLOG
 #include <syslog.h>
 #endif
@@ -179,7 +181,6 @@ void remove_service(AvahiTimeout *t, void *userdata) {
  * @param service the service to print
  */
 void print_service(FILE *f, ServiceInfo *service) {
-    char a[AVAHI_ADDRESS_STR_MAX];
     char interface_string[IF_NAMESIZE];
     const char *protocol_string;
 
@@ -276,7 +277,7 @@ int verify_announcement(ServiceInfo *i) {
     avahi_free(val);
     avahi_free(key);
     val = key = NULL;
-  } while (txt = avahi_string_list_get_next(txt));
+  } while ((txt = avahi_string_list_get_next(txt)));
   
   to_verify = createSigningTemplate(
     i->type,
@@ -439,7 +440,7 @@ void resolve_callback(
 	      timestr = localtime(&current_time);
 	      timestr->tm_sec += expiration;
 	      current_time = mktime(timestr);
-	      if (c_time_string = ctime(&current_time)) {
+	      if ((c_time_string = ctime(&current_time))) {
 		c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
 	        i->txt_lst = avahi_string_list_add_printf(i->txt_lst,"expiration_time=%s",c_time_string);
 	      }
@@ -480,7 +481,6 @@ void browse_service_callback(
     AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
     void* userdata) {
 
-    AvahiServer *s = userdata;
     assert(b);
 
     switch (event) {
@@ -676,11 +676,10 @@ static void daemon_start(char *pidfile) {
 int main(int argc, char*argv[]) {
     AvahiServerConfig config;
     AvahiSServiceTypeBrowser *stb = NULL;
-    struct timeval tv;
     int error;
     int ret = 1;
 
-    const char *argp_program_version = "1.0";
+    argp_program_version = "1.0";
     static char doc[] = "Commotion Service Manager";
     static struct argp_option options[] = {
 #ifdef USE_UCI
