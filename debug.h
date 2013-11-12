@@ -30,6 +30,7 @@
 #include <string.h>
 
 #ifdef USESYSLOG
+#include <syslog.h>
 #define LOG(M, ...) syslog(M, ##__VA_ARGS__)
 #else
 #define LOG(M, N, ...) fprintf(stderr, "["M"] " N, ##__VA_ARGS__)
