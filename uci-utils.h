@@ -53,4 +53,25 @@ int uci_remove(ServiceInfo *i);
  */
 int uci_write(ServiceInfo *i);
 
+/** 
+ * Lookup a UCI section or option
+ * @param c uci_context pointer
+ * @param[out] sec_ptr uci_ptr struct to be populated by uci_lookup_ptr()
+ * @param file UCI config name
+ * @param file_len length of config name
+ * @param sec UCI section name
+ * @param sec_len length of section name
+ * @param op UCI option name
+ * @param op_len length of option name
+ * @return -1 = fail, > 0 success/sec_ptr flags
+ */
+int get_uci_section(struct uci_context *c,
+		    struct uci_ptr *sec_ptr,
+		    const char *file, 
+		    const size_t file_len,
+		    const char *sec, 
+		    const size_t sec_len,
+		    const char *op,
+		    const size_t op_len);
+
 #endif

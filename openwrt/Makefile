@@ -34,7 +34,7 @@ endef
 
 define Build/Compile
 	$(call Build/Compile/Default, \
-		TARGET=openwrt \
+		openwrt \
 	)
 endef
 

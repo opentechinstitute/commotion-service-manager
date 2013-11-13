@@ -5,13 +5,17 @@ DEPS=Makefile commotion-service-manager.h debug.h util.h uci-utils.h
 C_DEPS=commotion-service-manager.c util.c uci-utils.c
 BINDIR=$(DESTDIR)/usr/bin
 
-ifeq ($(TARGET), openwrt)
+ifeq ($(MAKECMDGOALS),openwrt)
 CFLAGS+=-DUSE_UCI -DOPENWRT
 OBJS+=uci-utils.o
-else ifeq ($(TARGET), linux)
+endif
+openwrt: commotion-service-manager
+
+ifeq ($(MAKECMDGOALS),linux)
 CFLAGS+=-DUSE_UCI -DUSESYSLOG -DUCIPATH="\"/opt/luci-commotion/etc/config\""
 OBJS+=uci-utils.o
 endif
+linux: commotion-service-manager
 
 all: commotion-service-manager
 
@@ -57,7 +61,7 @@ gtest_main.a : gtest-all.o gtest_main.o
 	$(AR) $(ARFLAGS) $@ $^
 
 ifeq ($(MAKECMDGOALS),test)
-include sid.mk
+SID = $(shell sudo -u serval servald id self |tail -n1)
 endif
 
 test.o : CFLAGS += -DTESTING

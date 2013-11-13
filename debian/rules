@@ -13,7 +13,7 @@
 	dh $@ 
 
 override_dh_auto_build:
-	$(MAKE) TARGET=linux
+	$(MAKE) linux
 
 override_dh_strip:
 	dh_strip --dbg-package=commotion-service-manager-dbg

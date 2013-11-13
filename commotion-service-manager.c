@@ -218,8 +218,6 @@ void sig_handler(int signal) {
             print_service(f, i);
     }
 
-    // TODO: For OpenWRT: check known_applications list, approved or blacklisted
-    
     if (f != stdout) {
         fclose(f);
     }

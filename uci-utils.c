@@ -37,6 +37,7 @@
 #include "commotion-service-manager.h"
 
 #define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
+#define UCI_WARN(M, ...) char *err = NULL; uci_get_errorstr(c,&err,NULL); WARN(M ": %s", ##__VA_ARGS__, err); free(err);
 
 /**
  * Derives the UCI-encoded name of a service, as a concatenation of IP address/URL and port
@@ -66,6 +67,53 @@ char *get_name(ServiceInfo *i, size_t *name_len) {
   return uci_name;
 }
 
+/** 
+ * Lookup a UCI section or option
+ * @param c uci_context pointer
+ * @param[out] sec_ptr uci_ptr struct to be populated by uci_lookup_ptr()
+ * @param file UCI config name
+ * @param file_len length of config name
+ * @param sec UCI section name
+ * @param sec_len length of section name
+ * @param op UCI option name
+ * @param op_len length of option name
+ * @return -1 = fail, > 0 success/sec_ptr flags
+ */
+int get_uci_section(struct uci_context *c,
+		    struct uci_ptr *sec_ptr,
+		    const char *file, 
+		    const size_t file_len,
+		    const char *sec, 
+		    const size_t sec_len,
+		    const char *op,
+		    const size_t op_len) {
+  char *lookup_str = NULL;
+  int ret = -1;
+  
+  memset(sec_ptr, 0, sizeof(struct uci_ptr));
+  
+  if (op_len)
+    lookup_str = calloc(file_len + sec_len + op_len + 3,sizeof(char));
+  else
+    lookup_str = calloc(file_len + sec_len + 2,sizeof(char));
+  strncpy(lookup_str,file,file_len);
+  lookup_str[file_len] = '.';
+  strncpy(lookup_str + file_len + 1,sec,sec_len);
+  if (op_len) {
+    lookup_str[file_len + 1 + sec_len] = '.';
+    strncpy(lookup_str + file_len + sec_len + 2,op,op_len);
+    lookup_str[file_len + sec_len + op_len + 2] = '\0';
+  } else
+    lookup_str[file_len + sec_len + 1] = '\0';
+  
+  UCI_CHECK(uci_lookup_ptr(c, sec_ptr, lookup_str, false) == UCI_OK,"(UCI) Failed section lookup: %s",lookup_str);
+  ret = (*sec_ptr).flags;
+
+error:
+  if (lookup_str) free(lookup_str);
+  return ret;
+}
+
 /**
  * Write a service to UCI
  * @param i ServiceInfo object of the service
@@ -73,19 +121,14 @@ char *get_name(ServiceInfo *i, size_t *name_len) {
  */
 int uci_write(ServiceInfo *i) {
   struct uci_context *c = NULL;
-  struct uci_ptr sec_ptr,sig_ptr,type_ptr;
+  struct uci_ptr sec_ptr,sig_ptr,type_ptr,approved_ptr;
   int uci_ret, ret = 1;
-  char *sec_name = NULL;
-  char *sig_opstr = NULL;
-  char *type_opstr = NULL;
-  char *sig = NULL;
+  char *sig = NULL, *uci_name = NULL;
   struct uci_package *pak = NULL;
   struct uci_section *sec = NULL;
-  AvahiStringList *txt;
-  size_t sig_len;
-  char *uci_name = NULL;
-  size_t uci_name_len = 0;
-  struct uci_element *e;
+  struct uci_element *e = NULL;
+  AvahiStringList *txt = NULL;
+  size_t sig_len = 0, uci_name_len = 0;
   enum {
     NO_TYPE_SECTION,
     NO_TYPE_MATCHES,
@@ -107,34 +150,23 @@ int uci_write(ServiceInfo *i) {
       "(UCI) Invalid signature txt field");
   
   /* Lookup application by name (concatenation of ip + port) */
-  sec_name = (char*)calloc(13 + uci_name_len + 1,sizeof(char));
-  strcpy(sec_name,"applications.");
-  strncat(sec_name,uci_name, uci_name_len);
-  sec_name[13 + uci_name_len] = '\0';
-  
-  UCI_CHECK(uci_lookup_ptr(c, &sec_ptr, sec_name, false) == UCI_OK,"(UCI) Failed application lookup: %s",uci_name);
-  
+  CHECK(get_uci_section(c,&sec_ptr,"applications",12,uci_name,uci_name_len,NULL,0) > 0, "Failed application lookup");
   if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
     INFO("(UCI) Found application: %s",uci_name);
     // check for service == fingerprint. if sig different, update it
-    // NOTE: sec_name is modified by uci_lookup_ptr above, so cannot cpy it into sig_opstr
-    sig_opstr = (char*)calloc(13 + uci_name_len + 10 + 1,sizeof(char));
-    strcpy(sig_opstr,"applications.");
-    strncat(sig_opstr,uci_name,uci_name_len);
-    strcat(sig_opstr,".signature");
-    UCI_CHECK(uci_lookup_ptr(c, &sig_ptr, sig_opstr, false) == UCI_OK,"(UCI) Failed signature lookup");
+    CHECK(get_uci_section(c,&sig_ptr,"applications",12,uci_name,uci_name_len,"signature",9) > 0,"Failed signature lookup");
     if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && sig && !strcmp(sig,sig_ptr.o->v.string)) {
       // signatures equal: do nothing
       INFO("(UCI) Signature the same, not updating");
-      uci_free_context(c);
-      return 0;
+      ret = 0;
+      goto error;
     }
     // signatures differ: delete existing app
     INFO("(UCI) Signature differs, updating");
   } else {
     INFO("(UCI) Application not found, creating");
   }
-
+  
   pak = sec_ptr.p;
   memset(&sec_ptr, 0, sizeof(struct uci_ptr));
     
@@ -146,11 +178,7 @@ int uci_write(ServiceInfo *i) {
   INFO("(UCI) Section set succeeded");
   
   /* set type_opstr to lookup the 'type' fields */
-  type_opstr = (char*)calloc(13 + uci_name_len + 5 + 1,sizeof(char));
-  strcpy(type_opstr,"applications.");
-  strncpy(type_opstr + 13, uci_name, uci_name_len);
-  strcpy(type_opstr + 13 + uci_name_len,".type");
-  UCI_CHECK(uci_lookup_ptr(c, &type_ptr, type_opstr, false) == UCI_OK,"(UCI) Failed type lookup");
+  CHECK(get_uci_section(c,&type_ptr,"applications",12,uci_name,uci_name_len,"application",11) < 0,"Failed type lookup");
   
   // uci set options/values
   txt = i->txt_lst;
@@ -186,11 +214,29 @@ int uci_write(ServiceInfo *i) {
   uci_ret = uci_set(c, &sec_ptr);
   UCI_CHECK(!uci_ret,"(UCI) Failed to set");
   INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
+
+#ifdef OPENWRT
+  // For OpenWRT: check known_applications list, approved or blacklisted
+  if (get_uci_section(c,&approved_ptr,"applications",12,"known_apps",10,uci_name,uci_name_len) == -1) {
+    WARN("(UCI) Failed known_apps lookup");
+  } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
+    sec_ptr.option = "approved";
+    if (!strcmp(approved_ptr.o->v.string,"approved")) {
+      sec_ptr.value = "1";
+    } else if (!strcmp(approved_ptr.o->v.string,"blacklisted")) {
+      sec_ptr.value = "0";
+    }
+    uci_ret = uci_set(c, &sec_ptr);
+    UCI_CHECK(!uci_ret,"(UCI) Failed to set");
+    INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
+  }
+#else
   sec_ptr.option = "approved";
   sec_ptr.value = "1";
   uci_ret = uci_set(c, &sec_ptr);
   UCI_CHECK(!uci_ret,"(UCI) Failed to set");
   INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
+#endif
   
   // if no type fields in new announcement, remove section from UCI (part of stupid workaround)
   if (type_state == NO_TYPE_SECTION)
@@ -207,9 +253,6 @@ int uci_write(ServiceInfo *i) {
   
 error:
   if (c) uci_free_context(c);
-  if (type_opstr) free(type_opstr);
-  if (sig_opstr) free(sig_opstr);
-  if (sec_name) free(sec_name);
   if (uci_name) free(uci_name);
   return ret;
 }
