@@ -169,7 +169,7 @@ int uci_write(ServiceInfo *i) {
   
   pak = sec_ptr.p;
   memset(&sec_ptr, 0, sizeof(struct uci_ptr));
-    
+  
   // uci_add_section
   sec_ptr.package = "applications";
   sec_ptr.section = uci_name;
@@ -178,7 +178,7 @@ int uci_write(ServiceInfo *i) {
   INFO("(UCI) Section set succeeded");
   
   /* set type_opstr to lookup the 'type' fields */
-  CHECK(get_uci_section(c,&type_ptr,"applications",12,uci_name,uci_name_len,"application",11) < 0,"Failed type lookup");
+  CHECK(get_uci_section(c,&type_ptr,"applications",12,uci_name,uci_name_len,"type",4) < 0,"Failed type lookup");
   
   // uci set options/values
   txt = i->txt_lst;
