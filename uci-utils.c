@@ -62,7 +62,8 @@ char *get_uuid(ServiceInfo *i, size_t *uuid_len) {
   strncpy(uuid,ip_escaped,ip_escaped_len);
   strcat(uuid,port);
   *uuid_len = ip_escaped_len + strlen(port);
-  
+
+error:
   free(ip_escaped);
   return uuid;
 }
@@ -92,10 +93,11 @@ int get_uci_section(struct uci_context *c,
   
   memset(sec_ptr, 0, sizeof(struct uci_ptr));
   
-  if (op_len)
+  if (op_len) {
     CHECK_MEM((lookup_str = calloc(file_len + sec_len + op_len + 3,sizeof(char))));
-  else
+  } else {
     CHECK_MEM((lookup_str = calloc(file_len + sec_len + 2,sizeof(char))));
+  }
   strncpy(lookup_str,file,file_len);
   lookup_str[file_len] = '.';
   strncpy(lookup_str + file_len + 1,sec,sec_len);

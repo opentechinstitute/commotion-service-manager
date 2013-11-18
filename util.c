@@ -131,6 +131,7 @@ char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len) {
     escaped[*escaped_len] = '\0';
     i++;
   }
+error:
   return escaped;
 }
 
@@ -181,6 +182,7 @@ char *escape(char *to_escape, int *escaped_len) {
     escaped[*escaped_len] = '\0';
     i++;
   }
+error:
   return escaped;
 }
 
@@ -220,6 +222,7 @@ char *txt_list_to_string(AvahiStringList *txt) {
     
     free(escaped);
   }
+error:
   return list;
 }
 
