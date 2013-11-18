@@ -6,7 +6,7 @@ C_DEPS=commotion-service-manager.c util.c uci-utils.c
 BINDIR=$(DESTDIR)/usr/bin
 
 ifeq ($(MAKECMDGOALS),openwrt)
-CFLAGS+=-DUSE_UCI -DOPENWRT
+CFLAGS+=-DUSE_UCI -DOPENWRT -DSERVAL_PATH="\"/etc/serval/serval.keyring\""
 OBJS+=uci-utils.o
 endif
 openwrt: commotion-service-manager

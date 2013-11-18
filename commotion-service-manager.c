@@ -57,6 +57,10 @@
 #include "uci-utils.h"
 #endif
 
+#ifndef SERVAL_PATH
+#define SERVAL_PATH "/var/serval-node/serval.keyring"
+#endif
+
 struct arguments {
 #ifdef USE_UCI
   int uci;
@@ -293,7 +297,7 @@ int verify_announcement(ServiceInfo *i) {
   
   /* Is the signature valid? 0=yes, 1=no */
   if (to_verify)
-    verdict = serval_verify(sid,strlen(sid),to_verify,to_verify_len,sig,strlen(sig));
+    verdict = serval_verify(sid,strlen(sid),to_verify,to_verify_len,sig,strlen(sig),SERVAL_PATH,strlen(SERVAL_PATH));
   
 error:
   if (types_list) {
@@ -395,7 +399,7 @@ void resolve_callback(
 	    /* Validate lifetime field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"lifetime"),NULL,&lifetime_str,NULL);
 	    lifetime = atol(lifetime_str);
-	    if (!isValidLifetime(lifetime)) {
+	    if (!isValidLifetime(lifetime_str)) {
 	      WARN("(Resolver) Invalid lifetime value: %s -> %s",name,lifetime_str);
 	      avahi_free(lifetime_str);
 	      break;
