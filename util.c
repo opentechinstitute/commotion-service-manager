@@ -66,8 +66,8 @@ int isValidTtl(const char *ttl) {
   return isNumeric(ttl) && atoi(ttl) >= 0;
 }
 
-int isValidLifetime(const char *expiration_str) {
-  return isNumeric(expiration_str) && atol(expiration_str) > 0;
+int isValidLifetime(const char *lifetime_str) {
+  return isNumeric(lifetime_str) && atol(lifetime_str) > 0;
 }
 
 int isValidFingerprint(const char *sid, size_t sid_len) {
@@ -230,25 +230,25 @@ char *createSigningTemplate(
     const int port,
     const char *name,
     const int ttl,
-    const char *ipaddr,
+    const char *uri,
     const char **app_types,
     const int app_types_len,
     const char *icon,
     const char *description,
-    const long expiration,
+    const long lifetime,
     int *ret_len) {
     
     const char type_template[] = "<txt-record>type=%s</txt-record>";
     const char *str_template = "<type>%s</type>\n\
 <domain-name>%s</domain-name>\n\
 <port>%d</port>\n\
-<txt-record>application=%s</txt-record>\n\
+<txt-record>name=%s</txt-record>\n\
 <txt-record>ttl=%d</txt-record>\n\
-<txt-record>ipaddr=%s</txt-record>\n\
+<txt-record>uri=%s</txt-record>\n\
 %s\n\
 <txt-record>icon=%s</txt-record>\n\
 <txt-record>description=%s</txt-record>\n\
-<txt-record>expiration=%d</txt-record>";
+<txt-record>lifetime=%d</txt-record>";
     char *type_str = NULL, *sign_block = NULL, *app_type = NULL;
     int j, prev_len = 0;
     
@@ -270,7 +270,7 @@ char *createSigningTemplate(
     }
     
     /* Add the fields into the template */
-    CHECK_MEM(asprintf(&sign_block,str_template,type,domain,port,name,ttl,ipaddr,app_types_len ? type_str : "",icon,description,expiration) != -1);
+    CHECK_MEM(asprintf(&sign_block,str_template,type,domain,port,name,ttl,uri,app_types_len ? type_str : "",icon,description,lifetime) != -1);
     
     *ret_len = strlen(sign_block);
     
