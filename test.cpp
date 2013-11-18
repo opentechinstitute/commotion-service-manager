@@ -205,12 +205,18 @@ void CSMTest::CreateTxtList() {
 
 TEST_F(CSMTest, TxtListToStringTest) {
   char *txt = NULL;
-  const char expect[] = "\"signature=A0A3F668382BB04CCC82231A9D7D9BDD67E758C416C84219F0205F568934B26464DF81961FD5BFFDE7C9576306B0D0FA20651450F2416E267EB0ABDEF16C0708\",\"fingerprint=19ACB8E500520E095D9A38592EE24F17E95544856194726232A60637ACA7697D\",\"lifetime=86400\",\"description=test description\",\"icon=http://a.b/c.d\",\"type=Collaboration\",\"type=Community\",\"uri=https://commotionwireless.net\",\"ttl=5\",\"name=service name\"";
+  const char expect_tmpl[] = "\"signature=%s\",\"fingerprint=%s\",\"lifetime=86400\",\"description=test description\",\"icon=http://a.b/c.d\",\"type=Collaboration\",\"type=Community\",\"uri=https://commotionwireless.net\",\"ttl=5\",\"name=service name\"";
+  char *expect = (char*)calloc(strlen(expect_tmpl) - 4 + 128 + 64 + 1,sizeof(char));
+    
   CreateTxtList();
+  
+  sprintf(expect,expect_tmpl,signature,sid);
+  
   txt = txt_list_to_string(txt_lst);
 //   printf("%s\n",txt);
   EXPECT_STREQ(expect,txt);
   free(txt);
+  free(expect);
 }
 
 void CSMTest::CreateAvahiServer() {
