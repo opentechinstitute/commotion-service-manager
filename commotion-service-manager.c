@@ -173,14 +173,12 @@ void remove_service(AvahiTimeout *t, void *userdata) {
     avahi_free(i->name);
     avahi_free(i->type);
     avahi_free(i->domain);
-    if (i->resolved) {
-      if (i->host_name)
-	avahi_free(i->host_name);
-      if (i->txt)
-	avahi_free(i->txt);
-      if (i->txt_lst)
-        avahi_string_list_free(i->txt_lst);
-    }
+    if (i->host_name)
+      avahi_free(i->host_name);
+    if (i->txt)
+      avahi_free(i->txt);
+    if (i->txt_lst)
+      avahi_string_list_free(i->txt_lst);
     avahi_free(i);
 }
 
