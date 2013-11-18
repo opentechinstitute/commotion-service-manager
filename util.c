@@ -112,7 +112,7 @@ char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len) {
      * the NULL for the NULL-termination.
      */
     if (isalnum(to_escape[i])) {
-      escaped = (char*)realloc(escaped, (*escaped_len)+1+1);
+      CHECK_MEM((escaped = (char*)realloc(escaped, (*escaped_len)+1+1)));
       escaped[*escaped_len] = to_escape[i];
       *escaped_len = *escaped_len + 1;
     } else {
@@ -123,7 +123,7 @@ char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len) {
       else
 	replacement_len = 3;
       sprintf(escaped_char,"%d",to_escape[i]);
-      escaped = (char*)realloc(escaped, (*escaped_len) + replacement_len + 1 + 1);
+      CHECK_MEM((escaped = (char*)realloc(escaped, (*escaped_len) + replacement_len + 1 + 1)));
       strncpy(escaped + *escaped_len, "_", 1);
       strncpy(escaped + *escaped_len + 1, escaped_char, replacement_len);
       *escaped_len = *escaped_len + replacement_len + 1;
@@ -159,22 +159,22 @@ char *escape(char *to_escape, int *escaped_len) {
      */
     switch (to_escape[i]) {
       case '\"':
-	escaped = (char*)realloc(escaped, (*escaped_len) + ESCAPE_QUOTE_LEN + 1);
+	CHECK_MEM((escaped = (char*)realloc(escaped, (*escaped_len) + ESCAPE_QUOTE_LEN + 1)));
 	memcpy(escaped + *escaped_len, escape_quote, ESCAPE_QUOTE_LEN);
 	*escaped_len = *escaped_len + ESCAPE_QUOTE_LEN;
 	break;
       case '\n':
-	escaped = (char*)realloc(escaped, (*escaped_len) + ESCAPE_LF_LEN + 1);
+	CHECK_MEM((escaped = (char*)realloc(escaped, (*escaped_len) + ESCAPE_LF_LEN + 1)));
 	memcpy(escaped + *escaped_len, escape_lf, ESCAPE_LF_LEN);
 	*escaped_len = *escaped_len + ESCAPE_LF_LEN;
 	break;
       case '\r':
-	escaped = (char*)realloc(escaped, (*escaped_len) + ESCAPE_CR_LEN + 1);
+	CHECK_MEM((escaped = (char*)realloc(escaped, (*escaped_len) + ESCAPE_CR_LEN + 1)));
 	memcpy(escaped + *escaped_len, escape_cr, ESCAPE_CR_LEN);
 	*escaped_len = *escaped_len + ESCAPE_CR_LEN;
 	break;
       default:
-	escaped = (char*)realloc(escaped, (*escaped_len)+1+1);
+	CHECK_MEM((escaped = (char*)realloc(escaped, (*escaped_len)+1+1)));
 	escaped[*escaped_len] = to_escape[i];
 	*escaped_len = *escaped_len + 1;
     }
@@ -197,11 +197,11 @@ char *txt_list_to_string(AvahiStringList *txt) {
     int escaped_len = 0;
     char *escaped = escape(txt->text, &escaped_len);
     
-    list = (char*)realloc(list, list_len + 
+    CHECK_MEM((list = (char*)realloc(list, list_len + 
     OPEN_DELIMITER_LEN +
     CLOSE_DELIMITER_LEN +
     escaped_len + 
-    1);
+    1)));
     list[list_len] = '\0';
     
     strcat(list, open_delimiter);
@@ -212,7 +212,7 @@ char *txt_list_to_string(AvahiStringList *txt) {
     list[list_len] = '\0';
     
     if (txt->next) {
-      list = (char*)realloc(list, list_len + FIELD_DELIMITER_LEN + 1);
+      CHECK_MEM((list = (char*)realloc(list, list_len + FIELD_DELIMITER_LEN + 1)));
       strcat(list, field_delimiter);
       list_len += FIELD_DELIMITER_LEN;
       list[list_len] = '\0';

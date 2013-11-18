@@ -144,15 +144,18 @@ void remove_service(AvahiTimeout *t, void *userdata) {
     size_t uuid_len = 0;
     char *uuid = NULL, *serviceFile = NULL;
     uuid = get_uuid(i,&uuid_len);
-    serviceFile = malloc(sizeof(char) * (strlen(avahiDir) + uuid_len + strlen(".service") + 1));
+    DEBUG("UUID %s %d",uuid,uuid_len);
+    CHECK_MEM((serviceFile = (char*)calloc(strlen(avahiDir) + uuid_len + strlen(".service") + 1,sizeof(char))));
     strcpy(serviceFile,avahiDir);
-    strncat(serviceFile,uuid,uuid_len);
+    strcat(serviceFile,uuid);
     strcat(serviceFile,".service");
+    DEBUG("serviceFile %s",serviceFile);
     if (remove(serviceFile))
       ERROR("(Remove_Service) Could not delete service file: %s", serviceFile);
     else
       INFO("(Remove_Service) Successfully deleted service file: %s", serviceFile);
-    if (uuid) free(uuid);
+    free(uuid);
+    free(serviceFile);
 #endif
     
 #ifdef USE_UCI
