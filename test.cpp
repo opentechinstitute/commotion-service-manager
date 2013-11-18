@@ -326,10 +326,10 @@ TEST(UtilTest, TtlTest) {
 }
 
 TEST(UtilTest, ExpirationTest) {
-  EXPECT_TRUE(isValidExpiration("86400"));
-  EXPECT_FALSE(isValidExpiration("0"));
-  EXPECT_FALSE(isValidExpiration("-1"));
-  EXPECT_FALSE(isValidExpiration("a"));
+  EXPECT_TRUE(isValidLifetime("86400"));
+  EXPECT_FALSE(isValidLifetime("0"));
+  EXPECT_FALSE(isValidLifetime("-1"));
+  EXPECT_FALSE(isValidLifetime("a"));
 }
 
 TEST(UtilTest, FingerprintTest) {

@@ -137,22 +137,22 @@ void remove_service(AvahiTimeout *t, void *userdata) {
     
 #ifdef OPENWRT
     // Delete Avahi service file
-    size_t uci_name_len = 0;
-    char *uci_name = NULL, *serviceFile = NULL;
-    uci_name = get_name(i,&uci_name_len);
-    serviceFile = malloc(sizeof(char) * (strlen(avahiDir) + uci_name_len + strlen(".service") + 1));
+    size_t uuid_len = 0;
+    char *uuid = NULL, *serviceFile = NULL;
+    uuid = get_uuid(i,&uuid_len);
+    serviceFile = malloc(sizeof(char) * (strlen(avahiDir) + uuid_len + strlen(".service") + 1));
     strcpy(serviceFile,avahiDir);
-    strncat(serviceFile,uci_name,uci_name_len);
+    strncat(serviceFile,uuid,uuid_len);
     strcat(serviceFile,".service");
     if (remove(serviceFile))
       ERROR("(Remove_Service) Could not delete service file: %s", serviceFile);
     else
       INFO("(Remove_Service) Successfully deleted service file: %s", serviceFile);
-    if (uci_name) free(uci_name);
+    if (uuid) free(uuid);
 #endif
     
 #ifdef USE_UCI
-    if (arguments.uci && uci_remove(i))
+    if (arguments.uci && uci_remove(i) < 0)
       ERROR("(Remove_Service) Could not remove from UCI");
 #endif
     
@@ -233,9 +233,9 @@ int verify_announcement(ServiceInfo *i) {
   char *to_verify = NULL;
   char **types_list = NULL;
   int types_list_len = 0;
-  char *key, *val, *app, *ipaddr, *icon, *desc, *sid, *sig;
+  char *key, *val, *app, *uri, *icon, *desc, *sid, *sig;
   unsigned int ttl = 0;
-  unsigned long expr = 0;
+  unsigned long lifetime = 0;
   int j, verdict = 1, to_verify_len = 0;
   size_t val_len;
   
@@ -256,18 +256,18 @@ int verify_announcement(ServiceInfo *i) {
       CHECK_MEM((types_list = (char**)realloc(types_list,(types_list_len + 1)*sizeof(char*))));
       types_list[types_list_len] = avahi_strdup(val);
       types_list_len++;
-    } else if (!strcmp(key,"application"))
+    } else if (!strcmp(key,"name"))
       app = avahi_strdup(val);
     else if (!strcmp(key,"ttl")) {
       ttl = atoi(val);
-    } else if (!strcmp(key,"ipaddr"))
-      ipaddr = avahi_strdup(val);
+    } else if (!strcmp(key,"uri"))
+      uri = avahi_strdup(val);
     else if (!strcmp(key,"icon"))
       icon = avahi_strdup(val);
     else if (!strcmp(key,"description"))
       desc = avahi_strdup(val);
-    else if (!strcmp(key,"expiration")) {
-      expr = atol(val);
+    else if (!strcmp(key,"lifetime")) {
+      lifetime = atol(val);
     } else if (!strcmp(key,"fingerprint"))
       sid = avahi_strdup(val);
     else if (!strcmp(key,"signature"))
@@ -283,12 +283,12 @@ int verify_announcement(ServiceInfo *i) {
     i->port,
     app,
     ttl,
-    ipaddr,
+    uri,
     (const char**)types_list,
     types_list_len,
     icon,
     desc,
-    expr,
+    lifetime,
     &to_verify_len);
   
   /* Is the signature valid? 0=yes, 1=no */
@@ -305,8 +305,8 @@ error:
     free(to_verify);
   if (app)
     avahi_free(app);
-  if (ipaddr)
-    avahi_free(ipaddr);
+  if (uri)
+    avahi_free(uri);
   if (icon)
     avahi_free(icon);
   if (desc)
@@ -342,14 +342,14 @@ void resolve_callback(
     void* userdata) {
     
     ServiceInfo *i = (ServiceInfo*)userdata;
-    char *expiration_str = NULL;
+    char *lifetime_str = NULL;
     char *val = NULL;
     size_t val_size = 0;
     struct timeval tv;
     time_t current_time;
     char* c_time_string;
     struct tm *timestr;
-    long expiration = 0;
+    long lifetime = 0;
     
     assert(r);
 
@@ -371,11 +371,12 @@ void resolve_callback(
 	    i->txt_lst = avahi_string_list_copy(txt);
 	    
 	    /* Make sure all the required fields are there */
-	    if (!avahi_string_list_find(txt,"application") ||
+	    if (!avahi_string_list_find(txt,"name") ||
+	      !avahi_string_list_find(txt,"uri") ||
 	      !avahi_string_list_find(txt,"icon") ||
 	      !avahi_string_list_find(txt,"description") ||
 	      !avahi_string_list_find(txt,"ttl") ||
-	      !avahi_string_list_find(txt,"expiration") ||
+	      !avahi_string_list_find(txt,"lifetime") ||
 	      !avahi_string_list_find(txt,"signature") ||
 	      !avahi_string_list_find(txt,"fingerprint")) {
 	      WARN("(Resolver) Missing TXT field(s): %s", name);
@@ -391,15 +392,15 @@ void resolve_callback(
 	    }
 	    avahi_free(val);
 	    
-	    /* Validate expiration field */
-	    avahi_string_list_get_pair(avahi_string_list_find(txt,"expiration"),NULL,&expiration_str,NULL);
-	    expiration = atol(expiration_str);
-	    if (!isValidExpiration(expiration_str)) {
-	      WARN("(Resolver) Invalid expiration value: %s -> %s",name,expiration_str);
-	      avahi_free(expiration_str);
+	    /* Validate lifetime field */
+	    avahi_string_list_get_pair(avahi_string_list_find(txt,"lifetime"),NULL,&lifetime_str,NULL);
+	    lifetime = atol(lifetime_str);
+	    if (!isValidLifetime(lifetime)) {
+	      WARN("(Resolver) Invalid lifetime value: %s -> %s",name,lifetime_str);
+	      avahi_free(lifetime_str);
 	      break;
 	    }
-	    avahi_free(expiration_str);
+	    avahi_free(lifetime_str);
 	    
 	    /* Validate fingerprint field */
 	    avahi_string_list_get_pair(avahi_string_list_find(txt,"fingerprint"),NULL,&val,&val_size);
@@ -429,18 +430,18 @@ void resolve_callback(
 	      INFO("Announcement signature verification succeeded");
 	    
 	    /* Set expiration timer on the service */
-	    avahi_elapse_time(&tv, 1000*expiration, 0);
+	    avahi_elapse_time(&tv, 1000*lifetime, 0);
 	    current_time = time(NULL);
 	    i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, remove_service, i); // create expiration event for service
 	    
-	    /* Convert expiration period into timestamp */
+	    /* Convert lifetime period into timestamp */
 	    if (current_time != ((time_t)-1)) {
 	      timestr = localtime(&current_time);
-	      timestr->tm_sec += expiration;
+	      timestr->tm_sec += lifetime;
 	      current_time = mktime(timestr);
 	      if ((c_time_string = ctime(&current_time))) {
 		c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
-	        i->txt_lst = avahi_string_list_add_printf(i->txt_lst,"expiration_time=%s",c_time_string);
+	        i->txt_lst = avahi_string_list_add_printf(i->txt_lst,"expiration=%s",c_time_string);
 	      }
 	    }
 	    
@@ -450,7 +451,7 @@ void resolve_callback(
 	    }
 	    
 #ifdef USE_UCI
-	    if (arguments.uci && uci_write(i))
+	    if (arguments.uci && uci_write(i) < 0)
 	      ERROR("(Resolver) Could not write to UCI");
 #endif
             

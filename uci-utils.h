@@ -34,22 +34,22 @@
 /**
  * Derives the UCI-encoded name of a service, as a concatenation of IP address/URL and port
  * @param i ServiceInfo object of the service
- * @param[out] name_len Length of the UCI-encoded name
+ * @param[out] uuid_len Length of the UCI-encoded name
  * @return UCI-encoded name
  */
-char *get_name(ServiceInfo *i, size_t *name_len);
+char *get_uuid(ServiceInfo *i, size_t *uuid_len);
 
 /**
  * Remove a service from UCI
  * @param i ServiceInfo object of the service
- * @return 0=success, 1=fail
+ * @return 0=success, -1=fail
  */
 int uci_remove(ServiceInfo *i);
 
 /**
  * Write a service to UCI
  * @param i ServiceInfo object of the service
- * @return 0=success, 1=fail
+ * @return 0=success, -1=fail
  */
 int uci_write(ServiceInfo *i);
 

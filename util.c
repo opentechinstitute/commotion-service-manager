@@ -66,7 +66,7 @@ int isValidTtl(const char *ttl) {
   return isNumeric(ttl) && atoi(ttl) >= 0;
 }
 
-int isValidExpiration(const char *expiration_str) {
+int isValidLifetime(const char *expiration_str) {
   return isNumeric(expiration_str) && atol(expiration_str) > 0;
 }
 

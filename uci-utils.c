@@ -42,11 +42,11 @@
 /**
  * Derives the UCI-encoded name of a service, as a concatenation of IP address/URL and port
  * @param i ServiceInfo object of the service
- * @param[out] name_len Length of the UCI-encoded name
+ * @param[out] uuid_len Length of the UCI-encoded name
  * @return UCI-encoded name
  */
-char *get_name(ServiceInfo *i, size_t *name_len) {
-  char *uci_name = NULL;
+char *get_uuid(ServiceInfo *i, size_t *uuid_len) {
+  char *uuid = NULL;
   char *ip = NULL;
   char *ip_escaped = NULL;
   char port[6] = "";
@@ -58,13 +58,13 @@ char *get_name(ServiceInfo *i, size_t *name_len) {
   ip_escaped = uci_escape(ip,ip_len,&ip_escaped_len);
   if (i->port > 0)
     sprintf(port,"%d",i->port);
-  uci_name = (char*)calloc(ip_escaped_len + strlen(port),sizeof(char));
-  strncpy(uci_name,ip_escaped,ip_escaped_len);
-  strcat(uci_name,port);
-  *name_len = ip_escaped_len + strlen(port);
+  uuid = (char*)calloc(ip_escaped_len + strlen(port),sizeof(char));
+  strncpy(uuid,ip_escaped,ip_escaped_len);
+  strcat(uuid,port);
+  *uuid_len = ip_escaped_len + strlen(port);
   
   free(ip_escaped);
-  return uci_name;
+  return uuid;
 }
 
 /** 
@@ -117,18 +117,18 @@ error:
 /**
  * Write a service to UCI
  * @param i ServiceInfo object of the service
- * @return 0=success, 1=fail
+ * @return 0=success, -1=fail
  */
 int uci_write(ServiceInfo *i) {
   struct uci_context *c = NULL;
   struct uci_ptr sec_ptr,sig_ptr,type_ptr,approved_ptr;
-  int uci_ret, ret = 1;
-  char *sig = NULL, *uci_name = NULL;
+  int uci_ret, ret = -1;
+  char *sig = NULL, *uuid = NULL;
   struct uci_package *pak = NULL;
   struct uci_section *sec = NULL;
   struct uci_element *e = NULL;
   AvahiStringList *txt = NULL;
-  size_t sig_len = 0, uci_name_len = 0;
+  size_t sig_len = 0, uuid_len = 0;
   enum {
     NO_TYPE_SECTION,
     NO_TYPE_MATCHES,
@@ -143,18 +143,18 @@ int uci_write(ServiceInfo *i) {
 
   avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"signature"),NULL,&sig,&sig_len);
   
-  uci_name = get_name(i,&uci_name_len);
+  uuid = get_uuid(i,&uuid_len);
 
   CHECK(sig_len == SIG_LENGTH &&
       isHex(sig,sig_len),
       "(UCI) Invalid signature txt field");
   
   /* Lookup application by name (concatenation of ip + port) */
-  CHECK(get_uci_section(c,&sec_ptr,"applications",12,uci_name,uci_name_len,NULL,0) > 0, "Failed application lookup");
+  CHECK(get_uci_section(c,&sec_ptr,"applications",12,uuid,uuid_len,NULL,0) > 0, "Failed application lookup");
   if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
-    INFO("(UCI) Found application: %s",uci_name);
+    INFO("(UCI) Found application: %s",uuid);
     // check for service == fingerprint. if sig different, update it
-    CHECK(get_uci_section(c,&sig_ptr,"applications",12,uci_name,uci_name_len,"signature",9) > 0,"Failed signature lookup");
+    CHECK(get_uci_section(c,&sig_ptr,"applications",12,uuid,uuid_len,"signature",9) > 0,"Failed signature lookup");
     if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && sig && !strcmp(sig,sig_ptr.o->v.string)) {
       // signatures equal: do nothing
       INFO("(UCI) Signature the same, not updating");
@@ -172,13 +172,13 @@ int uci_write(ServiceInfo *i) {
   
   // uci_add_section
   sec_ptr.package = "applications";
-  sec_ptr.section = uci_name;
+  sec_ptr.section = uuid;
   sec_ptr.value = "application";
   UCI_CHECK(!uci_set(c, &sec_ptr),"(UCI) Failed to set section");
   INFO("(UCI) Section set succeeded");
   
   /* set type_opstr to lookup the 'type' fields */
-  CHECK(get_uci_section(c,&type_ptr,"applications",12,uci_name,uci_name_len,"type",4) < 0,"Failed type lookup");
+  CHECK(get_uci_section(c,&type_ptr,"applications",12,uuid,uuid_len,"type",4) > 0,"Failed type lookup");
   
   // uci set options/values
   txt = i->txt_lst;
@@ -200,8 +200,6 @@ int uci_write(ServiceInfo *i) {
       if (type_state != TYPE_MATCH_FOUND)
 	uci_ret = uci_add_list(c, &sec_ptr);
     } else {
-      if (!strcmp(sec_ptr.option,"application"))
-	sec_ptr.option = "name";
       uci_ret = uci_set(c, &sec_ptr);
     }
     UCI_CHECK(!uci_ret,"(UCI) Failed to set");
@@ -210,14 +208,14 @@ int uci_write(ServiceInfo *i) {
   
   // set uuid and approved fields
   sec_ptr.option = "uuid";
-  sec_ptr.value = uci_name;
+  sec_ptr.value = uuid;
   uci_ret = uci_set(c, &sec_ptr);
   UCI_CHECK(!uci_ret,"(UCI) Failed to set");
   INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
 
 #ifdef OPENWRT
   // For OpenWRT: check known_applications list, approved or blacklisted
-  if (get_uci_section(c,&approved_ptr,"applications",12,"known_apps",10,uci_name,uci_name_len) == -1) {
+  if (get_uci_section(c,&approved_ptr,"applications",12,"known_apps",10,uuid,uuid_len) == -1) {
     WARN("(UCI) Failed known_apps lookup");
   } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
     sec_ptr.option = "approved";
@@ -253,41 +251,35 @@ int uci_write(ServiceInfo *i) {
   
 error:
   if (c) uci_free_context(c);
-  if (uci_name) free(uci_name);
+  if (uuid) free(uuid);
   return ret;
 }
 
 /**
  * Remove a service from UCI
  * @param i ServiceInfo object of the service
- * @return 0=success, 1=fail
+ * @return 0=success, -1=fail
  */
 int uci_remove(ServiceInfo *i) {
-  int ret = 1;
+  int ret = -1;
   struct uci_context *c = NULL;
   struct uci_ptr sec_ptr;
   struct uci_package *pak = NULL;
-  char *sec_name = NULL;
-  char *uci_name = NULL;
-  size_t uci_name_len = 0;
+  char *uuid = NULL;
+  size_t uuid_len = 0;
   
   c = uci_alloc_context();
   uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
   assert(c);
   assert(i);
   
-  uci_name = get_name(i,&uci_name_len);
+  uuid = get_uuid(i,&uuid_len);
   
   /* Lookup application by name (concatination of ip + port) */
-  sec_name = (char*)calloc(13 + uci_name_len + 1,sizeof(char));
-  strcpy(sec_name,"applications.");
-  strncat(sec_name,uci_name, uci_name_len);
-  sec_name[13 + uci_name_len] = '\0';
+  CHECK(get_uci_section(c,&sec_ptr,"applications",12,uuid,uuid_len,NULL,0) > 0, "(UCI_Remove) Failed application lookup");
   
-  UCI_CHECK(uci_lookup_ptr(c, &sec_ptr, sec_name, false) == UCI_OK,"(UCI_Remove) Failed application lookup: %s", sec_name);
-  
-  CHECK(sec_ptr.flags & UCI_LOOKUP_COMPLETE,"(UCI_Remove) Application not found: %s",uci_name);
-  INFO("(UCI_Remove) Found application: %s",uci_name);
+  CHECK(sec_ptr.flags & UCI_LOOKUP_COMPLETE,"(UCI_Remove) Application not found: %s",uuid);
+  INFO("(UCI_Remove) Found application: %s",uuid);
   
   UCI_CHECK(uci_delete(c, &sec_ptr) == UCI_OK,"(UCI_Remove) Failed to delete application");
   INFO("(UCI_Remove) Successfully deleted application");
@@ -305,7 +297,6 @@ int uci_remove(ServiceInfo *i) {
   
 error:
   if (c) uci_free_context(c);
-  if (uci_name) free(uci_name);
-  if (sec_name) free(sec_name);
+  if (uuid) free(uuid);
   return ret;
 }

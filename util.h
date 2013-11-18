@@ -45,7 +45,7 @@ int isHex(const char *str, size_t len);
 int isNumeric (const char *s);
 int isUCIEncoded(const char *s, size_t s_len);
 int isValidTtl(const char *ttl);
-int isValidExpiration(const char *expiration_str);
+int isValidLifetime(const char *expiration_str);
 int isValidFingerprint(const char *sid, size_t sid_len);
 int isValidSignature(const char *sig, size_t sig_len);
 
