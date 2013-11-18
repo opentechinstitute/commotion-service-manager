@@ -32,7 +32,7 @@
 #endif
 
 /**
- * Derives the UCI-encoded name of a service, as a concatenation of IP address/URL and port
+ * Derives the UCI-encoded name of a service, as a concatenation of URI and port
  * @param i ServiceInfo object of the service
  * @param[out] uuid_len Length of the UCI-encoded name
  * @return UCI-encoded name

@@ -40,31 +40,32 @@
 #define UCI_WARN(M, ...) char *err = NULL; uci_get_errorstr(c,&err,NULL); WARN(M ": %s", ##__VA_ARGS__, err); free(err);
 
 /**
- * Derives the UCI-encoded name of a service, as a concatenation of IP address/URL and port
+ * Derives the UCI-encoded name of a service, as a concatenation of URI and port
  * @param i ServiceInfo object of the service
  * @param[out] uuid_len Length of the UCI-encoded name
  * @return UCI-encoded name
  */
 char *get_uuid(ServiceInfo *i, size_t *uuid_len) {
   char *uuid = NULL;
-  char *ip = NULL;
-  char *ip_escaped = NULL;
+  char *uri = NULL;
+  char *uri_escaped = NULL;
   char port[6] = "";
-  size_t ip_escaped_len, ip_len = 0;
+  size_t uri_escaped_len, uri_len = 0;
   
   assert(i);
   
-  avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"ipaddr"),NULL,&ip,&ip_len);
-  ip_escaped = uci_escape(ip,ip_len,&ip_escaped_len);
+  avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"uri"),NULL,&uri,&uri_len);
+  CHECK(uri && uri_len,"Failed to fetch uri txt record");
+  CHECK((uri_escaped = uci_escape(uri,uri_len,&uri_escaped_len)),"Failed to escape URI");
   if (i->port > 0)
     sprintf(port,"%d",i->port);
-  CHECK_MEM((uuid = (char*)calloc(ip_escaped_len + strlen(port),sizeof(char))));
-  strncpy(uuid,ip_escaped,ip_escaped_len);
+  CHECK_MEM((uuid = (char*)calloc(uri_escaped_len + strlen(port),sizeof(char))));
+  strncpy(uuid,uri_escaped,uri_escaped_len);
   strcat(uuid,port);
-  *uuid_len = ip_escaped_len + strlen(port);
+  *uuid_len = uri_escaped_len + strlen(port);
 
 error:
-  free(ip_escaped);
+  free(uri_escaped);
   return uuid;
 }
 
@@ -151,7 +152,7 @@ int uci_write(ServiceInfo *i) {
       isHex(sig,sig_len),
       "(UCI) Invalid signature txt field");
   
-  /* Lookup application by name (concatenation of ip + port) */
+  /* Lookup application by name (concatenation of URI + port) */
   CHECK(get_uci_section(c,&sec_ptr,"applications",12,uuid,uuid_len,NULL,0) > 0, "Failed application lookup");
   if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
     INFO("(UCI) Found application: %s",uuid);
@@ -277,7 +278,7 @@ int uci_remove(ServiceInfo *i) {
   
   uuid = get_uuid(i,&uuid_len);
   
-  /* Lookup application by name (concatination of ip + port) */
+  /* Lookup application by name (concatination of URI + port) */
   CHECK(get_uci_section(c,&sec_ptr,"applications",12,uuid,uuid_len,NULL,0) > 0, "(UCI_Remove) Failed application lookup");
   
   CHECK(sec_ptr.flags & UCI_LOOKUP_COMPLETE,"(UCI_Remove) Application not found: %s",uuid);

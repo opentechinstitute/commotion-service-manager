@@ -85,12 +85,12 @@ char *createSigningTemplate(
   const int port,
   const char *name,
   const int ttl,
-  const char *ipaddr,
+  const char *uri,
   const char **app_types,
   const int app_types_len,
   const char *icon,
   const char *description,
-  const long expiration,
+  const long lifetime,
   int *ret_len);
 
 #endif

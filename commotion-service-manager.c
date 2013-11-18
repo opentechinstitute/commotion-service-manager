@@ -141,15 +141,14 @@ void remove_service(AvahiTimeout *t, void *userdata) {
     
 #ifdef OPENWRT
     // Delete Avahi service file
+    DEBUG("Removing Avahi service file");
     size_t uuid_len = 0;
     char *uuid = NULL, *serviceFile = NULL;
     uuid = get_uuid(i,&uuid_len);
-    DEBUG("UUID %s %d",uuid,uuid_len);
     if ((serviceFile = (char*)calloc(strlen(avahiDir) + uuid_len + strlen(".service") + 1,sizeof(char)))) {
       strcpy(serviceFile,avahiDir);
       strcat(serviceFile,uuid);
       strcat(serviceFile,".service");
-      DEBUG("serviceFile %s",serviceFile);
       if (remove(serviceFile))
         ERROR("(Remove_Service) Could not delete service file: %s", serviceFile);
       else
