@@ -55,10 +55,10 @@ class CSMTest : public ::testing::Test {
     const char *host_name;
     int port;
     int ttl;
-    const char *ipaddr;
+    const char *uri;
     const char *icon;
     const char *description;
-    long expiration;
+    long lifetime;
     const char *type1;
     const char *type2;
     char signature[SIG_LENGTH + 1];
@@ -88,10 +88,10 @@ class CSMTest : public ::testing::Test {
       host_name = "hostname";
       port = 80;
       ttl = 5;
-      ipaddr = "https://commotionwireless.net";
+      uri = "https://commotionwireless.net";
       icon = "http://a.b/c.d";
       description = "test description";
-      expiration = 86400;
+      lifetime = 86400;
       type1 = "Community";
       type2 = "Collaboration";
       
@@ -139,17 +139,17 @@ void CSMTest::GenerateSignature() {
     port,
     name,
     ttl,
-    ipaddr,
+    uri,
     app_types,
     2,
     icon,
     description,
-    expiration,
+    lifetime,
     &sign_block_len);
   
-  ASSERT_FALSE(serval_sign(sid, strlen(sid), sign_block, sign_block_len, signature, SIG_LENGTH + 1));
+  ASSERT_FALSE(serval_sign(sid, strlen(sid), (unsigned char*)sign_block, sign_block_len, signature, SIG_LENGTH + 1,NULL,0));
   
-  ASSERT_FALSE(serval_verify(sid,strlen(sid),sign_block,sign_block_len,signature,strlen(signature)));
+  ASSERT_FALSE(serval_verify(sid,strlen(sid),(unsigned char*)sign_block,sign_block_len,signature,strlen(signature),NULL,0));
   
   if (sign_block)
     free(sign_block);
@@ -165,7 +165,7 @@ void CSMTest::CreateService() {
 void CSMTest::CreateTxtList() {
   char app_str[256];
   char ttl_str[256];
-  char ipaddr_str[256];
+  char uri_str[256];
   char type1_str[256];
   char type2_str[256];
   char icon_str[256];
@@ -176,21 +176,21 @@ void CSMTest::CreateTxtList() {
 
   GenerateSignature();
   
-  ASSERT_TRUE(sprintf(app_str,"application=%s",name));
+  ASSERT_TRUE(sprintf(app_str,"name=%s",name));
   ASSERT_TRUE(sprintf(ttl_str,"ttl=%d",ttl));
-  ASSERT_TRUE(sprintf(ipaddr_str,"ipaddr=%s",ipaddr));
+  ASSERT_TRUE(sprintf(uri_str,"uri=%s",uri));
   ASSERT_TRUE(sprintf(type1_str,"type=%s",type1));
   ASSERT_TRUE(sprintf(type2_str,"type=%s",type2));
   ASSERT_TRUE(sprintf(icon_str,"icon=%s",icon));
   ASSERT_TRUE(sprintf(desc_str,"description=%s",description));
-  ASSERT_TRUE(sprintf(exp_str,"expiration=%ld",expiration));
+  ASSERT_TRUE(sprintf(exp_str,"lifetime=%ld",lifetime));
   ASSERT_TRUE(sprintf(fing_str,"fingerprint=%s",sid));
   ASSERT_TRUE(sprintf(sig_str,"signature=%s",signature));
   
   txt_lst = avahi_string_list_new(
     app_str,
     ttl_str,
-    ipaddr_str,
+    uri_str,
     type1_str,
     type2_str,
     icon_str,
@@ -205,7 +205,7 @@ void CSMTest::CreateTxtList() {
 
 TEST_F(CSMTest, TxtListToStringTest) {
   char *txt = NULL;
-  const char expect[] = "\"signature=A0A3F668382BB04CCC82231A9D7D9BDD67E758C416C84219F0205F568934B26464DF81961FD5BFFDE7C9576306B0D0FA20651450F2416E267EB0ABDEF16C0708\",\"fingerprint=19ACB8E500520E095D9A38592EE24F17E95544856194726232A60637ACA7697D\",\"expiration=86400\",\"description=test description\",\"icon=http://a.b/c.d\",\"type=Collaboration\",\"type=Community\",\"ipaddr=https://commotionwireless.net\",\"ttl=5\",\"application=service name\"";
+  const char expect[] = "\"signature=A0A3F668382BB04CCC82231A9D7D9BDD67E758C416C84219F0205F568934B26464DF81961FD5BFFDE7C9576306B0D0FA20651450F2416E267EB0ABDEF16C0708\",\"fingerprint=19ACB8E500520E095D9A38592EE24F17E95544856194726232A60637ACA7697D\",\"lifetime=86400\",\"description=test description\",\"icon=http://a.b/c.d\",\"type=Collaboration\",\"type=Community\",\"uri=https://commotionwireless.net\",\"ttl=5\",\"name=service name\"";
   CreateTxtList();
   txt = txt_list_to_string(txt_lst);
 //   printf("%s\n",txt);
