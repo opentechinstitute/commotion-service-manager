@@ -127,7 +127,7 @@ void remove_service(AvahiTimeout *t, void *userdata) {
     size_t uuid_len = 0;
     char *uuid = NULL, *serviceFile = NULL;
     uuid = get_uuid(i,&uuid_len);
-    if ((serviceFile = (char*)calloc(strlen(avahiDir) + uuid_len + strlen(".service") + 1,sizeof(char)))) {
+    if (uuid && (serviceFile = (char*)calloc(strlen(avahiDir) + uuid_len + strlen(".service") + 1,sizeof(char)))) {
       strcpy(serviceFile,avahiDir);
       strcat(serviceFile,uuid);
       strcat(serviceFile,".service");
@@ -136,10 +136,8 @@ void remove_service(AvahiTimeout *t, void *userdata) {
       else
         INFO("(Remove_Service) Successfully deleted service file: %s", serviceFile);
       free(serviceFile);
-    } else {
-      ERROR("Failed to allocate memory");
     }
-    free(uuid);
+    if (uuid) free(uuid);
 #endif
     
 #ifdef USE_UCI

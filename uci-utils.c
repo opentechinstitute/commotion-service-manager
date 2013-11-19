@@ -51,10 +51,12 @@ char *get_uuid(ServiceInfo *i, size_t *uuid_len) {
   char *uri_escaped = NULL;
   char port[6] = "";
   size_t uri_escaped_len, uri_len = 0;
+  AvahiStringList *uri_txt = NULL;
   
   assert(i);
   
-  avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"uri"),NULL,&uri,&uri_len);
+  CHECK((uri_txt = avahi_string_list_find(i->txt_lst,"uri")),"Failed to find uri txt record");
+  avahi_string_list_get_pair(uri_txt,NULL,&uri,&uri_len);
   CHECK(uri && uri_len,"Failed to fetch uri txt record");
   CHECK((uri_escaped = uci_escape(uri,uri_len,&uri_escaped_len)),"Failed to escape URI");
   if (i->port > 0)
@@ -146,7 +148,7 @@ int uci_write(ServiceInfo *i) {
 
   avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"signature"),NULL,&sig,&sig_len);
   
-  uuid = get_uuid(i,&uuid_len);
+  CHECK((uuid = get_uuid(i,&uuid_len)),"Failed to get UUID");
 
   CHECK(sig_len == SIG_LENGTH &&
       isHex(sig,sig_len),
@@ -279,7 +281,7 @@ int uci_remove(ServiceInfo *i) {
   assert(c);
   assert(i);
   
-  uuid = get_uuid(i,&uuid_len);
+  CHECK((uuid = get_uuid(i,&uuid_len)),"Failed to get UUID");
   
   /* Lookup application by name (concatination of URI + port) */
   CHECK(get_uci_section(c,&sec_ptr,"applications",12,uuid,uuid_len,NULL,0) > 0, "(UCI_Remove) Failed application lookup");
