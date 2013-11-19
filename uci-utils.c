@@ -240,8 +240,11 @@ int uci_write(ServiceInfo *i) {
 #endif
   
   // if no type fields in new announcement, remove section from UCI (part of stupid workaround)
-  if (type_state == NO_TYPE_SECTION)
-    UCI_CHECK(uci_delete(c, &type_ptr) == UCI_OK,"(UCI) Failed to delete type section");
+  if (type_state == NO_TYPE_SECTION) {
+    if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
+      UCI_CHECK(uci_delete(c, &type_ptr) == UCI_OK,"(UCI) Failed to delete type section");
+    }
+  }
   
   // uci_save
   UCI_CHECK(uci_save(c, pak) == UCI_OK,"(UCI) Failed to save");
