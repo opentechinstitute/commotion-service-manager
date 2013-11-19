@@ -42,6 +42,18 @@
 /** Directory where Avahi service files are stored */
 #define avahiDir "/etc/avahi/services/"
 
+#ifndef SERVAL_PATH
+#define SERVAL_PATH "/var/serval-node/serval.keyring"
+#endif
+
+struct arguments {
+  #ifdef USE_UCI
+  int uci;
+  #endif
+  int nodaemon;
+  char *output_file;
+};
+
 typedef struct ServiceInfo ServiceInfo;
 /** Struct used to hold info about a service */
 struct ServiceInfo {
@@ -107,5 +119,6 @@ void resolve_callback(
   AvahiLookupResultFlags flags,
   void* userdata);
 void print_service(FILE *f, ServiceInfo *service);
+void sig_handler(int signal);
 
 #endif

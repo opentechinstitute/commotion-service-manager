@@ -1,6 +1,7 @@
 CFLAGS+=-g
 LDFLAGS+=-lserval-crypto -lavahi-core -lavahi-common -luci
-OBJS=util.o commotion-service-manager.o
+TEST_OBJS=util.o commotion-service-manager.o
+OBJS=$(TEST_OBJS) main.o
 DEPS=Makefile commotion-service-manager.h debug.h util.h uci-utils.h
 C_DEPS=commotion-service-manager.c util.c uci-utils.c
 BINDIR=$(DESTDIR)/usr/bin
@@ -64,18 +65,17 @@ ifeq ($(MAKECMDGOALS),test)
 SID = $(shell sudo -u serval servald id self |tail -n1)
 endif
 
-test.o : CFLAGS += -DTESTING
 test.o : test.cpp $(GTEST_HEADERS) $(DEPS) $(C_DEPS)
 ifeq ($(SID),)
 	@echo Was not able to determine Serval ID. Make sure servald is running!
 	@exit 1
 else
 	$(MAKE) clean
-	$(MAKE) $(OBJS) CFLAGS="$(CFLAGS)"
+	$(MAKE) $(TEST_OBJS) CFLAGS="$(CFLAGS)"
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DSID="\"$(SID)\"" -c test.cpp
 endif
 
 test : test.o gtest_main.a
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OBJS) $^ -o $@ $(LDFLAGS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(TEST_OBJS) $^ -o $@ $(LDFLAGS)
 
 .PHONY: all clean install uninstall
