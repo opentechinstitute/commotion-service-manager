@@ -1,5 +1,5 @@
 CFLAGS+=-g
-LDFLAGS+=-lserval-crypto -lavahi-core -lavahi-common -luci
+LDFLAGS+=-lcommotion -lcommotion_serval-sas -lavahi-core -lavahi-common -luci
 TEST_OBJS=util.o commotion-service-manager.o
 OBJS=$(TEST_OBJS) main.o
 DEPS=Makefile commotion-service-manager.h debug.h util.h uci-utils.h
@@ -7,7 +7,7 @@ C_DEPS=commotion-service-manager.c util.c uci-utils.c
 BINDIR=$(DESTDIR)/usr/bin
 
 ifeq ($(MAKECMDGOALS),openwrt)
-CFLAGS+=-DUSE_UCI -DOPENWRT -DSERVAL_PATH="\"/etc/serval/serval.keyring\""
+CFLAGS+=-DUSE_UCI -DOPENWRT
 OBJS+=uci-utils.o
 endif
 openwrt: commotion-service-manager

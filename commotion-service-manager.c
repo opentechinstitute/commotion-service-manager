@@ -27,6 +27,7 @@
 #endif
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <time.h>
@@ -37,10 +38,11 @@
 #include <syslog.h>
 #endif
 
-#include <serval-crypto.h>
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>
+
+#include "commotion.h"
 
 #include "commotion-service-manager.h"
 #include "util.h"
@@ -51,11 +53,22 @@
 #include "uci-utils.h"
 #endif
 
+// from libcommotion_serval-sas
+#define SAS_SIZE 32
+extern int keyring_send_sas_request_client(const char *sid_str, 
+				    const size_t sid_len,
+				    char *sas_buf,
+				    const size_t sas_buf_len);
+
 /** Linked list of all the local services */
 ServiceInfo *services = NULL;
 
 AvahiSimplePoll *simple_poll = NULL;
 AvahiServer *server = NULL;
+
+#define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
+extern co_obj_t *co_conn;
+co_obj_t *co_req = NULL, *co_resp = NULL;
 
 struct arguments arguments;
 
@@ -279,8 +292,25 @@ int verify_announcement(ServiceInfo *i) {
     &to_verify_len);
   
   /* Is the signature valid? 0=yes, 1=no */
-  if (to_verify)
-    verdict = serval_verify(sid,strlen(sid),to_verify,to_verify_len,sig,strlen(sig),SERVAL_PATH,strlen(SERVAL_PATH));
+  if (to_verify) {
+    char sas_buf[2*SAS_SIZE+1] = {0};
+    
+    CHECK(keyring_send_sas_request_client(sid,strlen(sid),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
+    
+    bool output;
+    CHECK_MEM(co_conn);
+    CHECK_MEM((co_req = co_request_create()));
+    CO_APPEND_STR(co_req,"verify");
+    CO_APPEND_STR(co_req,sas_buf);
+    CO_APPEND_STR(co_req,sig);
+    CO_APPEND_STR(co_req,to_verify);
+    CHECK(co_call(co_conn,&co_resp,"serval_verify",sizeof("serval_verify"),co_req) && 
+      co_response_get_bool(co_resp,&output,"result",sizeof("result")),"Failed to verify signature");
+    if (output == true)
+      verdict = 0;
+    co_free(co_req);
+    co_free(co_resp);
+  }
   
 error:
   if (types_list) {

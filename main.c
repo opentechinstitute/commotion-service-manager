@@ -9,6 +9,8 @@
 
 #include <avahi-common/error.h>
 
+#include "commotion.h"
+
 #include "commotion-service-manager.h"
 #include "debug.h"
 
@@ -17,6 +19,7 @@ static int pid_filehandle;
 
 extern AvahiSimplePoll *simple_poll;
 extern AvahiServer *server;
+co_obj_t *co_conn = NULL;
 
 /** Parse commandline options */
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
@@ -158,6 +161,9 @@ int main(int argc, char*argv[]) {
     if (!arguments.nodaemon)
       daemon_start(PIDFILE);
     
+    CHECK(co_init(),"Failed to initialize Commotion client");
+    CHECK((co_conn = co_connect(CO_SOCK,sizeof(CO_SOCK))),"Failed to connect to Commotion socket");
+    
     signal(SIGUSR1, sig_handler);
 
     /* Initialize the psuedo-RNG */
@@ -197,6 +203,8 @@ int main(int argc, char*argv[]) {
     ret = 0;
 
 error:
+
+    co_shutdown();
 
     /* Cleanup things */
     if (stb)

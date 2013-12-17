@@ -22,7 +22,7 @@ define Package/$(PKG_NAME)
   SUBMENU:=Utilities
   TITLE:=Commotion Service Manager
   MAINTAINER:=Open Technology Institute
-  DEPENDS:=+libavahi +libuci +serval-dna +libserval-crypto +argp-standalone
+  DEPENDS:=+libavahi +libuci +commotiond +libcommotion +libcommotion_serval-sas +argp-standalone
 endef
 
 define Package/$(PKG_NAME)/description
