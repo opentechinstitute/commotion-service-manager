@@ -304,7 +304,7 @@ int verify_announcement(ServiceInfo *i) {
     CO_APPEND_STR(co_req,sas_buf);
     CO_APPEND_STR(co_req,sig);
     CO_APPEND_STR(co_req,to_verify);
-    CHECK(co_call(co_conn,&co_resp,"serval_verify",sizeof("serval_verify"),co_req) && 
+    CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req) && 
       co_response_get_bool(co_resp,&output,"result",sizeof("result")),"Failed to verify signature");
     if (output == true)
       verdict = 0;
