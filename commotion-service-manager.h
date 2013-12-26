@@ -55,6 +55,7 @@ struct arguments {
   #endif
   int nodaemon;
   char *output_file;
+  char *pid_file;
 };
 
 typedef struct ServiceInfo ServiceInfo;

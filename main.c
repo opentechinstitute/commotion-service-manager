@@ -39,6 +39,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     case 'n':
       arguments->nodaemon = 1;
       break;
+    case 'p':
+      arguments->pid_file = arg;
+      break;
     default:
       return ARGP_ERR_UNKNOWN;
   }
@@ -146,11 +149,12 @@ int main(int argc, char*argv[]) {
     static char doc[] = "Commotion Service Manager";
     static struct argp_option options[] = {
       {"bind", 'b', "URI", 0, "commotiond management socket"},
+      {"nodaemon", 'n', 0, 0, "Do not fork into the background" },
+      {"out", 'o', "FILE", 0, "Output file to write services to when USR1 signal is received" },
+      {"pid", 'p', "FILE", 0, "Specify PID file"},
 #ifdef USE_UCI
       {"uci", 'u', 0, 0, "Store service cache in UCI" },
 #endif
-      {"out", 'o', "FILE", 0, "Output file to write services to when USR1 signal is received" },
-      {"nodaemon", 'n', 0, 0, "Do not fork into the background" },
       { 0 }
     };
     
@@ -161,6 +165,7 @@ int main(int argc, char*argv[]) {
 #endif
     arguments.nodaemon = 0;
     arguments.output_file = DEFAULT_FILENAME;
+    arguments.pid_file = PIDFILE;
     
     static struct argp argp = { options, parse_opt, NULL, doc };
     
@@ -168,7 +173,7 @@ int main(int argc, char*argv[]) {
     //fprintf(stdout,"uci: %d, out: %s\n",arguments.uci,arguments.output_file);
     
     if (!arguments.nodaemon)
-      daemon_start(PIDFILE);
+      daemon_start(arguments.pid_file);
     
     CHECK(co_init(),"Failed to initialize Commotion client");
     
