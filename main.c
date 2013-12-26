@@ -19,18 +19,20 @@ static int pid_filehandle;
 
 extern AvahiSimplePoll *simple_poll;
 extern AvahiServer *server;
-co_obj_t *co_conn = NULL;
 
 /** Parse commandline options */
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
   struct arguments *arguments = state->input;
   
   switch (key) {
-    #ifdef USE_UCI
+    case 'b':
+      arguments->co_sock = arg;
+      break;
+#ifdef USE_UCI
     case 'u':
       arguments->uci = 1;
       break;
-      #endif
+#endif
     case 'o':
       arguments->output_file = arg;
       break;
@@ -84,9 +86,9 @@ static void daemon_start(char *pidfile) {
    */
   umask(027);
   
-  #ifdef USESYSLOG
+#ifdef USESYSLOG
   openlog("Commotion",LOG_PID,LOG_USER); 
-  #endif
+#endif
   
   /* Get a new process group */
   sid = setsid();
@@ -138,6 +140,7 @@ int main(int argc, char*argv[]) {
     argp_program_version = "1.0";
     static char doc[] = "Commotion Service Manager";
     static struct argp_option options[] = {
+      {"bind", 'b', "URI", 0, "commotiond management socket"},
 #ifdef USE_UCI
       {"uci", 'u', 0, 0, "Store service cache in UCI" },
 #endif
@@ -147,6 +150,7 @@ int main(int argc, char*argv[]) {
     };
     
     /* Set defaults */
+    arguments.co_sock = DEFAULT_CO_SOCK;
 #ifdef USE_UCI
     arguments.uci = 0;
 #endif
@@ -162,7 +166,6 @@ int main(int argc, char*argv[]) {
       daemon_start(PIDFILE);
     
     CHECK(co_init(),"Failed to initialize Commotion client");
-    CHECK((co_conn = co_connect(CO_SOCK,sizeof(CO_SOCK))),"Failed to connect to Commotion socket");
     
     signal(SIGUSR1, sig_handler);
 

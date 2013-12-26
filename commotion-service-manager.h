@@ -46,9 +46,10 @@
 #define SERVAL_PATH "/var/serval-node/serval.keyring"
 #endif
 
-#define CO_SOCK "/var/run/commotiond.sock"
+#define DEFAULT_CO_SOCK "/var/run/commotiond.sock"
 
 struct arguments {
+  char *co_sock;
   #ifdef USE_UCI
   int uci;
   #endif

@@ -67,8 +67,7 @@ AvahiSimplePoll *simple_poll = NULL;
 AvahiServer *server = NULL;
 
 #define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
-extern co_obj_t *co_conn;
-co_obj_t *co_req = NULL, *co_resp = NULL;
+co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
 
 struct arguments arguments;
 
@@ -298,7 +297,7 @@ int verify_announcement(ServiceInfo *i) {
     CHECK(keyring_send_sas_request_client(sid,strlen(sid),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
     
     bool output;
-    CHECK_MEM(co_conn);
+    CHECK((co_conn = co_connect(arguments.co_sock,strlen(arguments.co_sock)+1)),"Failed to connect to Commotion socket");
     CHECK_MEM((co_req = co_request_create()));
     CO_APPEND_STR(co_req,"verify");
     CO_APPEND_STR(co_req,sas_buf);
@@ -310,6 +309,7 @@ int verify_announcement(ServiceInfo *i) {
       verdict = 0;
     co_free(co_req);
     co_free(co_resp);
+    CHECK(co_disconnect(co_conn),"Failed to disconnect from commotiond");
   }
   
 error:
