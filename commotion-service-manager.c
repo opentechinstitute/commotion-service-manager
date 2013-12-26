@@ -67,7 +67,6 @@ AvahiSimplePoll *simple_poll = NULL;
 AvahiServer *server = NULL;
 
 #define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
-co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
 
 struct arguments arguments;
 
@@ -234,6 +233,7 @@ void print_services(int signal) {
  */
 int verify_announcement(ServiceInfo *i) {
   AvahiStringList *txt;
+  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
   char *to_verify = NULL;
   char **types_list = NULL;
   int types_list_len = 0;
@@ -312,12 +312,12 @@ int verify_announcement(ServiceInfo *i) {
       co_response_get_bool(co_resp,&output,"result",sizeof("result")),"Failed to verify signature");
     if (output == true)
       verdict = 0;
-    co_free(co_req);
-    co_free(co_resp);
-    CHECK(co_disconnect(co_conn),"Failed to disconnect from commotiond");
   }
   
 error:
+  if (co_req) co_free(co_req);
+  if (co_resp) co_free(co_resp);
+  if (co_conn) co_disconnect(co_conn);
   if (types_list) {
     for (j = 0; j <types_list_len; ++j)
       avahi_free(types_list[j]);
