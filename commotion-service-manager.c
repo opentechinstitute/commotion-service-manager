@@ -122,27 +122,34 @@ void remove_service(AvahiTimeout *t, void *userdata) {
       avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
     
 #ifdef OPENWRT
-    // Delete Avahi service file
-    DEBUG("Removing Avahi service file");
-    size_t uuid_len = 0;
-    char *uuid = NULL, *serviceFile = NULL;
-    uuid = get_uuid(i,&uuid_len);
-    if (uuid && (serviceFile = (char*)calloc(strlen(avahiDir) + uuid_len + strlen(".service") + 1,sizeof(char)))) {
-      strcpy(serviceFile,avahiDir);
-      strcat(serviceFile,uuid);
-      strcat(serviceFile,".service");
-      if (remove(serviceFile))
-        ERROR("(Remove_Service) Could not delete service file: %s", serviceFile);
-      else
-        INFO("(Remove_Service) Successfully deleted service file: %s", serviceFile);
-      free(serviceFile);
+    if (!is_local(i)) {
+      // Delete Avahi service file
+      DEBUG("Removing Avahi service file");
+      size_t uuid_len = 0;
+      char *uuid = NULL, *serviceFile = NULL;
+      uuid = get_uuid(i,&uuid_len);
+      if (uuid && (serviceFile = (char*)calloc(strlen(avahiDir) + uuid_len + strlen(".service") + 1,sizeof(char)))) {
+        strcpy(serviceFile,avahiDir);
+        strcat(serviceFile,uuid);
+        strcat(serviceFile,".service");
+        if (remove(serviceFile))
+          ERROR("(Remove_Service) Could not delete service file: %s", serviceFile);
+        else
+          INFO("(Remove_Service) Successfully deleted service file: %s", serviceFile);
+        free(serviceFile);
+      }
+      if (uuid) free(uuid);
+      
+      // Delete UCI entry
+      if (arguments.uci && uci_remove(i) < 0)
+	ERROR("(Remove_Service) Could not remove from UCI");
     }
-    if (uuid) free(uuid);
-#endif
-    
-#ifdef USE_UCI
-    if (arguments.uci && uci_remove(i) < 0)
-      ERROR("(Remove_Service) Could not remove from UCI");
+#elif defined USE_UCI
+    if (!is_local(i)) {
+      // Delete UCI entry
+      if (arguments.uci && uci_remove(i) < 0)
+        ERROR("(Remove_Service) Could not remove from UCI");
+    }
 #endif
     
     AVAHI_LLIST_REMOVE(ServiceInfo, info, services, i);
