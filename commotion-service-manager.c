@@ -122,7 +122,7 @@ void remove_service(AvahiTimeout *t, void *userdata) {
       avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
     
 #ifdef OPENWRT
-    if (!is_local(i)) {
+    if (t && is_local(i)) {
       // Delete Avahi service file
       DEBUG("Removing Avahi service file");
       size_t uuid_len = 0;
@@ -139,13 +139,11 @@ void remove_service(AvahiTimeout *t, void *userdata) {
         free(serviceFile);
       }
       if (uuid) free(uuid);
-      
-      // Delete UCI entry
-      if (arguments.uci && uci_remove(i) < 0)
-	ERROR("(Remove_Service) Could not remove from UCI");
     }
-#elif defined USE_UCI
-    if (!is_local(i)) {
+#endif
+    
+#ifdef USE_UCI
+    if (t || !is_local(i)) {
       // Delete UCI entry
       if (arguments.uci && uci_remove(i) < 0)
         ERROR("(Remove_Service) Could not remove from UCI");
