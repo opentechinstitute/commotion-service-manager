@@ -308,3 +308,33 @@ error:
   if (uuid) free(uuid);
   return ret;
 }
+
+/** Determine if a service is local to this node
+ * @param i ServiceInfo object of the service
+ * @return 1=it's local, 0=it's not local, -1=error
+ */
+int is_local(ServiceInfo *i) {
+  struct uci_ptr local_ptr;
+  char *uuid = NULL;
+  size_t uuid_len = 0;
+  int ret = -1;
+  
+  struct uci_context *c = uci_alloc_context();
+  
+  CHECK((uuid = get_uuid(i,&uuid_len)),"Failed to get UUID");
+  
+  /* Make sure application isn't local to this node */
+  CHECK(get_uci_section(c,&local_ptr,"applications",12,uuid,uuid_len,"localapp",8) > 0, "Failed application lookup");
+  if (!(local_ptr.flags & UCI_LOOKUP_COMPLETE) || strcmp(local_ptr.o->v.string,"1") != 0) {
+    INFO("Application NOT local");
+    ret = 0;
+  } else {
+    INFO("Application is local");
+    ret = 1;
+  } 
+  
+error:
+  if (c) uci_free_context(c);
+  if (uuid) free(uuid);
+  return ret;
+}
