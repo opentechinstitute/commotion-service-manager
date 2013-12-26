@@ -179,7 +179,7 @@ void remove_service(AvahiTimeout *t, void *userdata) {
  * @param f File to output to
  * @param service the service to print
  */
-void print_service(FILE *f, ServiceInfo *service) {
+static void _print_service(FILE *f, ServiceInfo *service) {
     char interface_string[IF_NAMESIZE];
     const char *protocol_string;
 
@@ -203,7 +203,7 @@ void print_service(FILE *f, ServiceInfo *service) {
 /**
  * Upon resceiving the USR1 signal, print local services
  */
-void sig_handler(int signal) {
+void print_services(int signal) {
     ServiceInfo *i;
     FILE *f = NULL;
 
@@ -214,7 +214,7 @@ void sig_handler(int signal) {
 
     for (i = services; i; i = i->info_next) {
         if (i->resolved)
-            print_service(f, i);
+            _print_service(f, i);
     }
 
     if (f != stdout) {

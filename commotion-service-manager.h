@@ -121,7 +121,7 @@ void resolve_callback(
   AvahiStringList *txt,
   AvahiLookupResultFlags flags,
   void* userdata);
-void print_service(FILE *f, ServiceInfo *service);
+void print_services(int signal);
 void sig_handler(int signal);
 
 #endif

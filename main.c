@@ -45,6 +45,11 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
   return 0;
 }
 
+static void shutdown(int signal) {
+      DEBUG("Received %s, goodbye!", signal == SIGINT ? "SIGINT" : "SIGTERM");
+      avahi_simple_poll_quit(simple_poll);
+}
+
 /**
  * Starts the daemon
  * @param pidfile name of lock file (stores process id)
@@ -167,7 +172,12 @@ int main(int argc, char*argv[]) {
     
     CHECK(co_init(),"Failed to initialize Commotion client");
     
-    signal(SIGUSR1, sig_handler);
+    struct sigaction sa = {0};
+    sa.sa_handler = print_services;
+    CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
+    sa.sa_handler = shutdown;
+    CHECK(sigaction(SIGINT,&sa,NULL) == 0, "Failed to set signal handler");
+    CHECK(sigaction(SIGTERM,&sa,NULL) == 0, "Failed to set signal handler");
 
     /* Initialize the psuedo-RNG */
     srand(time(NULL));
