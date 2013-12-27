@@ -352,8 +352,8 @@ long default_lifetime(void) {
     allow.flags & UCI_LOOKUP_COMPLETE, "Failed settings lookup");
   
   if (strcmp(allow.o->v.string,"0") == 0) {  // force applications to expire
-    CHECK(get_uci_section(c,&exp,"applications",12,"settings",8,"expiration",10) > 0 &&
-      allow.flags & UCI_LOOKUP_COMPLETE, "Failed settings lookup");
+    CHECK(get_uci_section(c,&exp,"applications",12,"settings",8,"lifetime",8) > 0 &&
+      exp.flags & UCI_LOOKUP_COMPLETE, "Failed settings lookup");
     CHECK(isNumeric(exp.o->v.string) && atol(exp.o->v.string) >= 0,"Invalid default lifetime");
     lifetime = atol(exp.o->v.string);
   }
