@@ -19,28 +19,38 @@ static int pid_filehandle;
 
 extern AvahiSimplePoll *simple_poll;
 extern AvahiServer *server;
-co_obj_t *co_conn = NULL;
 
 /** Parse commandline options */
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
   struct arguments *arguments = state->input;
   
   switch (key) {
-    #ifdef USE_UCI
+    case 'b':
+      arguments->co_sock = arg;
+      break;
+#ifdef USE_UCI
     case 'u':
       arguments->uci = 1;
       break;
-      #endif
+#endif
     case 'o':
       arguments->output_file = arg;
       break;
     case 'n':
       arguments->nodaemon = 1;
       break;
+    case 'p':
+      arguments->pid_file = arg;
+      break;
     default:
       return ARGP_ERR_UNKNOWN;
   }
   return 0;
+}
+
+static void shutdown(int signal) {
+      DEBUG("Received %s, goodbye!", signal == SIGINT ? "SIGINT" : "SIGTERM");
+      avahi_simple_poll_quit(simple_poll);
 }
 
 /**
@@ -84,9 +94,9 @@ static void daemon_start(char *pidfile) {
    */
   umask(027);
   
-  #ifdef USESYSLOG
+#ifdef USESYSLOG
   openlog("Commotion",LOG_PID,LOG_USER); 
-  #endif
+#endif
   
   /* Get a new process group */
   sid = setsid();
@@ -138,20 +148,24 @@ int main(int argc, char*argv[]) {
     argp_program_version = "1.0";
     static char doc[] = "Commotion Service Manager";
     static struct argp_option options[] = {
+      {"bind", 'b', "URI", 0, "commotiond management socket"},
+      {"nodaemon", 'n', 0, 0, "Do not fork into the background" },
+      {"out", 'o', "FILE", 0, "Output file to write services to when USR1 signal is received" },
+      {"pid", 'p', "FILE", 0, "Specify PID file"},
 #ifdef USE_UCI
       {"uci", 'u', 0, 0, "Store service cache in UCI" },
 #endif
-      {"out", 'o', "FILE", 0, "Output file to write services to when USR1 signal is received" },
-      {"nodaemon", 'n', 0, 0, "Do not fork into the background" },
       { 0 }
     };
     
     /* Set defaults */
+    arguments.co_sock = DEFAULT_CO_SOCK;
 #ifdef USE_UCI
     arguments.uci = 0;
 #endif
     arguments.nodaemon = 0;
     arguments.output_file = DEFAULT_FILENAME;
+    arguments.pid_file = PIDFILE;
     
     static struct argp argp = { options, parse_opt, NULL, doc };
     
@@ -159,12 +173,16 @@ int main(int argc, char*argv[]) {
     //fprintf(stdout,"uci: %d, out: %s\n",arguments.uci,arguments.output_file);
     
     if (!arguments.nodaemon)
-      daemon_start(PIDFILE);
+      daemon_start(arguments.pid_file);
     
     CHECK(co_init(),"Failed to initialize Commotion client");
-    CHECK((co_conn = co_connect(CO_SOCK,sizeof(CO_SOCK))),"Failed to connect to Commotion socket");
     
-    signal(SIGUSR1, sig_handler);
+    struct sigaction sa = {0};
+    sa.sa_handler = print_services;
+    CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
+    sa.sa_handler = shutdown;
+    CHECK(sigaction(SIGINT,&sa,NULL) == 0, "Failed to set signal handler");
+    CHECK(sigaction(SIGTERM,&sa,NULL) == 0, "Failed to set signal handler");
 
     /* Initialize the psuedo-RNG */
     srand(time(NULL));

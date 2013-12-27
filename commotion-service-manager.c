@@ -67,8 +67,6 @@ AvahiSimplePoll *simple_poll = NULL;
 AvahiServer *server = NULL;
 
 #define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
-extern co_obj_t *co_conn;
-co_obj_t *co_req = NULL, *co_resp = NULL;
 
 struct arguments arguments;
 
@@ -180,7 +178,7 @@ void remove_service(AvahiTimeout *t, void *userdata) {
  * @param f File to output to
  * @param service the service to print
  */
-void print_service(FILE *f, ServiceInfo *service) {
+static void _print_service(FILE *f, ServiceInfo *service) {
     char interface_string[IF_NAMESIZE];
     const char *protocol_string;
 
@@ -204,7 +202,7 @@ void print_service(FILE *f, ServiceInfo *service) {
 /**
  * Upon resceiving the USR1 signal, print local services
  */
-void sig_handler(int signal) {
+void print_services(int signal) {
     ServiceInfo *i;
     FILE *f = NULL;
 
@@ -215,7 +213,7 @@ void sig_handler(int signal) {
 
     for (i = services; i; i = i->info_next) {
         if (i->resolved)
-            print_service(f, i);
+            _print_service(f, i);
     }
 
     if (f != stdout) {
@@ -230,6 +228,7 @@ void sig_handler(int signal) {
  */
 int verify_announcement(ServiceInfo *i) {
   AvahiStringList *txt;
+  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
   char *to_verify = NULL;
   char **types_list = NULL;
   int types_list_len = 0;
@@ -298,7 +297,7 @@ int verify_announcement(ServiceInfo *i) {
     CHECK(keyring_send_sas_request_client(sid,strlen(sid),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
     
     bool output;
-    CHECK_MEM(co_conn);
+    CHECK((co_conn = co_connect(arguments.co_sock,strlen(arguments.co_sock)+1)),"Failed to connect to Commotion socket");
     CHECK_MEM((co_req = co_request_create()));
     CO_APPEND_STR(co_req,"verify");
     CO_APPEND_STR(co_req,sas_buf);
@@ -308,11 +307,12 @@ int verify_announcement(ServiceInfo *i) {
       co_response_get_bool(co_resp,&output,"result",sizeof("result")),"Failed to verify signature");
     if (output == true)
       verdict = 0;
-    co_free(co_req);
-    co_free(co_resp);
   }
   
 error:
+  if (co_req) co_free(co_req);
+  if (co_resp) co_free(co_resp);
+  if (co_conn) co_disconnect(co_conn);
   if (types_list) {
     for (j = 0; j <types_list_len; ++j)
       avahi_free(types_list[j]);

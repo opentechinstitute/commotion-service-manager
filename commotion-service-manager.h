@@ -46,14 +46,16 @@
 #define SERVAL_PATH "/var/serval-node/serval.keyring"
 #endif
 
-#define CO_SOCK "/var/run/commotiond.sock"
+#define DEFAULT_CO_SOCK "/var/run/commotiond.sock"
 
 struct arguments {
+  char *co_sock;
   #ifdef USE_UCI
   int uci;
   #endif
   int nodaemon;
   char *output_file;
+  char *pid_file;
 };
 
 typedef struct ServiceInfo ServiceInfo;
@@ -120,7 +122,7 @@ void resolve_callback(
   AvahiStringList *txt,
   AvahiLookupResultFlags flags,
   void* userdata);
-void print_service(FILE *f, ServiceInfo *service);
+void print_services(int signal);
 void sig_handler(int signal);
 
 #endif
