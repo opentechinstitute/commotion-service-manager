@@ -74,4 +74,10 @@ int get_uci_section(struct uci_context *c,
 		    const char *op,
 		    const size_t op_len);
 
+/** Determine if a service is local to this node
+ * @param i ServiceInfo object of the service
+ * @return 1=it's local, 0=it's not local
+ */
+int is_local(ServiceInfo *i);
+
 #endif
