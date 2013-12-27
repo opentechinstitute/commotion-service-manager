@@ -338,3 +338,28 @@ error:
   if (uuid) free(uuid);
   return ret;
 }
+
+/** Fetch default lifetime from UCI
+ * @return if applications.settings.allowpermanent==0, returns default lifetime
+ */
+long default_lifetime(void) {
+  long lifetime = 0;
+#ifdef USE_UCI
+  struct uci_ptr allow, exp;
+  struct uci_context *c = uci_alloc_context();
+  
+  CHECK(get_uci_section(c,&allow,"applications",12,"settings",8,"allowpermanent",14) > 0 &&
+    allow.flags & UCI_LOOKUP_COMPLETE, "Failed settings lookup");
+  
+  if (strcmp(allow.o->v.string,"0") == 0) {  // force applications to expire
+    CHECK(get_uci_section(c,&exp,"applications",12,"settings",8,"lifetime",8) > 0 &&
+      exp.flags & UCI_LOOKUP_COMPLETE, "Failed settings lookup");
+    CHECK(isNumeric(exp.o->v.string) && atol(exp.o->v.string) >= 0,"Invalid default lifetime");
+    lifetime = atol(exp.o->v.string);
+  }
+  
+error:
+  if (c) uci_free_context(c);
+#endif
+  return lifetime;
+}

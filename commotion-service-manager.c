@@ -371,7 +371,7 @@ void resolve_callback(
     time_t current_time;
     char* c_time_string;
     struct tm *timestr;
-    long lifetime = 0;
+    long lifetime = 0, expiration;
     
     assert(r);
 
@@ -452,18 +452,22 @@ void resolve_callback(
 	      INFO("Announcement signature verification succeeded");
 	    
 	    /* Set expiration timer on the service */
-	    avahi_elapse_time(&tv, 1000*lifetime, 0);
-	    current_time = time(NULL);
-	    i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, remove_service, i); // create expiration event for service
+	    expiration = default_lifetime();
+	    if (lifetime > 0 && (expiration > lifetime || expiration == 0)) expiration = lifetime;
+	    if (expiration > 0) {
+	      avahi_elapse_time(&tv, 1000*expiration, 0);
+	      current_time = time(NULL);
+	      i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, remove_service, i); // create expiration event for service
 	    
-	    /* Convert lifetime period into timestamp */
-	    if (current_time != ((time_t)-1)) {
-	      timestr = localtime(&current_time);
-	      timestr->tm_sec += lifetime;
-	      current_time = mktime(timestr);
-	      if ((c_time_string = ctime(&current_time))) {
-		c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
-	        i->txt_lst = avahi_string_list_add_printf(i->txt_lst,"expiration=%s",c_time_string);
+	      /* Convert expiration period into timestamp */
+	      if (current_time != ((time_t)-1)) {
+	        timestr = localtime(&current_time);
+		timestr->tm_sec += expiration;
+	        current_time = mktime(timestr);
+	        if ((c_time_string = ctime(&current_time))) {
+		  c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
+	          i->txt_lst = avahi_string_list_add_printf(i->txt_lst,"expiration=%s",c_time_string);
+	        }
 	      }
 	    }
 	    
