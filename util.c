@@ -67,7 +67,7 @@ int isValidTtl(const char *ttl) {
 }
 
 int isValidLifetime(const char *lifetime_str) {
-  return isNumeric(lifetime_str) && atol(lifetime_str) > 0;
+  return isNumeric(lifetime_str) && atol(lifetime_str) >= 0;
 }
 
 int isValidFingerprint(const char *sid, size_t sid_len) {

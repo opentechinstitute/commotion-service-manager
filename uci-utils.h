@@ -80,4 +80,9 @@ int get_uci_section(struct uci_context *c,
  */
 int is_local(ServiceInfo *i);
 
+/** Fetch default lifetime from UCI
+ * @return if applications.settings.allowpermanent==0, returns default lifetime
+ */
+long default_lifetime(void);
+
 #endif
