@@ -15,7 +15,8 @@ Dependencies
 The Commotion Service Manager is most useful when built with [UCI][] support, which comes by default with OpenWRT. For Linux, download and install [luci-commotion-linux][], which comes with UCI.
 
 Other dependencies:
- * [Avahi daemon][]
+ * [commotiond][] (OpenWRT only)
+ * [libavahi][]
 
 Build and Install
 -----------------
@@ -37,5 +38,6 @@ Uninstall
 
 [UCI]: http://nbd.name/gitweb.cgi?p=uci.git
 [luci-commotion-linux]: https://github.com/opentechinstitute/luci-commotion-linux
-[Avahi daemon]: http://avahi.org/
+[commotiond]: https://github.com/opentechinstitute/commotiond
+[libavahi]: http://avahi.org/
 [Commotion feed]: https://github.com/opentechinstitute/commotion-feed

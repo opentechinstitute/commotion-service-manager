@@ -6,7 +6,8 @@ The Commotion Service Manager receives, parses, verifies, and caches service ann
 Changelog
 ---------
 
-28 Oct 2013: Release v0.1
+28 Oct 2013: Release v0.2
+28 Dec 2013: Release v0.3
 
 [Avahi]: http://avahi.org/
 [Serval-crypto]: https://github.com/opentechinstitute/serval-crypto
