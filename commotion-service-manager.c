@@ -358,7 +358,7 @@ void resolve_callback(
     const char *domain,
     const char *host_name,
     const AvahiAddress *address,
-    long port,
+    uint16_t port,
     AvahiStringList *txt,
     AvahiLookupResultFlags flags,
     void* userdata) {
