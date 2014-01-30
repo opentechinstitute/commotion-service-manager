@@ -27,7 +27,10 @@
 
 #include <stdlib.h>
 
+#include <avahi-core/core.h>
 #include <avahi-core/lookup.h>
+#include <avahi-client/client.h>
+#include <avahi-client/lookup.h>
 #include <avahi-common/simple-watch.h>
 #include <avahi-common/llist.h>
 
@@ -47,6 +50,32 @@
 #endif
 
 #define DEFAULT_CO_SOCK "/var/run/commotiond.sock"
+
+#ifdef CLIENT
+#define TYPE_BROWSER AvahiServiceTypeBrowser
+#define TYPE_BROWSER_NEW(A,B,C,D,E) avahi_service_type_browser_new(client,A,B,C,D,E,client)
+#define TYPE_BROWSER_FREE(J) avahi_service_type_browser_free(J)
+#define BROWSER AvahiServiceBrowser
+#define BROWSER_NEW(A,B,C,D,E,F) avahi_service_browser_new(client,A,B,C,D,E,F,client)
+#define RESOLVER AvahiServiceResolver
+#define RESOLVER_NEW(A,B,C,D,E,F,G,H,I) avahi_service_resolver_new(client,A,B,C,D,E,F,G,H,I)
+#define RESOLVER_FREE(J) avahi_service_resolver_free(J)
+#define AVAHI_ERROR avahi_strerror(avahi_client_errno(client))
+#define AVAHI_BROWSER_ERROR avahi_strerror(avahi_client_errno(avahi_service_browser_get_client(b)))
+#define FREE_AVAHI() if (client) avahi_client_free(client);
+#else
+#define TYPE_BROWSER AvahiSServiceTypeBrowser
+#define TYPE_BROWSER_NEW(A,B,C,D,E) avahi_s_service_type_browser_new(server,A,B,C,D,E,server)
+#define TYPE_BROWSER_FREE(J) avahi_s_service_type_browser_free(J)
+#define BROWSER AvahiSServiceBrowser
+#define BROWSER_NEW(A,B,C,D,E,F) avahi_s_service_browser_new(server,A,B,C,D,E,F,server)
+#define RESOLVER AvahiSServiceResolver
+#define RESOLVER_NEW(A,B,C,D,E,F,G,H,I) avahi_s_service_resolver_new(server,A,B,C,D,E,F,G,H,I)
+#define RESOLVER_FREE(J) avahi_s_service_resolver_free(J)
+#define AVAHI_ERROR avahi_strerror(avahi_server_errno(server))
+#define AVAHI_BROWSER_ERROR AVAHI_ERROR
+#define FREE_AVAHI() if (server) avahi_server_free(server);
+#endif
 
 struct arguments {
   char *co_sock;
@@ -73,7 +102,7 @@ struct ServiceInfo {
     AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
     AvahiTimeout *timeout; /** Timer set for the service's expiration date */
 
-    AvahiSServiceResolver *resolver;
+    RESOLVER *resolver;
     int resolved; /**< Flag indicating whether all the fields have been resolved */
 
     AVAHI_LLIST_FIELDS(ServiceInfo, info);
@@ -86,7 +115,7 @@ extern AvahiServer *server;
 
 // TODO document these
 void browse_type_callback(
-    AvahiSServiceTypeBrowser *b,
+    TYPE_BROWSER *b,
     AvahiIfIndex interface,
     AvahiProtocol protocol,
     AvahiBrowserEvent event,
@@ -95,7 +124,7 @@ void browse_type_callback(
     AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
     void* userdata);
 void browse_service_callback(
-    AvahiSServiceBrowser *b,
+    BROWSER *b,
     AvahiIfIndex interface,
     AvahiProtocol protocol,
     AvahiBrowserEvent event,
@@ -105,11 +134,11 @@ void browse_service_callback(
     AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
     void* userdata);
 ServiceInfo *find_service(const char *name);
-ServiceInfo *add_service(AvahiIfIndex interface, AvahiProtocol protocol, const char *name, const char *type, const char *domain);
+ServiceInfo *add_service(BROWSER *b, AvahiIfIndex interface, AvahiProtocol protocol, const char *name, const char *type, const char *domain);
 void remove_service(AvahiTimeout *t, void *userdata);
 int verify_announcement(ServiceInfo *i);
 void resolve_callback(
-  AvahiSServiceResolver *r,
+  RESOLVER *r,
   AVAHI_GCC_UNUSED AvahiIfIndex interface,
   AVAHI_GCC_UNUSED AvahiProtocol protocol,
   AvahiResolverEvent event,

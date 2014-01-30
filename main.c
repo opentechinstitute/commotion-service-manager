@@ -7,6 +7,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <avahi-core/core.h>
+#include <avahi-core/lookup.h>
+#include <avahi-client/client.h>
+#include <avahi-client/lookup.h>
 #include <avahi-common/error.h>
 
 #include "commotion.h"
@@ -18,7 +22,9 @@ extern struct arguments arguments;
 static int pid_filehandle;
 
 extern AvahiSimplePoll *simple_poll;
+#ifndef CLIENT
 extern AvahiServer *server;
+#endif
 
 /** Parse commandline options */
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
@@ -139,9 +145,26 @@ static void daemon_start(char *pidfile) {
   
 }
 
+#ifdef CLIENT
+static void client_callback(AvahiClient *c, AvahiClientState state, AVAHI_GCC_UNUSED void * userdata) {
+    assert(c);
+
+    /* Called whenever the client or server state changes */
+
+    if (state == AVAHI_CLIENT_FAILURE) {
+        ERROR("Server connection failure: %s", avahi_strerror(avahi_client_errno(c)));
+        avahi_simple_poll_quit(simple_poll);
+    }
+}
+#endif
+
 int main(int argc, char*argv[]) {
+#ifdef CLIENT
+    AvahiClient *client = NULL;
+#else
     AvahiServerConfig config;
-    AvahiSServiceTypeBrowser *stb = NULL;
+#endif
+    TYPE_BROWSER *stb = NULL;
     int error;
     int ret = 1;
 
@@ -190,6 +213,11 @@ int main(int argc, char*argv[]) {
     /* Allocate main loop object */
     CHECK((simple_poll = avahi_simple_poll_new()),"Failed to create simple poll object.");
 
+#ifdef CLIENT
+    /* Allocate a new client */
+    client = avahi_client_new(avahi_simple_poll_get(simple_poll), 0, client_callback, NULL, &error);
+    CHECK(client,"Failed to create client: %s", avahi_strerror(error));
+#else
     /* Do not publish any local records */
     avahi_server_config_init(&config);
     config.publish_hinfo = 0;
@@ -210,10 +238,11 @@ int main(int argc, char*argv[]) {
 
     /* Check wether creating the server object succeeded */
     CHECK(server,"Failed to create server: %s", avahi_strerror(error));
+#endif
 
     /* Create the service browser */
-    CHECK((stb = avahi_s_service_type_browser_new(server, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback, server)),
-        "Failed to create service browser: %s", avahi_strerror(avahi_server_errno(server)));
+    CHECK((stb = TYPE_BROWSER_NEW(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback)),
+        "Failed to create service browser: %s", AVAHI_ERROR);
     
     /* Run the main loop */
     avahi_simple_poll_loop(simple_poll);
@@ -226,10 +255,9 @@ error:
 
     /* Cleanup things */
     if (stb)
-        avahi_s_service_type_browser_free(stb);
+        TYPE_BROWSER_FREE(stb);
 
-    if (server)
-        avahi_server_free(server);
+    FREE_AVAHI();
 
     if (simple_poll)
         avahi_simple_poll_free(simple_poll);
