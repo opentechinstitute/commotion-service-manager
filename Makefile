@@ -1,9 +1,9 @@
 CFLAGS+=-g
 LDFLAGS+=-lcommotion -lcommotion_serval-sas -lavahi-core -lavahi-common -luci
-TEST_OBJS=util.o commotion-service-manager.o
+TEST_OBJS=util.o commotion-service-manager.o browse.o
 OBJS=$(TEST_OBJS) main.o
-DEPS=Makefile commotion-service-manager.h debug.h util.h uci-utils.h
-C_DEPS=commotion-service-manager.c util.c uci-utils.c
+DEPS=Makefile commotion-service-manager.h debug.h util.h uci-utils.h browse.h
+C_DEPS=commotion-service-manager.c util.c uci-utils.c browse.c
 BINDIR=$(DESTDIR)/usr/bin
 
 ifeq ($(MAKECMDGOALS),openwrt)

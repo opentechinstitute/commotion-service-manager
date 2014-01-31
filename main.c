@@ -18,14 +18,15 @@
 #include "commotion.h"
 
 #include "commotion-service-manager.h"
+#include "browse.h"
 #include "debug.h"
 
-extern struct arguments arguments;
+struct arguments arguments;
 static int pid_filehandle;
 
-extern AvahiSimplePoll *simple_poll;
+AvahiSimplePoll *simple_poll = NULL;
 #ifndef CLIENT
-extern AvahiServer *server;
+AvahiServer *server = NULL;
 #endif
 
 /** Parse commandline options */
@@ -222,15 +223,9 @@ int main(int argc, char*argv[]) {
 #else
     /* Do not publish any local records */
     avahi_server_config_init(&config);
-    config.publish_hinfo = 0;
-    config.publish_addresses = 0;
+    CHECK_MEM((config.host_name = calloc(HOST_NAME_MAX,sizeof(char))));
+    CHECK(gethostname(config.host_name,HOST_NAME_MAX) == 0, "Failed to fetch hostname");
     config.publish_workstation = 0;
-    config.publish_domain = 0;
-
-    /* Set a unicast DNS server for wide area DNS-SD */
-    avahi_address_parse("192.168.50.1", AVAHI_PROTO_UNSPEC, &config.wide_area_servers[0]);
-    config.n_wide_area_servers = 1;
-    config.enable_wide_area = 1;
 
     /* Allocate a new server */
     server = avahi_server_new(avahi_simple_poll_get(simple_poll), &config, NULL, NULL, &error);
