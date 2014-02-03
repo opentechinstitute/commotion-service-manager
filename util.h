@@ -27,6 +27,14 @@
 
 #include <avahi-core/core.h>
 
+#ifndef _GNU_SOURCE
+#define asprintf(B,T,...) ({ \
+  int n = snprintf(NULL,0,T,##__VA_ARGS__); \
+  *B = calloc(n+1,sizeof(char)); \
+  snprintf(*B,n,T,##__VA_ARGS__); \
+})
+#endif
+
 #define ESCAPE_QUOTE "&quot;"
 #define ESCAPE_QUOTE_LEN 6
 #define ESCAPE_LF "&#10;"

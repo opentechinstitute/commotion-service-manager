@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #include <avahi-common/error.h>
 #include <avahi-core/core.h>
@@ -203,7 +204,7 @@ int main(int argc, char*argv[]) {
     
     CHECK(co_init(),"Failed to initialize Commotion client");
     
-    struct sigaction sa = {0};
+    struct sigaction sa = {{0}};
     sa.sa_handler = print_services;
     CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
     sa.sa_handler = shutdown;

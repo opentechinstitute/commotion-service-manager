@@ -197,7 +197,7 @@ char *txt_list_to_string(AvahiStringList *txt) {
   int list_len = 0;
   for (; txt; txt = txt->next) {
     int escaped_len = 0;
-    char *escaped = escape(txt->text, &escaped_len);
+    char *escaped = escape((char*)txt->text, &escaped_len);
     
     CHECK_MEM((list = (char*)realloc(list, list_len + 
     OPEN_DELIMITER_LEN +

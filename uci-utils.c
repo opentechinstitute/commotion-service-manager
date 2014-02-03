@@ -126,11 +126,10 @@ error:
  */
 int uci_write(ServiceInfo *i) {
   struct uci_context *c = NULL;
-  struct uci_ptr sec_ptr,sig_ptr,type_ptr,approved_ptr;
+  struct uci_ptr sec_ptr,sig_ptr,type_ptr;
   int uci_ret, ret = -1;
   char *sig = NULL, *uuid = NULL;
   struct uci_package *pak = NULL;
-  struct uci_section *sec = NULL;
   struct uci_element *e = NULL;
   AvahiStringList *txt = NULL;
   size_t sig_len = 0, uuid_len = 0;
@@ -209,7 +208,7 @@ int uci_write(ServiceInfo *i) {
     }
     UCI_CHECK(!uci_ret,"(UCI) Failed to set");
     INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
-  } while (txt = avahi_string_list_get_next(txt));
+  } while ((txt = avahi_string_list_get_next(txt)));
   
   // set uuid and approved fields
   sec_ptr.option = "uuid";

@@ -86,7 +86,7 @@ int verify_announcement(ServiceInfo *i) {
 	int types_list_len = 0;
 	char *key, *val, *app, *uri, *icon, *desc, *sid, *sig;
 	unsigned int ttl = 0;
-	unsigned long lifetime = 0;
+	long lifetime = 0;
 	int j, verdict = 1, to_verify_len = 0;
 	size_t val_len;
 	
@@ -387,6 +387,8 @@ void browse_service_callback(
         case AVAHI_BROWSER_CACHE_EXHAUSTED:
             INFO("(Browser) %s", "CACHE_EXHAUSTED");
             break;
+	default:
+	    break;
     }
 }
 
@@ -438,5 +440,7 @@ void browse_type_callback(
         case AVAHI_BROWSER_CACHE_EXHAUSTED:
             INFO("Cache exhausted");
             break;
+	default:
+	    break;
     }
 }
