@@ -7,11 +7,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <avahi-common/error.h>
 #include <avahi-core/core.h>
 #include <avahi-core/lookup.h>
+#ifdef CLIENT
 #include <avahi-client/client.h>
 #include <avahi-client/lookup.h>
-#include <avahi-common/error.h>
+#endif
 
 #include "commotion.h"
 

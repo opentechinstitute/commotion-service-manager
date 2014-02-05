@@ -27,12 +27,14 @@
 
 #include <stdlib.h>
 
-#include <avahi-core/core.h>
-#include <avahi-core/lookup.h>
-#include <avahi-client/client.h>
-#include <avahi-client/lookup.h>
 #include <avahi-common/simple-watch.h>
 #include <avahi-common/llist.h>
+#include <avahi-core/core.h>
+#include <avahi-core/lookup.h>
+#ifdef CLIENT
+#include <avahi-client/client.h>
+#include <avahi-client/lookup.h>
+#endif
 
 /** Length (in hex chars) of Serval IDs */
 #define FINGERPRINT_LEN 64
