@@ -1,6 +1,6 @@
 /**
- *       @file  browse.h
- *      @brief  functionality for receiving and processing service announcements
+ *       @file  service.h
+ *      @brief  service-related functionality of the Commotion Service Manager
  *
  *     @author  Dan Staples (dismantl), danstaples@opentechinstitute.org
  *
@@ -22,42 +22,27 @@
  * =====================================================================================
  */
 
-#ifndef CSM_BROWSE_H
-#define CSM_BROWSE_H
+#ifndef CSM_SERVICE_H
+#define CSM_SERVICE_H
 
 #include <stdlib.h>
 
 #include <avahi-core/core.h>
 #include <avahi-core/lookup.h>
+#include <avahi-core/publish.h>
 #include <avahi-client/client.h>
 #include <avahi-client/lookup.h>
+#include <avahi-client/publish.h>
 #include <avahi-common/llist.h>
 
-#include "internal.h"
-
-void resolve_callback(
-  RESOLVER *r,
-  AVAHI_GCC_UNUSED AvahiIfIndex interface,
-  AVAHI_GCC_UNUSED AvahiProtocol protocol,
-  AvahiResolverEvent event,
-  const char *name,
-  const char *type,
-  const char *domain,
-  const char *host_name,
-  const AvahiAddress *address,
-  uint16_t port,
-  AvahiStringList *txt,
-  AvahiLookupResultFlags flags,
-  void* userdata);
-
-void browse_type_callback(
-    TYPE_BROWSER *b,
-    AvahiIfIndex interface,
-    AvahiProtocol protocol,
-    AvahiBrowserEvent event,
-    const char *type,
-    const char *domain,
-    AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
-    void* userdata);
+ServiceInfo *find_service(const char *name);
+ServiceInfo *add_service(BROWSER *b, 
+			 AvahiIfIndex interface, 
+			 AvahiProtocol protocol, 
+			 const char *name, 
+			 const char *type, 
+			 const char *domain);
+void remove_service(AvahiTimeout *t, void *userdata);
+void print_services(int signal);
 
 #endif

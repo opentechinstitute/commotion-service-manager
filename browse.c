@@ -45,10 +45,12 @@
 #include <avahi-common/llist.h>
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
+#include <avahi-common/simple-watch.h>
 
 #include "commotion.h"
 
-#include "commotion-service-manager.h"
+#include "internal.h"
+#include "service.h"
 #include "browse.h"
 #include "util.h"
 #include "debug.h"
@@ -67,7 +69,7 @@ extern int keyring_send_sas_request_client(const char *sid_str,
 					   char *sas_buf,
 					   const size_t sas_buf_len);
 
-extern struct arguments arguments;
+extern csm_config config;
 extern AvahiSimplePoll *simple_poll;
 #ifndef CLIENT
 extern AvahiServer *server;
@@ -149,7 +151,7 @@ int verify_announcement(ServiceInfo *i) {
 		CHECK(keyring_send_sas_request_client(sid,strlen(sid),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
 		
 		bool output;
-		CHECK((co_conn = co_connect(arguments.co_sock,strlen(arguments.co_sock)+1)),"Failed to connect to Commotion socket");
+		CHECK((co_conn = co_connect(config.co_sock,strlen(config.co_sock)+1)),"Failed to connect to Commotion socket");
 		CHECK_MEM((co_req = co_request_create()));
 		CO_APPEND_STR(co_req,"verify");
 		CO_APPEND_STR(co_req,sas_buf);
@@ -328,7 +330,7 @@ void resolve_callback(
 	    }
 	    
 #ifdef USE_UCI
-	    if (arguments.uci && uci_write(i) < 0)
+	    if (config.uci && uci_write(i) < 0)
 	      ERROR("(Resolver) Could not write to UCI");
 #endif
             

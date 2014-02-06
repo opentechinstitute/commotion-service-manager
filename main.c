@@ -1,3 +1,27 @@
+/**
+ *       @file  main.c
+ *      @brief  Entry point and commands for CSM daemon
+ *
+ *     @author  Dan Staples (dismantl), danstaples@opentechinstitute.org
+ *
+ * This file is part of Commotion, Copyright (c) 2013, Josh King 
+ * 
+ * Commotion is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published 
+ * by the Free Software Foundation, either version 3 of the License, 
+ * or (at your option) any later version.
+ * 
+ * Commotion is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Commotion.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * =====================================================================================
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <argp.h>
@@ -7,8 +31,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <sys/socket.h>
 
 #include <avahi-common/error.h>
+#include <avahi-common/alternative.h>
+#include <avahi-common/malloc.h>
+#include <avahi-common/simple-watch.h>
 #include <avahi-core/core.h>
 #include <avahi-core/lookup.h>
 #ifdef CLIENT
@@ -16,41 +44,181 @@
 #include <avahi-client/lookup.h>
 #endif
 
+#include "commotion/obj.h"
+#include "commotion/cmd.h"
+#include "commotion/msg.h"
+#include "commotion/list.h"
+#include "commotion/tree.h"
+#include "commotion/socket.h"
+#include "commotion/util.h"
 #include "commotion.h"
 
-#include "commotion-service-manager.h"
+#include "internal.h"
+#include "service.h"
 #include "browse.h"
 #include "debug.h"
 
-struct arguments arguments;
+#define REQUEST_MAX 1024
+#define RESPONSE_MAX 1024
+
+extern co_socket_t unix_socket_proto;
+
+csm_config config;
 static int pid_filehandle;
+static co_socket_t *csm_socket = NULL;
 
 AvahiSimplePoll *simple_poll = NULL;
 #ifndef CLIENT
 AvahiServer *server = NULL;
 #endif
 
+static co_obj_t *
+_cmd_help_i(co_obj_t *data, co_obj_t *current, void *context) 
+{
+  char *cmd_name = NULL;
+  size_t cmd_len = 0;
+  CHECK((cmd_len = co_obj_data(&cmd_name, ((co_cmd_t *)current)->name)) > 0, "Failed to read command name.");
+  DEBUG("Command: %s, Length: %d", cmd_name, (int)cmd_len);
+  co_tree_insert((co_obj_t *)context, cmd_name, cmd_len, ((co_cmd_t *)current)->usage);
+  return NULL;
+  error:
+  return NULL;
+}
+
+CMD(help)
+{
+  *output = co_tree16_create();
+  if(params != NULL && co_list_length(params) > 0)
+  {
+    co_obj_t *cmd = co_list_element(params, 0);
+    if(cmd != NULL && IS_STR(cmd))
+    {
+      char *cstr = NULL;
+      size_t clen = co_obj_data(&cstr, cmd);
+      if(clen > 0)
+      {
+	co_tree_insert(*output, cstr, clen, co_cmd_desc(cmd));
+	return 1;
+      }
+    }
+    else return 0;
+  }
+  return co_cmd_process(_cmd_help_i, (void *)*output);
+}
+
+CMD(add_service) {
+  co_obj_t *str = co_str8_create("test",sizeof("test"),0);
+  CMD_OUTPUT("response",str);
+  return 1;
+}
+
+CMD(remove_service) {
+  co_obj_t *str = co_str8_create("test",sizeof("test"),0);
+  CMD_OUTPUT("response",str);
+  return 1;
+}
+
+CMD(list_services) {
+  co_obj_t *str = co_str8_create("test",sizeof("test"),0);
+  CMD_OUTPUT("response",str);
+  return 1;
+}
+
+static void socket_send(int fd, char const *str, size_t len) {
+  unsigned int sent = 0;
+  unsigned int remaining = len;
+  int n;
+  while(sent < len) {
+    n = send(fd, str+sent, remaining, 0);
+    if(n < 0) break;
+    sent += n;
+    remaining -= n;
+  }
+  DEBUG("Sent %d bytes.", sent);
+}
+
+static void request_handler(AvahiWatch *w, int fd, AvahiWatchEvent events, void *userdata) {
+  char reqbuf[REQUEST_MAX], respbuf[RESPONSE_MAX];
+  ssize_t reqlen = 0;
+  size_t resplen = 0;
+  co_obj_t *request = NULL, *ret = NULL, *nil = co_nil_create(0);
+  uint8_t *type = NULL;
+  uint32_t *id = NULL;
+  
+  memset(reqbuf, '\0', sizeof(reqbuf));
+  memset(respbuf, '\0', sizeof(respbuf));
+  
+  if (events & AVAHI_WATCH_HUP) {
+    close(fd);
+    avahi_simple_poll_get(simple_poll)->watch_free(w);
+    DEBUG("HUP from %d",fd);
+    return;
+  }
+  
+  INFO("Received connection from %d", fd);
+  if (csm_socket->fd->fd == fd) {
+    int rfd;
+    DEBUG("Accepting connection (fd=%d).", fd);
+    CHECK((rfd = accept(fd, NULL, NULL)) != -1, "Failed to accept connection.");
+    DEBUG("Accepted connection (fd=%d).", rfd);
+    co_obj_t *new_rfd = co_fd_create((co_obj_t*)csm_socket,rfd);
+    CHECK(co_list_append(csm_socket->rfd_lst,new_rfd),"Failed to append rfd");
+    int flags = fcntl(rfd, F_GETFL, 0);
+    fcntl(rfd, F_SETFL, flags | O_NONBLOCK); //Set non-blocking.
+    avahi_simple_poll_get(simple_poll)->watch_new(avahi_simple_poll_get(simple_poll), rfd, AVAHI_WATCH_IN | AVAHI_WATCH_IN, request_handler, NULL);
+    return;
+  }
+  reqlen = recv(fd,reqbuf,sizeof(reqbuf),0);
+  DEBUG("Received %d bytes from %d", (int)reqlen,fd);
+  if (reqlen < 0) {
+    INFO("Connection recvd() -1");
+    close(fd);
+    avahi_simple_poll_get(simple_poll)->watch_free(w);
+    return;
+  }
+  
+  /* If it's a commotion message type, parse the header, target and payload */
+  CHECK(co_list_import(&request, reqbuf, reqlen) > 0, "Failed to import request.");
+  co_obj_data((char **)&type, co_list_element(request, 0));
+  CHECK(*type == 0, "Not a valid request.");
+  CHECK(co_obj_data((char **)&id, co_list_element(request, 1)) == sizeof(uint32_t), "Not a valid request ID.");
+  
+  /* Run command */
+  if(co_cmd_exec(co_list_element(request, 2), &ret, co_list_element(request, 3))) {
+    resplen = co_response_alloc(respbuf, sizeof(respbuf), *id, nil, ret);
+    socket_send(fd,respbuf,resplen);
+  } else {
+    if(ret == NULL) {
+      ret = co_tree16_create();
+      co_tree_insert(ret, "error", sizeof("error"), co_str8_create("Incorrect command.", sizeof("Incorrect command."), 0));
+    }
+    resplen = co_response_alloc(respbuf, sizeof(respbuf), *id, ret, nil);
+    socket_send(fd,respbuf,resplen);
+  }
+  
+error:
+  if (request) co_obj_free(request);
+}
+
 /** Parse commandline options */
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
-  struct arguments *arguments = state->input;
-  
   switch (key) {
     case 'b':
-      arguments->co_sock = arg;
+      config.co_sock = arg;
       break;
 #ifdef USE_UCI
     case 'u':
-      arguments->uci = 1;
+      config.uci = 1;
       break;
 #endif
     case 'o':
-      arguments->output_file = arg;
+      config.output_file = arg;
       break;
     case 'n':
-      arguments->nodaemon = 1;
+      config.nodaemon = 1;
       break;
     case 'p':
-      arguments->pid_file = arg;
+      config.pid_file = arg;
       break;
     default:
       return ARGP_ERR_UNKNOWN;
@@ -58,7 +226,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
   return 0;
 }
 
-static void shutdown(int signal) {
+static void csm_shutdown(int signal) {
       DEBUG("Received %s, goodbye!", signal == SIGINT ? "SIGINT" : "SIGTERM");
       avahi_simple_poll_quit(simple_poll);
 }
@@ -154,11 +322,73 @@ static void client_callback(AvahiClient *c, AvahiClientState state, AVAHI_GCC_UN
     assert(c);
 
     /* Called whenever the client or server state changes */
-
-    if (state == AVAHI_CLIENT_FAILURE) {
-        ERROR("Server connection failure: %s", avahi_strerror(avahi_client_errno(c)));
-        avahi_simple_poll_quit(simple_poll);
+    switch (state) {
+      case AVAHI_CLIENT_S_RUNNING:
+	/* The server has startup successfully and registered its host
+	 * name on the network, so it's time to create our services */
+	// TODO re-register all local apps, if any
+	break;
+      case AVAHI_CLIENT_FAILURE:
+	ERROR("Server connection failure: %s", avahi_strerror(avahi_client_errno(c)));
+	avahi_simple_poll_quit(simple_poll);
+	break;
+      case AVAHI_CLIENT_CONNECTING:
+	/* Avahi daemon is not currently running */
+	// TODO make sure nothing registers apps during this state
+	// see: avahi-commotion/defs.h
+	sleep(1);
+	break;
+      case AVAHI_CLIENT_S_COLLISION:
+	/* Let's drop our registered services. When the server is back
+	 * in AVAHI_SERVER_RUNNING state we will register them
+	 * again with the new host name. */
+	
+	/* drop through */
+      case AVAHI_CLIENT_S_REGISTERING:
+	/* The server records are now being established. This
+	 * might be caused by a host name change. We need to wait
+	 * for our own records to register until the host name is
+	 * properly esatblished. */
+	// TODO unregister all local apps via avahi_entry_group_reset()
+	break;
+      default:
+	;
     }
+}
+#else
+static void server_callback(AvahiServer *s, AvahiServerState state, AVAHI_GCC_UNUSED void * userdata) {
+  assert(s);
+
+  /* Called whenever the server state changes */
+  switch (state) {
+    case AVAHI_SERVER_REGISTERING:
+      //TODO
+      /* Let's drop our registered services. When the server is back
+       * in AVAHI_SERVER_RUNNING state we will register them
+       * again with the new host name. */
+      break;
+    case AVAHI_SERVER_FAILURE:
+      /* Terminate on failure */
+      ERROR("Server failure: %s", avahi_strerror(avahi_server_errno(s)));
+      avahi_simple_poll_quit(simple_poll);
+      break;
+    case AVAHI_SERVER_COLLISION: {
+      char *n;
+      int r;
+      /* A host name collision happened. Let's pick a new name for the server */
+      n = avahi_alternative_host_name(avahi_server_get_host_name(s));
+      ERROR("Host name collision, retrying with '%s'", n);
+      r = avahi_server_set_host_name(s, n);
+      avahi_free(n);
+      if (r < 0) {
+	ERROR("Failed to set new host name: %s", avahi_strerror(r));
+	avahi_simple_poll_quit(simple_poll);
+	return;
+      }
+    }
+    default:
+      ;
+  }
 }
 #endif
 
@@ -166,7 +396,7 @@ int main(int argc, char*argv[]) {
 #ifdef CLIENT
     AvahiClient *client = NULL;
 #else
-    AvahiServerConfig config;
+    AvahiServerConfig avahi_config;
 #endif
     TYPE_BROWSER *stb = NULL;
     int error;
@@ -186,28 +416,30 @@ int main(int argc, char*argv[]) {
     };
     
     /* Set defaults */
-    arguments.co_sock = DEFAULT_CO_SOCK;
+    config.co_sock = DEFAULT_CO_SOCK;
 #ifdef USE_UCI
-    arguments.uci = 0;
+    config.uci = 0;
 #endif
-    arguments.nodaemon = 0;
-    arguments.output_file = DEFAULT_FILENAME;
-    arguments.pid_file = PIDFILE;
+    config.nodaemon = 0;
+    config.output_file = DEFAULT_FILENAME;
+    config.pid_file = PIDFILE;
     
     static struct argp argp = { options, parse_opt, NULL, doc };
     
-    argp_parse (&argp, argc, argv, 0, 0, &arguments);
-    //fprintf(stdout,"uci: %d, out: %s\n",arguments.uci,arguments.output_file);
+    argp_parse (&argp, argc, argv, 0, 0, &config);
+    //fprintf(stdout,"uci: %d, out: %s\n",config.uci,config.output_file);
     
-    if (!arguments.nodaemon)
-      daemon_start(arguments.pid_file);
+    if (!config.nodaemon)
+      daemon_start(config.pid_file);
     
+    /* Initialize socket pool for connecting to commotiond */
     CHECK(co_init(),"Failed to initialize Commotion client");
     
+    /* Register signal handlers */
     struct sigaction sa = {{0}};
     sa.sa_handler = print_services;
     CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
-    sa.sa_handler = shutdown;
+    sa.sa_handler = csm_shutdown;
     CHECK(sigaction(SIGINT,&sa,NULL) == 0, "Failed to set signal handler");
     CHECK(sigaction(SIGTERM,&sa,NULL) == 0, "Failed to set signal handler");
 
@@ -219,20 +451,20 @@ int main(int argc, char*argv[]) {
 
 #ifdef CLIENT
     /* Allocate a new client */
-    client = avahi_client_new(avahi_simple_poll_get(simple_poll), 0, client_callback, NULL, &error);
+    client = avahi_client_new(avahi_simple_poll_get(simple_poll), AVAHI_CLIENT_NO_FAIL, client_callback, NULL, &error);
     CHECK(client,"Failed to create client: %s", avahi_strerror(error));
 #else
     /* Do not publish any local records */
-    avahi_server_config_init(&config);
-    CHECK_MEM((config.host_name = calloc(HOST_NAME_MAX,sizeof(char))));
-    CHECK(gethostname(config.host_name,HOST_NAME_MAX) == 0, "Failed to fetch hostname");
-    config.publish_workstation = 0;
+    avahi_server_config_init(&avahi_config);
+    CHECK_MEM((avahi_config.host_name = calloc(HOST_NAME_MAX,sizeof(char))));
+    CHECK(gethostname(avahi_config.host_name,HOST_NAME_MAX) == 0, "Failed to fetch hostname");
+    avahi_config.publish_workstation = 0;
 
     /* Allocate a new server */
-    server = avahi_server_new(avahi_simple_poll_get(simple_poll), &config, NULL, NULL, &error);
+    server = avahi_server_new(avahi_simple_poll_get(simple_poll), &avahi_config, server_callback, NULL, &error);
 
     /* Free the configuration data */
-    avahi_server_config_free(&config);
+    avahi_server_config_free(&avahi_config);
 
     /* Check wether creating the server object succeeded */
     CHECK(server,"Failed to create server: %s", avahi_strerror(error));
@@ -242,6 +474,19 @@ int main(int argc, char*argv[]) {
     CHECK((stb = TYPE_BROWSER_NEW(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback)),
         "Failed to create service browser: %s", AVAHI_ERROR);
     
+    /*TODO*/
+    /* Register commands */
+    co_cmds_init(16);
+    CMD_REGISTER(help, "help <none>", "Print list of commands and usage information.");
+    CMD_REGISTER(add_service, "add_service ........", "Add local service.");
+    CMD_REGISTER(remove_service, "remove_service <key>", "Remove local service.");
+    CMD_REGISTER(list_services, "list_services <none>", "List services on local Commotion network.");
+    
+    /* Set up CSM management socket */
+    csm_socket = (co_socket_t*)NEW(co_socket, unix_socket);
+    csm_socket->bind((co_obj_t*)csm_socket, DEFAULT_CSM_SOCK);
+    AvahiWatch *csm_watch = avahi_simple_poll_get(simple_poll)->watch_new(avahi_simple_poll_get(simple_poll), csm_socket->fd->fd, AVAHI_WATCH_IN | AVAHI_WATCH_HUP, request_handler, NULL);
+    
     /* Run the main loop */
     avahi_simple_poll_loop(simple_poll);
     
@@ -249,14 +494,20 @@ int main(int argc, char*argv[]) {
 
 error:
 
+    /* Close commotiond socket connection */
     co_shutdown();
 
     /* Cleanup things */
     if (stb)
         TYPE_BROWSER_FREE(stb);
 
+    /* Remove main socket watch */
+    avahi_simple_poll_get(simple_poll)->watch_free(csm_watch);
+
+    /* Free server/client */
     FREE_AVAHI();
 
+    /* Free event loop */
     if (simple_poll)
         avahi_simple_poll_free(simple_poll);
 

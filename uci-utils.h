@@ -25,7 +25,7 @@
 #ifndef UCI_UTILS_H
 #define UCI_UTILS_H
 
-#include "commotion-service-manager.h"
+#include "internal.h"
 
 #ifndef UCIPATH
 #define UCIPATH "/etc/config"

@@ -1,6 +1,6 @@
 /**
- *       @file  browse.h
- *      @brief  functionality for receiving and processing service announcements
+ *       @file  test.h
+ *      @brief  unit tests for the Commotion Service Manager
  *
  *     @author  Dan Staples (dismantl), danstaples@opentechinstitute.org
  *
@@ -22,42 +22,19 @@
  * =====================================================================================
  */
 
-#ifndef CSM_BROWSE_H
-#define CSM_BROWSE_H
+#ifndef CSM_TEST_H
+#define CSM_TEST_H
 
-#include <stdlib.h>
-
-#include <avahi-core/core.h>
-#include <avahi-core/lookup.h>
-#include <avahi-client/client.h>
-#include <avahi-client/lookup.h>
-#include <avahi-common/llist.h>
-
-#include "internal.h"
-
-void resolve_callback(
-  RESOLVER *r,
-  AVAHI_GCC_UNUSED AvahiIfIndex interface,
-  AVAHI_GCC_UNUSED AvahiProtocol protocol,
-  AvahiResolverEvent event,
-  const char *name,
-  const char *type,
-  const char *domain,
-  const char *host_name,
-  const AvahiAddress *address,
-  uint16_t port,
-  AvahiStringList *txt,
-  AvahiLookupResultFlags flags,
-  void* userdata);
-
-void browse_type_callback(
-    TYPE_BROWSER *b,
+void browse_service_callback(
+    BROWSER *b,
     AvahiIfIndex interface,
     AvahiProtocol protocol,
     AvahiBrowserEvent event,
+    const char *name,
     const char *type,
     const char *domain,
     AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
     void* userdata);
+int verify_announcement(ServiceInfo *i);
 
 #endif

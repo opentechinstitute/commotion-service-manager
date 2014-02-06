@@ -30,9 +30,16 @@
 #include <avahi-common/llist.h>
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
+#include <avahi-core/core.h>
+#include <avahi-core/publish.h>
+#include <avahi-client/client.h>
+#include <avahi-client/lookup.h>
+#include <avahi-client/publish.h>
 extern "C" {
 #include <serval-crypto.h>
 #include "commotion-service-manager.h"
+#include "service.h"
+#include "browse.h"
 #include "util.h"
 }
 #include "gtest/gtest.h"

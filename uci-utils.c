@@ -31,10 +31,10 @@
 
 #include <uci.h>
 
+#include "internal.h"
 #include "uci-utils.h"
 #include "debug.h"
 #include "util.h"
-#include "commotion-service-manager.h"
 
 #define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
 #define UCI_WARN(M, ...) char *err = NULL; uci_get_errorstr(c,&err,NULL); WARN(M ": %s", ##__VA_ARGS__, err); free(err);
@@ -127,6 +127,9 @@ error:
 int uci_write(ServiceInfo *i) {
   struct uci_context *c = NULL;
   struct uci_ptr sec_ptr,sig_ptr,type_ptr;
+#ifndef CLIENT
+  struct uci_ptr approved_ptr;
+#endif
   int uci_ret, ret = -1;
   char *sig = NULL, *uuid = NULL;
   struct uci_package *pak = NULL;

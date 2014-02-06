@@ -29,7 +29,7 @@
 
 #include <avahi-core/core.h>
 
-#include "commotion-service-manager.h"
+#include "internal.h"
 #include "util.h"
 #include "debug.h"
 
