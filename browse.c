@@ -75,11 +75,6 @@ extern AvahiSimplePoll *simple_poll;
 extern AvahiServer *server;
 #endif
 
-/**
- * Verify the Serval signature in a service announcement
- * @param i the service to verify (includes signature and fingerprint txt fields)
- * @returns 0 if the signature is valid, 1 if it is invalid
- */
 int verify_announcement(ServiceInfo *i) {
 	AvahiStringList *txt;
 	co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
@@ -189,14 +184,6 @@ int verify_announcement(ServiceInfo *i) {
 	return verdict;
 }
 
-/**
- * Handler called whenever a service is (potentially) resolved
- * @param userdata the ServiceFile object of the service in question
- * @note if compiled with UCI support, write the service to UCI if
- *       it successfully resolves
- * @note if txt fields fail verification, the service is removed from
- *       the local list
- */
 void resolve_callback(
     RESOLVER *r,
     AVAHI_GCC_UNUSED AvahiIfIndex interface,
@@ -220,7 +207,7 @@ void resolve_callback(
     time_t current_time;
     char* c_time_string;
     struct tm *timestr;
-    long lifetime = 0, expiration;
+    long lifetime = 0;
     
     assert(r);
     
@@ -305,17 +292,20 @@ void resolve_callback(
 	      INFO("Announcement signature verification succeeded");
 	    
 	    /* Set expiration timer on the service */
-	    expiration = default_lifetime();
-	    if (lifetime > 0 && (expiration > lifetime || expiration == 0)) expiration = lifetime;
-	    if (expiration > 0) {
-	      avahi_elapse_time(&tv, 1000*expiration, 0);
+#ifdef USE_UCI
+	    long def_lifetime = default_lifetime();
+	    if (lifetime <= 0 || (def_lifetime < lifetime && def_lifetime > 0)) lifetime = def_lifetime;
+#endif
+	    
+	    if (lifetime > 0) {
+	      avahi_elapse_time(&tv, 1000*lifetime, 0);
 	      current_time = time(NULL);
 	      i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, remove_service, i); // create expiration event for service
 	    
-	      /* Convert expiration period into timestamp */
+	      /* Convert lifetime period into timestamp */
 	      if (current_time != ((time_t)-1)) {
 	        timestr = localtime(&current_time);
-		timestr->tm_sec += expiration;
+		timestr->tm_sec += lifetime;
 	        current_time = mktime(timestr);
 	        if ((c_time_string = ctime(&current_time))) {
 		  c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
@@ -324,6 +314,7 @@ void resolve_callback(
 	      }
 	    }
 	    
+	    // TODO add various TXT fields to appropriate ServiceInfo->CSMService members, and use txt_list_to_string in _print_service instead
 	    if (!(i->txt = txt_list_to_string(i->txt_lst))) {
 	      ERROR("(Resolver) Could not convert txt fields to string");
 	      break;
@@ -344,10 +335,6 @@ void resolve_callback(
     }
 }
 
-/**
- * Handler for Avahi service browser events. Called whenever a new 
- * services becomes available on the LAN or is removed from the LAN
- */
 void browse_service_callback(
     BROWSER *b,
     AvahiIfIndex interface,
@@ -394,9 +381,6 @@ void browse_service_callback(
     }
 }
 
-/**
- * Handler for creating Avahi service browser
- */
 void browse_type_callback(
     TYPE_BROWSER *b,
     AvahiIfIndex interface,

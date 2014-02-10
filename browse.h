@@ -35,6 +35,21 @@
 
 #include "internal.h"
 
+/**
+ * Verify the Serval signature in a service announcement
+ * @param i the service to verify (includes signature and fingerprint txt fields)
+ * @returns 0 if the signature is valid, 1 if it is invalid
+ */
+int verify_announcement(ServiceInfo *i);
+
+/**
+ * Handler called whenever a service is (potentially) resolved
+ * @param userdata the ServiceFile object of the service in question
+ * @note if compiled with UCI support, write the service to UCI if
+ *       it successfully resolves
+ * @note if txt fields fail verification, the service is removed from
+ *       the local list
+ */
 void resolve_callback(
   RESOLVER *r,
   AVAHI_GCC_UNUSED AvahiIfIndex interface,
@@ -50,14 +65,32 @@ void resolve_callback(
   AvahiLookupResultFlags flags,
   void* userdata);
 
+/**
+ * Handler for Avahi service browser events. Called whenever a new 
+ * services becomes available on the LAN or is removed from the LAN
+ */
+void browse_service_callback(
+  BROWSER *b,
+  AvahiIfIndex interface,
+  AvahiProtocol protocol,
+  AvahiBrowserEvent event,
+  const char *name,
+  const char *type,
+  const char *domain,
+  AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
+  void* userdata);
+
+/**
+ * Handler for creating Avahi service browser
+ */
 void browse_type_callback(
-    TYPE_BROWSER *b,
-    AvahiIfIndex interface,
-    AvahiProtocol protocol,
-    AvahiBrowserEvent event,
-    const char *type,
-    const char *domain,
-    AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
-    void* userdata);
+  TYPE_BROWSER *b,
+  AvahiIfIndex interface,
+  AvahiProtocol protocol,
+  AvahiBrowserEvent event,
+  const char *type,
+  const char *domain,
+  AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
+  void* userdata);
 
 #endif

@@ -40,7 +40,7 @@
 #define LOG_DEBUG "LOG_DEBUG"
 #endif
 
-#if defined(NDEBUG) && !defined(OPENWRT)
+#if defined(NDEBUG)
 #define DEBUG(M, ...)
 #else
 #define DEBUG(M, ...) LOG(LOG_DEBUG, "(%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)

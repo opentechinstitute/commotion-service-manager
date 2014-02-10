@@ -35,23 +35,12 @@
 #include <avahi-client/publish.h>
 #include <avahi-common/llist.h>
 
+#include "config.h"
+
 /** Length (in hex chars) of Serval IDs */
 #define FINGERPRINT_LEN 64
 /** Length (in hex chars) of Serval-created signatures */
 #define SIG_LENGTH 128
-
-/** Name of file to output list of services when daemon receives USR1 signal */
-#define DEFAULT_FILENAME "/tmp/local-services.out"
-#define PIDFILE "/var/run/commotion/commotion-service-manager.pid"
-/** Directory where Avahi service files are stored */
-#define avahiDir "/etc/avahi/services/"
-
-#ifndef SERVAL_PATH
-#define SERVAL_PATH "/var/serval-node/serval.keyring"
-#endif
-
-#define DEFAULT_CO_SOCK "/var/run/commotiond.sock"
-#define DEFAULT_CSM_SOCK "/var/run/commotion-service-manager.sock"
 
 #ifdef CLIENT
 #define TYPE_BROWSER AvahiServiceTypeBrowser
@@ -94,7 +83,7 @@ struct csm_config {
 
 typedef struct ServiceInfo ServiceInfo;
 /** Struct used to hold info about a service */
-struct ServiceInfo {
+typedef struct ServiceInfo {
     /** Common members for all services */
     AvahiIfIndex interface;
     AvahiProtocol protocol;
@@ -117,6 +106,6 @@ struct ServiceInfo {
 
     /** Linked list */
     AVAHI_LLIST_FIELDS(ServiceInfo, info);
-};
+} ServiceInfo;
 
 #endif
