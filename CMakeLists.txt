@@ -1,0 +1,65 @@
+cmake_minimum_required(VERSION 2.6)
+
+set(PROJECT_NAME_STR commotion-service-manager)
+PROJECT(${PROJECT_NAME_STR})
+SET(NO_OPTIMIZE ON CACHE BOOL "Disable optimization flags.")
+SET(DEBUG ON CACHE BOOL "Turn on debugging.")
+SET(OPENWRT OFF CACHE BOOL "Disable subsystems that are unnecessary for OpenWRT platform.")
+SET(USE_UCI OFF CACHE BOOL "Disable UCI integration.")
+SET(CMAKE_VERBOSE_MAKEFILE OFF)
+
+SET(CSM_DUMPFILE \"/tmp/local-services.out\") # Name of file to output list of services when daemon receives USR1 signal
+SET(CSM_PIDFILE \"/var/run/commotion/commotion-service-manager.pid\")
+SET(COMMOTION_MANAGESOCK \"/var/run/commotiond.sock\")
+SET(CSM_MANAGESOCK \"/var/run/commotion-service-manager.sock\")
+
+CONFIGURE_FILE( "${CMAKE_SOURCE_DIR}/config.h.in" "${PROJECT_SOURCE_DIR}/config.h" )
+
+ADD_DEFINITIONS(-Os -Wall --std=gnu99 -Wmissing-declarations -D_GNU_SOURCE -DUSESYSLOG -DCLIENT -DNDEBUG)
+
+IF(DEBUG)
+  ADD_DEFINITIONS(-g3)
+  REMOVE_DEFINITIONS(-DNDEBUG)
+  IF(NO_OPTIMIZE)
+    ADD_DEFINITIONS(-O0)
+  ENDIF()
+ENDIF()
+
+SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+SET(DAEMONSRC internal.h debug.h browse.h browse.c main.c service.h service.c util.h util.c)
+SET(LIBSRC internal.h debug.h commotion-service-manager.h commotion-service-manager.c)
+
+ADD_EXECUTABLE(daemon ${DAEMONSRC})
+ADD_LIBRARY(csm SHARED ${LIBSRC})
+ADD_EXECUTABLE(client ${LIBSRC})
+
+TARGET_LINK_LIBRARIES(daemon commotion commotion_serval-sas avahi-core avahi-common)
+TARGET_LINK_LIBRARIES(csm commotion)
+TARGET_LINK_LIBRARIES(client commotion)
+TARGET_COMPILE_DEFINITIONS(client PUBLIC -DCLIENT_MAIN)
+
+IF(OPENWRT OR LUCI)
+  ADD_DEFINITIONS(-DUSE_UCI)
+  SET(DAEMONSRC ${DAEMONSRC} uci-utils.h uci-utils.c)
+  TARGET_LINK_LIBRARIES(daemon uci)
+ENDIF()
+
+IF(OPENWRT)
+  ADD_DEFINITIONS(-DOPENWRT)
+  REMOVE_DEFINITIONS(-DUSESYSLOG -DCLIENT)
+ELSE()
+  TARGET_LINK_LIBRARIES(daemon avahi-client)
+  IF(LUCI)
+    ADD_DEFINITIONS(-DUCIPATH="\"/opt/luci-commotion/etc/config\"")
+  ENDIF()
+ENDIF()
+
+SET_TARGET_PROPERTIES(daemon PROPERTIES OUTPUT_NAME commotion-service-manager)
+SET_TARGET_PROPERTIES(client PROPERTIES OUTPUT_NAME csm-client)
+
+INSTALL(TARGETS csm DESTINATION lib)
+INSTALL(FILES commotion-service-manager.h DESTINATION include)
+INSTALL(TARGETS daemon RUNTIME DESTINATION sbin)
