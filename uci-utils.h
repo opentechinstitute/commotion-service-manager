@@ -25,19 +25,11 @@
 #ifndef UCI_UTILS_H
 #define UCI_UTILS_H
 
-#include "internal.h"
+#include "defs.h"
 
 #ifndef UCIPATH
 #define UCIPATH "/etc/config"
 #endif
-
-/**
- * Derives the UCI-encoded name of a service, as a concatenation of URI and port
- * @param i ServiceInfo object of the service
- * @param[out] uuid_len Length of the UCI-encoded name
- * @return UCI-encoded name
- */
-char *get_uuid(ServiceInfo *i, size_t *uuid_len);
 
 /**
  * Remove a service from UCI

@@ -36,7 +36,7 @@
 #include <avahi-common/llist.h>
 
 ServiceInfo *find_service(const char *name);
-ServiceInfo *add_service(BROWSER *b, 
+ServiceInfo *add_remote_service(BROWSER *b, 
 			 AvahiIfIndex interface, 
 			 AvahiProtocol protocol, 
 			 const char *name, 

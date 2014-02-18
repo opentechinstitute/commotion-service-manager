@@ -33,7 +33,7 @@
 #include <avahi-client/lookup.h>
 #include <avahi-common/llist.h>
 
-#include "internal.h"
+#include "defs.h"
 
 /**
  * Verify the Serval signature in a service announcement

@@ -31,45 +31,13 @@
 
 #include <uci.h>
 
-#include "internal.h"
+#include "defs.h"
 #include "uci-utils.h"
 #include "debug.h"
 #include "util.h"
 
 #define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
 #define UCI_WARN(M, ...) char *err = NULL; uci_get_errorstr(c,&err,NULL); WARN(M ": %s", ##__VA_ARGS__, err); free(err);
-
-/**
- * Derives the UCI-encoded name of a service, as a concatenation of URI and port
- * @param i ServiceInfo object of the service
- * @param[out] uuid_len Length of the UCI-encoded name
- * @return UCI-encoded name
- */
-char *get_uuid(ServiceInfo *i, size_t *uuid_len) {
-  char *uuid = NULL;
-  char *uri = NULL;
-  char *uri_escaped = NULL;
-  char port[6] = "";
-  size_t uri_escaped_len, uri_len = 0;
-  AvahiStringList *uri_txt = NULL;
-  
-  assert(i);
-  
-  CHECK((uri_txt = avahi_string_list_find(i->txt_lst,"uri")),"Failed to find uri txt record");
-  avahi_string_list_get_pair(uri_txt,NULL,&uri,&uri_len);
-  CHECK(uri && uri_len,"Failed to fetch uri txt record");
-  CHECK((uri_escaped = uci_escape(uri,uri_len,&uri_escaped_len)),"Failed to escape URI");
-  if (i->port > 0)
-    sprintf(port,"%d",i->port);
-  CHECK_MEM((uuid = (char*)calloc(uri_escaped_len + strlen(port),sizeof(char))));
-  strncpy(uuid,uri_escaped,uri_escaped_len);
-  strcat(uuid,port);
-  *uuid_len = uri_escaped_len + strlen(port);
-
-error:
-  free(uri_escaped);
-  return uuid;
-}
 
 /** 
  * Lookup a UCI section or option

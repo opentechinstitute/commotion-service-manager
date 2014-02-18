@@ -53,15 +53,19 @@
 #include "commotion/util.h"
 #include "commotion.h"
 
-#include "internal.h"
+#include "defs.h"
+#include "util.h"
 #include "service.h"
 #include "browse.h"
 #include "debug.h"
+
+#include "extern/sha1.h"
 
 #define REQUEST_MAX 1024
 #define RESPONSE_MAX 1024
 
 extern co_socket_t unix_socket_proto;
+extern ServiceInfo *services;
 
 csm_config config;
 static int pid_filehandle;
@@ -88,14 +92,14 @@ _cmd_help_i(co_obj_t *data, co_obj_t *current, void *context)
 CMD(help)
 {
   *output = co_tree16_create();
-  if(params != NULL && co_list_length(params) > 0)
+  if (params != NULL && co_list_length(params) > 0)
   {
     co_obj_t *cmd = co_list_element(params, 0);
-    if(cmd != NULL && IS_STR(cmd))
+    if (cmd != NULL && IS_STR(cmd))
     {
       char *cstr = NULL;
       size_t clen = co_obj_data(&cstr, cmd);
-      if(clen > 0)
+      if (clen > 0)
       {
 	co_tree_insert(*output, cstr, clen, co_cmd_desc(cmd));
 	return 1;
@@ -106,14 +110,146 @@ CMD(help)
   return co_cmd_process(_cmd_help_i, (void *)*output);
 }
 
-CMD(add_service) {
-  co_obj_t *str = co_str8_create("test",sizeof("test"),0);
-  CMD_OUTPUT("response",str);
+static co_obj_t *_print_cats(co_obj_t *data, co_obj_t *current, void *context) {
+  DEBUG("%s",((co_str8_t*)current)->data);
+  return NULL;
+}
+
+// static ServiceInfo *_find_service_by_key_i()
+
+/** Add OR update a service */
+CMD(commit_service) {
+  co_obj_t *service = params;
+  char *to_verify = NULL;
+  
+  CHECK(IS_TREE(service),"Received invalid service");
+
+  /* Check required fields */
+  CHECK(/*co_tree_find(service,"key",sizeof("key"))
+        && */co_tree_find(service,"name",sizeof("name"))
+        && co_tree_find(service,"description",sizeof("description"))
+        && co_tree_find(service,"uri",sizeof("uri"))
+        && co_tree_find(service,"icon",sizeof("icon")),
+	"Service missing required fields");
+  
+  /* First check if service exists */
+  char *name = co_obj_data_ptr(co_tree_find(service,"name",sizeof("name")));
+  ServiceInfo *i;
+  for (i = services; i; i = i->info_next) {
+    if (strcasecmp(i->service_name, name) == 0)
+      break;
+  }
+  
+  if (!i) {
+    // TODO leave key blank to generate new one with signature
+    // for now, get host's main serval key
+    if (config.sid)
+      i->key = avahi_strdup(config.sid);
+    
+    // create ServiceInfo
+    i = avahi_new0(ServiceInfo, 1);
+    i->interface = AVAHI_IF_UNSPEC;
+    i->protocol = AVAHI_PROTO_UNSPEC;
+    i->type = avahi_strdup("_commotion._tcp");
+    i->domain = avahi_strdup("mesh.local");
+    i->resolved = 1;
+    
+    // TODO service_name will eventually be serval key
+    // for now, it's sha1sum of "%s%s",UUID,hostname (see luci-commotion-apps controller)
+    size_t uuid_len;
+    char *uuid = get_uuid(i,&uuid_len);
+    char hostname[HOST_NAME_MAX] = {0};
+    CHECK(gethostname(hostname,HOST_NAME_MAX) == 0, "Failed to get hostname");
+    char *to_hash = avahi_malloc0(uuid_len + strlen(hostname) + 1);
+    strncpy(to_hash,uuid,uuid_len);
+    strcat(to_hash,hostname);
+    SHA1_CTX ctx;
+    SHA1_Init(&ctx);
+    SHA1_Update(&ctx, (const uint8_t*)to_hash, uuid_len + strlen(hostname));
+    i->service_name = avahi_malloc0(SHA1_DIGEST_SIZE);
+    SHA1_Final(&ctx,(uint8_t*)i->service_name);
+    avahi_free(to_hash);
+    avahi_free(uuid);
+
+    AVAHI_LLIST_PREPEND(ServiceInfo, info, services, i);
+  }
+  
+  // set fields
+  i->name = avahi_strdup(name);
+  i->description = avahi_strdup(co_obj_data_ptr(co_tree_find(service,"description",sizeof("description"))));
+  i->uri = avahi_strdup(co_obj_data_ptr(co_tree_find(service,"uri",sizeof("uri"))));
+  i->icon = avahi_strdup(co_obj_data_ptr(co_tree_find(service,"icon",sizeof("icon"))));
+  co_obj_t *ttl = NULL;
+  if ((ttl = co_tree_find(service,"ttl",sizeof("ttl"))) && IS_INT(ttl)) {
+    i->ttl = (int)(*co_obj_data_ptr(ttl));
+  }
+  co_obj_t *lifetime = NULL;
+  if ((lifetime = co_tree_find(service,"lifetime",sizeof("lifetime"))) && IS_INT(lifetime)) {
+    i->lifetime = (long)(*co_obj_data_ptr(lifetime));
+  }
+  co_obj_t *categories = NULL;
+  if ((categories = co_tree_find(service,"categories",sizeof("categories")))
+      && IS_LIST(categories)
+      && co_list_length(categories) > 0) {
+    i->cat_len = co_list_length(categories);
+    i->categories = avahi_malloc0(i->cat_len * sizeof(char*));
+    for (int j = 0; j < i->cat_len; j++)
+      i->categories[j] = avahi_strdup(_LIST_ELEMENT(categories,j));
+  }
+  
+  // generate serval signature
+  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
+  CHECK((co_conn = co_connect(config.co_sock,strlen(config.co_sock)+1)),
+	"Failed to connect to Commotion socket");
+  CHECK_MEM((co_req = co_request_create()));
+  CO_APPEND_STR(co_req,"sign");
+  if (i->key) {
+    CO_APPEND_STR(co_req,i->key);
+  }
+  int to_verify_len = 0;
+  to_verify = createSigningTemplate(i->type,
+					  i->domain,
+					  i->port,
+					  i->name,
+					  i->ttl,
+					  i->uri,
+					  (const char **)i->categories,
+					  i->cat_len,
+					  i->icon,
+					  i->description,
+					  i->lifetime,
+					  &to_verify_len);
+  CHECK(to_verify,"Failed to create signing template");
+  CO_APPEND_STR(co_req,to_verify);
+  char *signature = NULL, *sid = NULL;
+  CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req),
+	"Failed to sign service announcement");
+  CHECK(co_response_get_str(co_resp,&signature,"signature",sizeof("signature")),
+	"Failed to fetch signature from response");
+  CHECK(co_response_get_str(co_resp,&sid,"sid",sizeof("sid")),
+	"Failed to fetch SID from response");
+  i->signature = avahi_strdup(signature);
+  if (!i->key)
+    i->key = avahi_strdup(sid);
+  
+  // send back success, key, signature
+  CMD_OUTPUT("success",co_bool_create(true,0));
+  CMD_OUTPUT("key",co_str8_create(i->key,strlen(i->key)+1,0));
+  CMD_OUTPUT("signature",co_str8_create(i->signature,strlen(i->signature)+1,0));
+  
   return 1;
+error:
+  if (to_verify)
+    free(to_verify);
+  return 0;
 }
 
 CMD(remove_service) {
-  co_obj_t *str = co_str8_create("test",sizeof("test"),0);
+  co_tree_print(co_list_element(params,0));
+//   co_obj_t *subtree = co_tree_find(co_list_element(params,0),"test3",sizeof("test3"));
+//   co_tree_print(subtree);
+  
+  co_obj_t *str = co_str8_create("testremove",sizeof("testremove"),0);
   CMD_OUTPUT("response",str);
   return 1;
 }
@@ -130,7 +266,7 @@ static void socket_send(int fd, char const *str, size_t len) {
   int n;
   while(sent < len) {
     n = send(fd, str+sent, remaining, 0);
-    if(n < 0) break;
+    if (n < 0) break;
     sent += n;
     remaining -= n;
   }
@@ -198,32 +334,6 @@ static void request_handler(AvahiWatch *w, int fd, AvahiWatchEvent events, void 
   
 error:
   if (request) co_obj_free(request);
-}
-
-/** Parse commandline options */
-static error_t parse_opt (int key, char *arg, struct argp_state *state) {
-  switch (key) {
-    case 'b':
-      config.co_sock = arg;
-      break;
-#ifdef USE_UCI
-    case 'u':
-      config.uci = 1;
-      break;
-#endif
-    case 'o':
-      config.output_file = arg;
-      break;
-    case 'n':
-      config.nodaemon = 1;
-      break;
-    case 'p':
-      config.pid_file = arg;
-      break;
-    default:
-      return ARGP_ERR_UNKNOWN;
-  }
-  return 0;
 }
 
 static void csm_shutdown(int signal) {
@@ -392,6 +502,34 @@ static void server_callback(AvahiServer *s, AvahiServerState state, AVAHI_GCC_UN
 }
 #endif
 
+/** Parse commandline options */
+static error_t parse_opt (int key, char *arg, struct argp_state *state) {
+  switch (key) {
+    case 'b':
+      config.co_sock = arg;
+      break;
+      #ifdef USE_UCI
+    case 'u':
+      config.uci = 1;
+      break;
+      #endif
+    case 'o':
+      config.output_file = arg;
+      break;
+    case 'n':
+      config.nodaemon = 1;
+      break;
+    case 'p':
+      config.pid_file = arg;
+      break;
+    case 's':
+      config.sid = arg;
+    default:
+      return ARGP_ERR_UNKNOWN;
+  }
+  return 0;
+}
+
 int main(int argc, char*argv[]) {
 #ifdef CLIENT
     AvahiClient *client = NULL;
@@ -412,17 +550,19 @@ int main(int argc, char*argv[]) {
 #ifdef USE_UCI
       {"uci", 'u', 0, 0, "Store service cache in UCI" },
 #endif
+      {"sid", 's', "SID", 0, "SID to use to sign service announcements"},
       { 0 }
     };
     
     /* Set defaults */
-    config.co_sock = DEFAULT_CO_SOCK;
+    config.co_sock = COMMOTION_MANAGESOCK;
 #ifdef USE_UCI
     config.uci = 0;
 #endif
     config.nodaemon = 0;
-    config.output_file = DEFAULT_FILENAME;
-    config.pid_file = PIDFILE;
+    config.output_file = CSM_DUMPFILE;
+    config.pid_file = CSM_PIDFILE;
+    config.sid = NULL;
     
     static struct argp argp = { options, parse_opt, NULL, doc };
     
@@ -478,13 +618,13 @@ int main(int argc, char*argv[]) {
     /* Register commands */
     co_cmds_init(16);
     CMD_REGISTER(help, "help <none>", "Print list of commands and usage information.");
-    CMD_REGISTER(add_service, "add_service ........", "Add local service.");
+    CMD_REGISTER(commit_service, "commit_service ........", "Add or update local service.");
     CMD_REGISTER(remove_service, "remove_service <key>", "Remove local service.");
     CMD_REGISTER(list_services, "list_services <none>", "List services on local Commotion network.");
     
     /* Set up CSM management socket */
     csm_socket = (co_socket_t*)NEW(co_socket, unix_socket);
-    csm_socket->bind((co_obj_t*)csm_socket, DEFAULT_CSM_SOCK);
+    csm_socket->bind((co_obj_t*)csm_socket, CSM_MANAGESOCK);
     AvahiWatch *csm_watch = avahi_simple_poll_get(simple_poll)->watch_new(avahi_simple_poll_get(simple_poll), csm_socket->fd->fd, AVAHI_WATCH_IN | AVAHI_WATCH_HUP, request_handler, NULL);
     
     /* Run the main loop */

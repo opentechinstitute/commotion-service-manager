@@ -29,7 +29,7 @@
 
 #include <avahi-core/core.h>
 
-#include "internal.h"
+#include "defs.h"
 #include "util.h"
 #include "debug.h"
 
@@ -87,6 +87,35 @@ int cmpstringp(const void *p1, const void *p2) {
    *      to char", hence the following cast plus dereference */
   
   return strcmp(* (char * const *) p1, * (char * const *) p2);
+}
+
+/**
+ * Derives the UCI-encoded name of a service, as a concatenation of URI and port
+ * @param i ServiceInfo object of the service
+ * @param[out] uuid_len Length of the UCI-encoded name
+ * @return UCI-encoded name
+ */
+char *get_uuid(ServiceInfo *i, size_t *uuid_len) {
+  char *uuid = NULL;
+  char *uri_escaped = NULL;
+  char port[6] = "";
+  size_t uri_escaped_len;
+  
+  assert(i);
+  
+  CHECK(i->uri,"Missing values needed for deriving UUID");
+  
+  CHECK((uri_escaped = uci_escape(i->uri,strlen(i->uri),&uri_escaped_len)),"Failed to escape URI");
+  if (i->port > 0)
+    sprintf(port,"%d",i->port);
+  CHECK_MEM((uuid = (char*)calloc(uri_escaped_len + strlen(port),sizeof(char))));
+  strncpy(uuid,uri_escaped,uri_escaped_len);
+  strcat(uuid,port);
+  *uuid_len = uri_escaped_len + strlen(port);
+
+error:
+  if (uri_escaped) free(uri_escaped);
+  return uuid;
 }
 
 /**

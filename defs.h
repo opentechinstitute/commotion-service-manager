@@ -1,6 +1,6 @@
 /**
- *       @file  commotion-service-manager.h
- *      @brief  main functionality of the Commotion Service Manager
+ *       @file  defs.h
+ *      @brief  internal macros and structs for CSM
  *
  *     @author  Dan Staples (dismantl), danstaples@opentechinstitute.org
  *
@@ -42,6 +42,8 @@
 /** Length (in hex chars) of Serval-created signatures */
 #define SIG_LENGTH 128
 
+#define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
+
 #ifdef CLIENT
 #define TYPE_BROWSER AvahiServiceTypeBrowser
 #define TYPE_BROWSER_NEW(A,B,C,D,E) avahi_service_type_browser_new(client,A,B,C,D,E,client)
@@ -79,6 +81,7 @@ struct csm_config {
   int nodaemon;
   char *output_file;
   char *pid_file;
+  char *sid;
 };
 
 typedef struct ServiceInfo ServiceInfo;
@@ -87,14 +90,25 @@ typedef struct ServiceInfo {
     /** Common members for all services */
     AvahiIfIndex interface;
     AvahiProtocol protocol;
-    char *name, 
-         *type, 
-         *domain, 
-	 *host_name, 
-	 *txt; /**< string representing all the txt fields */
+    char *service_name;
+    char*type;
+    char *domain;
+    char *host_name;
+    char *key;
+    char *name;
+    char *description;
+    char *uri;
+    char *icon;
+    char **categories;
+    char *signature;
+    char *txt; /**< string representing all the txt fields */
+    int ttl;
+    int cat_len;
+    long lifetime;
     uint16_t port;
     AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
     AvahiTimeout *timeout; /** Timer set for the service's expiration date */
+    int resolved; /**< Flag indicating whether all the fields have been resolved */
 
     /** Local services */
     ENTRY_GROUP *group;
@@ -102,7 +116,6 @@ typedef struct ServiceInfo {
     /** Remote services */
     char address[AVAHI_ADDRESS_STR_MAX];
     RESOLVER *resolver;
-    int resolved; /**< Flag indicating whether all the fields have been resolved */
 
     /** Linked list */
     AVAHI_LLIST_FIELDS(ServiceInfo, info);

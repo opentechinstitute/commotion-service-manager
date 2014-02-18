@@ -63,6 +63,14 @@ int isValidSignature(const char *sig, size_t sig_len);
 int cmpstringp(const void *p1, const void *p2);
 
 /**
+ * Derives the UCI-encoded name of a service, as a concatenation of URI and port
+ * @param i ServiceInfo object of the service
+ * @param[out] uuid_len Length of the UCI-encoded name
+ * @return UCI-encoded name
+ */
+char *get_uuid(ServiceInfo *i, size_t *uuid_len);
+
+/**
  * UCI-escape a string. Alphanum and underscores are only chars allowed in UCI section titles
  * @param[in] to_escape the string to escape
  * @param[in] to_escape_len the length of the string to escape

@@ -15,7 +15,7 @@ SET(CSM_MANAGESOCK \"/var/run/commotion-service-manager.sock\")
 
 CONFIGURE_FILE( "${CMAKE_SOURCE_DIR}/config.h.in" "${PROJECT_SOURCE_DIR}/config.h" )
 
-ADD_DEFINITIONS(-Os -Wall --std=gnu99 -Wmissing-declarations -D_GNU_SOURCE -DUSESYSLOG -DCLIENT -DNDEBUG)
+ADD_DEFINITIONS(-Os -Wall --std=gnu99 -Wmissing-declarations -D_GNU_SOURCE -DUSESYSLOG -DCLIENT -DNDEBUG -DHAVE_STDINT_H)
 
 IF(DEBUG)
   ADD_DEFINITIONS(-g3)
@@ -29,15 +29,15 @@ SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-SET(DAEMONSRC internal.h debug.h browse.h browse.c main.c service.h service.c util.h util.c)
-SET(LIBSRC internal.h debug.h commotion-service-manager.h commotion-service-manager.c)
+SET(DAEMONSRC defs.h debug.h browse.h browse.c main.c service.h service.c util.h util.c extern/sha1.h extern/sha1.c extern/os_types.h)
+SET(LIBSRC defs.h debug.h commotion-service-manager.h commotion-service-manager.c)
 
 ADD_EXECUTABLE(daemon ${DAEMONSRC})
-ADD_LIBRARY(csm SHARED ${LIBSRC})
+ADD_LIBRARY(library SHARED ${LIBSRC})
 ADD_EXECUTABLE(client ${LIBSRC})
 
 TARGET_LINK_LIBRARIES(daemon commotion commotion_serval-sas avahi-core avahi-common)
-TARGET_LINK_LIBRARIES(csm commotion)
+TARGET_LINK_LIBRARIES(library commotion)
 TARGET_LINK_LIBRARIES(client commotion)
 TARGET_COMPILE_DEFINITIONS(client PUBLIC -DCLIENT_MAIN)
 
@@ -59,7 +59,8 @@ ENDIF()
 
 SET_TARGET_PROPERTIES(daemon PROPERTIES OUTPUT_NAME commotion-service-manager)
 SET_TARGET_PROPERTIES(client PROPERTIES OUTPUT_NAME csm-client)
+SET_TARGET_PROPERTIES(library PROPERTIES OUTPUT_NAME commotion-service-manager)
 
-INSTALL(TARGETS csm DESTINATION lib)
+INSTALL(TARGETS library DESTINATION lib)
 INSTALL(FILES commotion-service-manager.h DESTINATION include)
 INSTALL(TARGETS daemon RUNTIME DESTINATION sbin)

@@ -46,7 +46,7 @@
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>
 
-#include "internal.h"
+#include "defs.h"
 #include "service.h"
 #include "browse.h"
 #include "debug.h"
@@ -72,15 +72,16 @@ extern csm_config config;
 ServiceInfo *find_service(const char *name) {
   ServiceInfo *i;
   
-  for (i = services; i; i = i->info_next)
-    if (strcasecmp(i->name, name) == 0)
+  for (i = services; i; i = i->info_next) {
+    if (strcasecmp(i->service_name, name) == 0)
       return i;
+  }
     
-    return NULL;
+  return NULL;
 }
 
 /**
- * Add a service to the list of local services
+ * Add a remote service to the list of services
  * @param interface
  * @param protocol
  * @param name service name
@@ -88,7 +89,7 @@ ServiceInfo *find_service(const char *name) {
  * @param domain domain service is advertised on (e.g. mesh.local)
  * @return ServiceInfo struct representing the service that was added
  */
-ServiceInfo *add_service(BROWSER *b, AvahiIfIndex interface, AvahiProtocol protocol, const char *name, const char *type, const char *domain) {
+ServiceInfo *add_remote_service(BROWSER *b, AvahiIfIndex interface, AvahiProtocol protocol, const char *name, const char *type, const char *domain) {
     ServiceInfo *i;
     
 #ifdef CLIENT
@@ -104,7 +105,7 @@ ServiceInfo *add_service(BROWSER *b, AvahiIfIndex interface, AvahiProtocol proto
     }
     i->interface = interface;
     i->protocol = protocol;
-    i->name = avahi_strdup(name);
+    i->service_name = avahi_strdup(name);
     i->type = avahi_strdup(type);
     i->domain = avahi_strdup(domain);
     i->resolved = 0;
@@ -126,7 +127,7 @@ void remove_service(AvahiTimeout *t, void *userdata) {
     assert(userdata);
     ServiceInfo *i = (ServiceInfo*)userdata;
 
-    INFO("Removing service announcement: %s",i->name);
+    INFO("Removing service announcement: %s",i->service_name);
     
     /* Cancel expiration event */
     if (!t && i->timeout)
@@ -166,11 +167,21 @@ void remove_service(AvahiTimeout *t, void *userdata) {
     if (i->resolver)
         RESOLVER_FREE(i->resolver);
 
-    avahi_free(i->name);
+    avahi_free(i->service_name);
     avahi_free(i->type);
     avahi_free(i->domain);
-    if (i->host_name)
-      avahi_free(i->host_name);
+    if (i->host_name) avahi_free(i->host_name);
+    if (i->key) avahi_free(i->key);
+    if (i->name) avahi_free(i->name);
+    if (i->description) avahi_free(i->description);
+    if (i->uri) avahi_free(i->description);
+    if (i->icon) avahi_free(i->icon);
+    if (i->categories) {
+      for (int j = 0; j < i->cat_len; j++)
+	avahi_free(i->categories[j]);
+      avahi_free(i->categories);
+    }
+    if (i->signature) avahi_free(i->signature);
     if (i->txt)
       avahi_free(i->txt);
     if (i->txt_lst)
