@@ -52,8 +52,8 @@
 int isHex(const char *str, size_t len);
 int isNumeric (const char *s);
 int isUCIEncoded(const char *s, size_t s_len);
-int isValidTtl(const char *ttl);
-int isValidLifetime(const char *expiration_str);
+int isValidTtl(int ttl);
+int isValidLifetime(long lifetime);
 int isValidFingerprint(const char *sid, size_t sid_len);
 int isValidSignature(const char *sig, size_t sig_len);
 
@@ -62,13 +62,18 @@ int isValidSignature(const char *sig, size_t sig_len);
  */
 int cmpstringp(const void *p1, const void *p2);
 
+int tohex(unsigned char *str, size_t str_len, char *buf, size_t buf_size);
+
 /**
- * Derives the UCI-encoded name of a service, as a concatenation of URI and port
- * @param i ServiceInfo object of the service
- * @param[out] uuid_len Length of the UCI-encoded name
- * @return UCI-encoded name
+ * Derives the UUID of a service, as a SHA1sum of the concatenation of (UCI-escaped) URI, port, and hostname
+ * @param uri URI of the service
+ * @param uri_len length of the URI
+ * @param port (optional) the service port
+ * @param[out] buf character buffer in which to store UUID
+ * @param buf_size size of character buffer
+ * @return length of UUID on success, 0 on error
  */
-char *get_uuid(ServiceInfo *i, size_t *uuid_len);
+int get_uuid(char *uri, size_t uri_len, int port, char *hostname, size_t hostname_len, char *buf, size_t buf_size);
 
 /**
  * UCI-escape a string. Alphanum and underscores are only chars allowed in UCI section titles
@@ -93,20 +98,5 @@ char *escape(char *to_escape, int *escaped_len);
  * Convert an AvahiStringList to a string
  */
 char *txt_list_to_string(AvahiStringList *txt);
-
-// TODO document
-char *createSigningTemplate(
-  const char *type,
-  const char *domain,
-  const int port,
-  const char *name,
-  const int ttl,
-  const char *uri,
-  const char **app_types,
-  const int app_types_len,
-  const char *icon,
-  const char *description,
-  const long lifetime,
-  int *ret_len);
 
 #endif

@@ -36,13 +36,22 @@
 #include <avahi-common/llist.h>
 
 ServiceInfo *find_service(const char *name);
-ServiceInfo *add_remote_service(BROWSER *b, 
+ServiceInfo *add_service(BROWSER *b, 
 			 AvahiIfIndex interface, 
 			 AvahiProtocol protocol, 
-			 const char *name, 
+			 const char *uuid, 
 			 const char *type, 
 			 const char *domain);
+int process_service(ServiceInfo *i);
 void remove_service(AvahiTimeout *t, void *userdata);
-void print_services(int signal);
+// void print_services(int signal);
+
+/**
+ * Verify the Serval signature in a service announcement
+ * @param i the service to verify (includes signature and fingerprint txt fields)
+ * @returns 1 if the signature is valid, 0 if it is invalid
+ */
+int verify_signature(ServiceInfo *i);
+int create_signature(ServiceInfo *i);
 
 #endif

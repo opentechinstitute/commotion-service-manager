@@ -47,8 +47,6 @@
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>
 
-#include "commotion.h"
-
 #include "defs.h"
 #include "service.h"
 #include "browse.h"
@@ -60,129 +58,78 @@
 #include "uci-utils.h"
 #endif
 
-// from libcommotion_serval-sas
-#define SAS_SIZE 32
-extern int keyring_send_sas_request_client(const char *sid_str, 
-					   const size_t sid_len,
-					   char *sas_buf,
-					   const size_t sas_buf_len);
-
 extern csm_config config;
 extern AvahiSimplePoll *simple_poll;
 #ifndef CLIENT
 extern AvahiServer *server;
 #endif
 
-int verify_announcement(ServiceInfo *i) {
-// 	AvahiStringList *txt;
-  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
-  char *to_verify = NULL;
-//   char **types_list = NULL;
-//   int types_list_len = 0;
-// 	char *key, *val, *app, *uri, *icon, *desc, *sid, *sig;
-//   unsigned int ttl = 0;
-//   long lifetime = 0;
-  int verdict = 1, to_verify_len = 0;
-//   size_t val_len;
-	
-#if 0
-	assert(i->txt_lst);
-	
-	txt = i->txt_lst;
-	/* Loop through txt fields, to be added to the template for verification */
-	do {
-		if (avahi_string_list_get_pair(txt,&key,&val,&val_len)) {
-			if (key)
-				avahi_free(key);
-			if (val)
-				avahi_free(val);
-			continue;
-		}
-		if (!strcmp(key,"type")) {
-			/* Add 'type' fields to a list to be sorted alphabetically later */
-			CHECK_MEM((types_list = (char**)realloc(types_list,(types_list_len + 1)*sizeof(char*))));
-			types_list[types_list_len] = avahi_strdup(val);
-			types_list_len++;
-		} else if (!strcmp(key,"name"))
-			app = avahi_strdup(val);
-		else if (!strcmp(key,"ttl")) {
-			ttl = atoi(val);
-		} else if (!strcmp(key,"uri"))
-			uri = avahi_strdup(val);
-		else if (!strcmp(key,"icon"))
-			icon = avahi_strdup(val);
-		else if (!strcmp(key,"description"))
-			desc = avahi_strdup(val);
-		else if (!strcmp(key,"lifetime")) {
-			lifetime = atol(val);
-		} else if (!strcmp(key,"fingerprint"))
-			sid = avahi_strdup(val);
-		else if (!strcmp(key,"signature"))
-			sig = avahi_strdup(val);
-		avahi_free(val);
-		avahi_free(key);
-		val = key = NULL;
-	} while ((txt = avahi_string_list_get_next(txt)));
-#endif
-	
-  to_verify = createSigningTemplate(i->type,
-				    i->domain,
-				    i->port,
-				    i->name,
-				    i->ttl,
-				    i->uri,
-				    (const char **)i->categories,
-				    i->cat_len,
-				    i->icon,
-				    i->description,
-				    i->lifetime,
-				    &to_verify_len);
-	
-  /* Is the signature valid? 0=yes, 1=no */
-  if (to_verify) {
-    char sas_buf[2*SAS_SIZE+1] = {0};
+#define CSM_EXTRACT_TXT(I,M,T) \
+  do { \
+    char *val = NULL; \
+    CHECK(avahi_string_list_get_pair(T,NULL,&val,NULL) == 0, "Failed to extract " #T " from TXT list"); \
+    CSM_SET(I, M, val); \
+    avahi_free(val); \
+  } while (0)
 
-    CHECK(keyring_send_sas_request_client(i->key,strlen(i->key),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
-
-    bool output;
-    CHECK((co_conn = co_connect(config.co_sock,strlen(config.co_sock)+1)),"Failed to connect to Commotion socket");
-    CHECK_MEM((co_req = co_request_create()));
-    CO_APPEND_STR(co_req,"verify");
-    CO_APPEND_STR(co_req,sas_buf);
-    CO_APPEND_STR(co_req,i->signature);
-    CO_APPEND_STR(co_req,to_verify);
-    CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req) && 
-    co_response_get_bool(co_resp,&output,"result",sizeof("result")),"Failed to verify signature");
-    if (output == true)
-      verdict = 0;
-  }
-	
+static int
+extract_from_txt_list(ServiceInfo *i, AvahiStringList *txt)
+{
+  int ret = 0;
+  char *key = NULL, *val = NULL;
+  
+  AvahiStringList *name = avahi_string_list_find(txt,"name");
+  AvahiStringList *uri = avahi_string_list_find(txt,"uri");
+  AvahiStringList *icon = avahi_string_list_find(txt,"icon");
+  AvahiStringList *description = avahi_string_list_find(txt,"description");
+  AvahiStringList *ttl = avahi_string_list_find(txt,"ttl");
+  AvahiStringList *lifetime = avahi_string_list_find(txt,"lifetime");
+  AvahiStringList *signature = avahi_string_list_find(txt,"signature");
+  AvahiStringList *fingerprint = avahi_string_list_find(txt,"fingerprint");
+  
+  /* Make sure all the required fields are there */
+  CHECK(name && uri && icon && description && ttl && lifetime && signature && fingerprint,
+	"Missing TXT field(s): %s", i->uuid);
+  
+  CSM_EXTRACT_TXT(i, name, name);
+  CSM_EXTRACT_TXT(i, uri, uri);
+  CSM_EXTRACT_TXT(i, description, description);
+  CSM_EXTRACT_TXT(i, icon, icon);
+  CSM_EXTRACT_TXT(i, signature, signature);
+  CSM_EXTRACT_TXT(i, key, fingerprint);
+  char *ttl_str = NULL, *lifetime_str = NULL;
+  CHECK(avahi_string_list_get_pair(ttl,NULL,&ttl_str,NULL) == 0, "Failed to extract TTL from TXT list");
+  CHECK(avahi_string_list_get_pair(lifetime,NULL,&lifetime_str,NULL) == 0, "Failed to extract lifetime from TXT list");
+  i->ttl = atoi(ttl_str);
+  i->lifetime = atol(lifetime_str);
+  
+  /** Add service categories */
+  do {
+    avahi_string_list_get_pair(txt,&key,&val,NULL);
+    if (!strcmp(key,"type")) {
+      /* Add 'type' fields to a list to be sorted alphabetically later */
+      i->categories = h_realloc(i->categories,(i->cat_len + 1)*sizeof(char*));
+      CHECK_MEM(i->categories);
+      hattach(i->categories, i);
+      CSM_SET(i, categories[i->cat_len], val);
+      i->cat_len++;
+    }
+    avahi_free(val);
+    avahi_free(key);
+    val = key = NULL;
+  } while ((txt = avahi_string_list_get_next(txt)));
+  
+  ret = 1;
 error:
-  if (co_req) co_free(co_req);
-  if (co_resp) co_free(co_resp);
-  if (co_conn) co_disconnect(co_conn);
-  if (to_verify)
-    free(to_verify);
-#if 0
-  if (types_list) {
-    for (int j = 0; j <types_list_len; ++j)
-      avahi_free(types_list[j]);
-    free(types_list);
-  }
-  if (app)
-    avahi_free(app);
-  if (uri)
-    avahi_free(uri);
-  if (icon)
-    avahi_free(icon);
-  if (desc)
-    avahi_free(desc);
-  if (sid)
-    avahi_free(sid);
-  if (sig)
-    avahi_free(sig);
-#endif
-  return verdict;
+  if (val)
+    avahi_free(val);
+  if (key)
+    avahi_free(key);
+  if (ttl_str)
+    avahi_free(ttl_str);
+  if (lifetime_str)
+    avahi_free(lifetime_str);
+  return ret;
 }
 
 void resolve_callback(
@@ -201,10 +148,6 @@ void resolve_callback(
     void* userdata) {
     
     ServiceInfo *i = (ServiceInfo*)userdata;
-    struct timeval tv;
-    time_t current_time;
-    char* c_time_string;
-    struct tm *timestr;
     
     assert(r);
     
@@ -221,7 +164,7 @@ void resolve_callback(
             avahi_address_snprint(i->address, 
                 sizeof(i->address),
                 address);
-	    i->host_name = strdup(host_name);
+	    CSM_SET(i, host_name, host_name);
 	    if (port < 0 || port > 65535) {
 	      WARN("(Resolver) Invalid port: %s",name);
 	      break;
@@ -229,134 +172,20 @@ void resolve_callback(
 	    i->port = port;
 	    i->txt_lst = avahi_string_list_copy(txt);
 	    
-	    /* Make sure all the required fields are there */
-	    if (!avahi_string_list_find(txt,"name") ||
-	      !avahi_string_list_find(txt,"uri") ||
-	      !avahi_string_list_find(txt,"icon") ||
-	      !avahi_string_list_find(txt,"description") ||
-	      !avahi_string_list_find(txt,"ttl") ||
-	      !avahi_string_list_find(txt,"lifetime") ||
-	      !avahi_string_list_find(txt,"signature") ||
-	      !avahi_string_list_find(txt,"fingerprint")) {
-	      WARN("(Resolver) Missing TXT field(s): %s", name);
+	    if (!extract_from_txt_list(i,txt)) {
+	      ERROR("Failed to extract TXT fields");
 	      break;
 	    }
 	    
-	    /************************
-	     * INPUT VALIDATION
-	     ***********************/
-	    char *val = NULL;
-	    size_t val_size = 0;
-	    
-	    /* Validate TTL field */
-	    avahi_string_list_get_pair(avahi_string_list_find(txt,"ttl"),NULL,&val,NULL);
-	    if (!isValidTtl(val)) {
-	      WARN("(Resolver) Invalid TTL value: %s -> %s",name,val);
-	      avahi_free(val);
-	      break;
-	    }
-	    i->ttl = atoi(val);
-	    avahi_free(val);
-	    
-	    /* Validate lifetime field */
-	    avahi_string_list_get_pair(avahi_string_list_find(txt,"lifetime"),NULL,&val,NULL);
-	    i->lifetime = atol(val);
-	    if (!isValidLifetime(val)) {
-	      WARN("(Resolver) Invalid lifetime value: %s -> %s",name,val);
-	      avahi_free(val);
-	      break;
-	    }
-	    avahi_free(val);
-	    
-	    /* Validate fingerprint field */
-	    avahi_string_list_get_pair(avahi_string_list_find(txt,"fingerprint"),NULL,&val,&val_size);
-	    if (!isValidFingerprint(val,val_size)) {
-	      WARN("(Resolver) Invalid fingerprint: %s -> %s",name,val);
-	      avahi_free(val);
-	      break;
-	    }
-	    i->key = avahi_strdup(val);
-	    avahi_free(val);
-	    
-	    /* Validate (but not verify) signature field */
-	    avahi_string_list_get_pair(avahi_string_list_find(txt,"signature"),NULL,&val,&val_size);
-	    if (!isValidSignature(val,val_size)) {
-	      WARN("(Resolver) Invalid signature: %s -> %s",name,val);
-	      avahi_free(val);
-	      break;
-	    }
-	    i->signature = avahi_strdup(val);
-	    avahi_free(val);
-	    
-	    avahi_string_list_get_pair(avahi_string_list_find(txt,"name"),NULL,&i->name,NULL);
-	    avahi_string_list_get_pair(avahi_string_list_find(txt,"description"),NULL,&i->description,NULL);
-	    avahi_string_list_get_pair(avahi_string_list_find(txt,"uri"),NULL,&i->uri,NULL);
-	    avahi_string_list_get_pair(avahi_string_list_find(txt,"icon"),NULL,&i->icon,NULL);
-	    
-	    /** Add service categories */
-	    char *key = NULL;
-	    do {
-	      avahi_string_list_get_pair(txt,&key,&val,&val_size);
-	      if (!strcmp(key,"type")) {
-		/* Add 'type' fields to a list to be sorted alphabetically later */
-		if (!(i->categories = (char**)realloc(i->categories,(i->cat_len + 1)*sizeof(char*)))) {
-		  ERROR("Error reallocating category list");
-		  break;
-		}
-		i->categories[i->cat_len] = avahi_strdup(val);
-		i->cat_len++;
-	      }
-	      avahi_free(val);
-	      avahi_free(key);
-	      val = key = NULL;
-	    } while ((txt = avahi_string_list_get_next(txt)));
-	    
-	    // TODO: check connectivity, using commotiond socket library
-	    
-	    /* Verify signature */
-	    if (verify_announcement(i)) {
-	      INFO("Announcement signature verification failed");
-	      break;
-	    } else
-	      INFO("Announcement signature verification succeeded");
-	    
-	    /* Set expiration timer on the service */
-#ifdef USE_UCI
-	    long def_lifetime = default_lifetime();
-	    if (i->lifetime <= 0 || (def_lifetime < i->lifetime && def_lifetime > 0)) i->lifetime = def_lifetime;
-#endif
-	    
-	    if (i->lifetime > 0) {
-	      avahi_elapse_time(&tv, 1000*i->lifetime, 0);
-	      current_time = time(NULL);
-	      i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, remove_service, i); // create expiration event for service
-	    
-	      /* Convert lifetime period into timestamp */
-	      if (current_time != ((time_t)-1)) {
-	        timestr = localtime(&current_time);
-		timestr->tm_sec += i->lifetime;
-	        current_time = mktime(timestr);
-	        if ((c_time_string = ctime(&current_time))) {
-		  c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
-	          i->txt_lst = avahi_string_list_add_printf(i->txt_lst,"expiration=%s",c_time_string);
-	        }
-	      }
-	    }
-	    
-	    // TODO add various TXT fields to appropriate ServiceInfo->CSMService members, and use txt_list_to_string in _print_service instead
-	    if (!(i->txt = txt_list_to_string(i->txt_lst))) {
-	      ERROR("(Resolver) Could not convert txt fields to string");
+	    if (process_service(i) == 0) {
+	      ERROR("Error processing service");
 	      break;
 	    }
 	    
-#ifdef USE_UCI
-	    if (config.uci && uci_write(i) < 0)
-	      ERROR("(Resolver) Could not write to UCI");
-#endif
-            
-            i->resolved = 1;
+	    break;
         }
     }
+error:
     RESOLVER_FREE(i->resolver);
     i->resolver = NULL;
     if (event == AVAHI_RESOLVER_FOUND && !i->resolved) {
@@ -394,7 +223,7 @@ void browse_service_callback(
 	    found_service=find_service(name); // name is fingerprint, so should be unique
             if (event == AVAHI_BROWSER_NEW && !found_service) {
                 /* add the service.*/
-                add_remote_service(b, interface, protocol, name, type, domain);
+                add_service(b, interface, protocol, name, type, domain);
             }
             if (event == AVAHI_BROWSER_REMOVE && found_service) {
                 /* remove the service.*/

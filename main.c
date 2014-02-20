@@ -59,10 +59,9 @@
 #include "browse.h"
 #include "debug.h"
 
-#include "extern/sha1.h"
-
 #define REQUEST_MAX 1024
 #define RESPONSE_MAX 1024
+#define UUID_LEN 40
 
 extern co_socket_t unix_socket_proto;
 extern ServiceInfo *services;
@@ -115,143 +114,89 @@ static co_obj_t *_print_cats(co_obj_t *data, co_obj_t *current, void *context) {
   return NULL;
 }
 
-// static ServiceInfo *_find_service_by_key_i()
-
 /** Add OR update a service */
 CMD(commit_service) {
   co_obj_t *service = params;
-  char *to_verify = NULL;
   
   CHECK(IS_TREE(service),"Received invalid service");
 
+  co_obj_t *name_obj = co_tree_find(service,"name",sizeof("name"));
+  co_obj_t *description_obj = co_tree_find(service,"description",sizeof("description"));
+  co_obj_t *uri_obj = co_tree_find(service,"uri",sizeof("uri"));
+  co_obj_t *icon_obj = co_tree_find(service,"icon",sizeof("icon"));
+  co_obj_t *ttl_obj = co_tree_find(service,"ttl",sizeof("ttl"));
+  co_obj_t *lifetime_obj = co_tree_find(service,"lifetime",sizeof("lifetime"));
+  co_obj_t *categories_obj = co_tree_find(service,"categories",sizeof("categories"));
+  
   /* Check required fields */
-  CHECK(/*co_tree_find(service,"key",sizeof("key"))
-        && */co_tree_find(service,"name",sizeof("name"))
-        && co_tree_find(service,"description",sizeof("description"))
-        && co_tree_find(service,"uri",sizeof("uri"))
-        && co_tree_find(service,"icon",sizeof("icon")),
+  CHECK(name_obj && description_obj && uri_obj && icon_obj,
 	"Service missing required fields");
   
+  // TODO uuid will eventually be serval key
+  // for now, it's sha1sum of "%s%s",uci_encode(uri,port),hostname (see luci-commotion-apps controller)
+  char *uri = NULL;
+  size_t uri_size = co_obj_data(&uri, uri_obj);
+  char hostname[HOST_NAME_MAX] = {0};
+  CHECK(gethostname(hostname,HOST_NAME_MAX) == 0, "Failed to get hostname");
+  char uuid[UUID_LEN + 1] = {0};
+  CHECK(get_uuid(uri, uri_size - 1, 0, hostname, strlen(hostname), uuid, UUID_LEN + 1),"Failed to get UUID");
+  char *name = co_obj_data_ptr(name_obj);
+  
   /* First check if service exists */
-  char *name = co_obj_data_ptr(co_tree_find(service,"name",sizeof("name")));
-  ServiceInfo *i;
-  for (i = services; i; i = i->info_next) {
-    if (strcasecmp(i->service_name, name) == 0)
-      break;
-  }
+  ServiceInfo *i = find_service(uuid);
   
   if (!i) {
+    // create ServiceInfo
+    i = add_service(NULL, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, uuid, "_commotion._tcp", "mesh.local");
+    
     // TODO leave key blank to generate new one with signature
     // for now, get host's main serval key
     if (config.sid)
-      i->key = avahi_strdup(config.sid);
-    
-    // create ServiceInfo
-    i = avahi_new0(ServiceInfo, 1);
-    i->interface = AVAHI_IF_UNSPEC;
-    i->protocol = AVAHI_PROTO_UNSPEC;
-    i->type = avahi_strdup("_commotion._tcp");
-    i->domain = avahi_strdup("mesh.local");
-    i->resolved = 1;
-    
-    // TODO service_name will eventually be serval key
-    // for now, it's sha1sum of "%s%s",UUID,hostname (see luci-commotion-apps controller)
-    size_t uuid_len;
-    char *uuid = get_uuid(i,&uuid_len);
-    char hostname[HOST_NAME_MAX] = {0};
-    CHECK(gethostname(hostname,HOST_NAME_MAX) == 0, "Failed to get hostname");
-    char *to_hash = avahi_malloc0(uuid_len + strlen(hostname) + 1);
-    strncpy(to_hash,uuid,uuid_len);
-    strcat(to_hash,hostname);
-    SHA1_CTX ctx;
-    SHA1_Init(&ctx);
-    SHA1_Update(&ctx, (const uint8_t*)to_hash, uuid_len + strlen(hostname));
-    i->service_name = avahi_malloc0(SHA1_DIGEST_SIZE);
-    SHA1_Final(&ctx,(uint8_t*)i->service_name);
-    avahi_free(to_hash);
-    avahi_free(uuid);
-
-    AVAHI_LLIST_PREPEND(ServiceInfo, info, services, i);
+      CSM_SET(i, key, config.sid);
   }
   
   // set fields
-  i->name = avahi_strdup(name);
-  i->description = avahi_strdup(co_obj_data_ptr(co_tree_find(service,"description",sizeof("description"))));
-  i->uri = avahi_strdup(co_obj_data_ptr(co_tree_find(service,"uri",sizeof("uri"))));
-  i->icon = avahi_strdup(co_obj_data_ptr(co_tree_find(service,"icon",sizeof("icon"))));
-  co_obj_t *ttl = NULL;
-  if ((ttl = co_tree_find(service,"ttl",sizeof("ttl"))) && IS_INT(ttl)) {
-    i->ttl = (int)(*co_obj_data_ptr(ttl));
-  }
-  co_obj_t *lifetime = NULL;
-  if ((lifetime = co_tree_find(service,"lifetime",sizeof("lifetime"))) && IS_INT(lifetime)) {
-    i->lifetime = (long)(*co_obj_data_ptr(lifetime));
-  }
-  co_obj_t *categories = NULL;
-  if ((categories = co_tree_find(service,"categories",sizeof("categories")))
-      && IS_LIST(categories)
-      && co_list_length(categories) > 0) {
-    i->cat_len = co_list_length(categories);
-    i->categories = avahi_malloc0(i->cat_len * sizeof(char*));
+  CSM_SET(i, host_name, hostname);
+  CSM_SET(i, name, name);
+  CSM_SET(i, description, co_obj_data_ptr(description_obj));
+  CSM_SET(i, uri, uri);
+  CSM_SET(i, icon, co_obj_data_ptr(icon_obj));
+  if (ttl_obj && IS_INT(ttl_obj))
+    i->ttl = (int)(*co_obj_data_ptr(ttl_obj));
+  if (lifetime_obj && IS_INT(lifetime_obj))
+    i->lifetime = (long)(*co_obj_data_ptr(lifetime_obj));
+  if (categories_obj
+      && IS_LIST(categories_obj)
+      && co_list_length(categories_obj) > 0) {
+    i->cat_len = co_list_length(categories_obj);
+    i->categories = h_realloc(i->categories,(i->cat_len)*sizeof(char*));
+    CHECK_MEM(i->categories);
+    hattach(i->categories, i);
     for (int j = 0; j < i->cat_len; j++)
-      i->categories[j] = avahi_strdup(_LIST_ELEMENT(categories,j));
+      CSM_SET(i, categories[j], _LIST_ELEMENT(categories_obj,j));
   }
   
-  // generate serval signature
-  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
-  CHECK((co_conn = co_connect(config.co_sock,strlen(config.co_sock)+1)),
-	"Failed to connect to Commotion socket");
-  CHECK_MEM((co_req = co_request_create()));
-  CO_APPEND_STR(co_req,"sign");
-  if (i->key) {
-    CO_APPEND_STR(co_req,i->key);
+  if (process_service(i)) {
+    // send back success, key, signature
+    CMD_OUTPUT("success",co_bool_create(true,0));
+    CMD_OUTPUT("key",co_str8_create(i->key,strlen(i->key)+1,0));
+    CMD_OUTPUT("signature",co_str8_create(i->signature,strlen(i->signature)+1,0));
+  } else {
+    // remove service, send back failure
+    remove_service(NULL, i);
+    CMD_OUTPUT("success",co_bool_create(false,0));
   }
-  int to_verify_len = 0;
-  to_verify = createSigningTemplate(i->type,
-					  i->domain,
-					  i->port,
-					  i->name,
-					  i->ttl,
-					  i->uri,
-					  (const char **)i->categories,
-					  i->cat_len,
-					  i->icon,
-					  i->description,
-					  i->lifetime,
-					  &to_verify_len);
-  CHECK(to_verify,"Failed to create signing template");
-  CO_APPEND_STR(co_req,to_verify);
-  char *signature = NULL, *sid = NULL;
-  CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req),
-	"Failed to sign service announcement");
-  CHECK(co_response_get_str(co_resp,&signature,"signature",sizeof("signature")),
-	"Failed to fetch signature from response");
-  CHECK(co_response_get_str(co_resp,&sid,"sid",sizeof("sid")),
-	"Failed to fetch SID from response");
-  i->signature = avahi_strdup(signature);
-  if (!i->key)
-    i->key = avahi_strdup(sid);
-  
-  // send back success, key, signature
-  CMD_OUTPUT("success",co_bool_create(true,0));
-  CMD_OUTPUT("key",co_str8_create(i->key,strlen(i->key)+1,0));
-  CMD_OUTPUT("signature",co_str8_create(i->signature,strlen(i->signature)+1,0));
   
   return 1;
 error:
-  if (to_verify)
-    free(to_verify);
   return 0;
 }
 
 CMD(remove_service) {
-  co_tree_print(co_list_element(params,0));
-//   co_obj_t *subtree = co_tree_find(co_list_element(params,0),"test3",sizeof("test3"));
-//   co_tree_print(subtree);
   
-  co_obj_t *str = co_str8_create("testremove",sizeof("testremove"),0);
-  CMD_OUTPUT("response",str);
   return 1;
+error:
+  return 0;
 }
 
 CMD(list_services) {
@@ -577,8 +522,8 @@ int main(int argc, char*argv[]) {
     
     /* Register signal handlers */
     struct sigaction sa = {{0}};
-    sa.sa_handler = print_services;
-    CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
+//     sa.sa_handler = print_services;
+//     CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
     sa.sa_handler = csm_shutdown;
     CHECK(sigaction(SIGINT,&sa,NULL) == 0, "Failed to set signal handler");
     CHECK(sigaction(SIGTERM,&sa,NULL) == 0, "Failed to set signal handler");

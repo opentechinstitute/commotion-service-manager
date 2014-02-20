@@ -36,13 +36,6 @@
 #include "defs.h"
 
 /**
- * Verify the Serval signature in a service announcement
- * @param i the service to verify (includes signature and fingerprint txt fields)
- * @returns 0 if the signature is valid, 1 if it is invalid
- */
-int verify_announcement(ServiceInfo *i);
-
-/**
  * Handler called whenever a service is (potentially) resolved
  * @param userdata the ServiceFile object of the service in question
  * @note if compiled with UCI support, write the service to UCI if

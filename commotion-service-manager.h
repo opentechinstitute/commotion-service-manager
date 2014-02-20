@@ -32,15 +32,7 @@ typedef void CSMService;
 typedef void CSMServiceList;
 typedef void CategoryList;
 
-/*int add_service(char const *key,
-		char const *name,
-		char const *description,
-		char const *uri,
-		char const *icon,
-		int ttl,
-		long lifetime,
-		CSMCategory *const categories);
-*/
+
 
 // edit service if key exists in list of services, otherwise create new
 // int edit_service(char *key, CSMService *service);

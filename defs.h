@@ -35,6 +35,8 @@
 #include <avahi-client/publish.h>
 #include <avahi-common/llist.h>
 
+#include "extern/halloc.h"
+
 #include "config.h"
 
 /** Length (in hex chars) of Serval IDs */
@@ -43,6 +45,15 @@
 #define SIG_LENGTH 128
 
 #define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
+
+#define CSM_SET(I,M,S) \
+  do { \
+    I->M = halloc(I->M, strlen(S) + 1); \
+    CHECK_MEM(I->M); \
+    memset(I->M, 0, strlen(S) + 1); \
+    hattach(I->M, I); \
+    strcpy(I->M, S); \
+  } while (0)
 
 #ifdef CLIENT
 #define TYPE_BROWSER AvahiServiceTypeBrowser
@@ -84,41 +95,49 @@ struct csm_config {
   char *sid;
 };
 
+typedef struct ServiceTXTFields ServiceTXTFields;
+struct ServiceTXTFields {
+  char *name;
+  char *description;
+  char *uri;
+  char *icon;
+  char **categories;
+  int cat_len;
+  int ttl;
+  long lifetime;
+  char *key;
+  char *signature;
+};
+
 typedef struct ServiceInfo ServiceInfo;
-/** Struct used to hold info about a service */
 typedef struct ServiceInfo {
-    /** Common members for all services */
-    AvahiIfIndex interface;
-    AvahiProtocol protocol;
-    char *service_name;
-    char*type;
-    char *domain;
-    char *host_name;
-    char *key;
-    char *name;
-    char *description;
-    char *uri;
-    char *icon;
-    char **categories;
-    char *signature;
-    char *txt; /**< string representing all the txt fields */
-    int ttl;
-    int cat_len;
-    long lifetime;
-    uint16_t port;
-    AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
-    AvahiTimeout *timeout; /** Timer set for the service's expiration date */
-    int resolved; /**< Flag indicating whether all the fields have been resolved */
+  /** Common members for all services */
+  AvahiIfIndex interface;
+  AvahiProtocol protocol;
+  char *host_name;
+  char *uuid;
+  char *type;
+  char *domain;
+  uint16_t port;
+  union {
+    ServiceTXTFields fields;
+    ServiceTXTFields;
+  };
+  char *expiration;
+  AvahiTimeout *timeout; /** Timer set for the service's expiration date */
+  int resolved; /**< Flag indicating whether all the fields have been resolved */
 
-    /** Local services */
-    ENTRY_GROUP *group;
+  /** Local services */
+  ENTRY_GROUP *group;
 
-    /** Remote services */
-    char address[AVAHI_ADDRESS_STR_MAX];
-    RESOLVER *resolver;
+  /** Remote services */
+  char address[AVAHI_ADDRESS_STR_MAX];
+  AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
+//   char *txt; /**< string representing all the txt fields */
+  RESOLVER *resolver;
 
-    /** Linked list */
-    AVAHI_LLIST_FIELDS(ServiceInfo, info);
+  /** Linked list */
+  AVAHI_LLIST_FIELDS(ServiceInfo, info);
 } ServiceInfo;
 
 #endif

@@ -15,7 +15,7 @@ SET(CSM_MANAGESOCK \"/var/run/commotion-service-manager.sock\")
 
 CONFIGURE_FILE( "${CMAKE_SOURCE_DIR}/config.h.in" "${PROJECT_SOURCE_DIR}/config.h" )
 
-ADD_DEFINITIONS(-Os -Wall --std=gnu99 -Wmissing-declarations -D_GNU_SOURCE -DUSESYSLOG -DCLIENT -DNDEBUG -DHAVE_STDINT_H)
+ADD_DEFINITIONS(-Os -Wall --std=gnu99 -fms-extensions -Wmissing-declarations -D_GNU_SOURCE -DUSESYSLOG -DCLIENT -DNDEBUG -DHAVE_STDINT_H)
 
 IF(DEBUG)
   ADD_DEFINITIONS(-g3)

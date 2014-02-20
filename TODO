@@ -1,0 +1,15 @@
+TODO
+change UUID calculation in luci-commotion-apps (including .service file names)
+investigate backwards compatibility of UUID change, whether need to have CSM convert old entries in UCI upon starting
+pull in gtest via makefile, don't include in repo
+pare down header includes
+finish client commands
+redo print services
+code cleanup
+
+DONE
+replace avahi_malloc/avahi_strdup w/ halloc
+input validation in commotion-service-manager.c (set functions), CMD(commit_service) in main.c
+update get_uuid function
+  - pass buffer instead of mallocing string in function
+use i->host_name in get_uuid, instead of using local box's hostname

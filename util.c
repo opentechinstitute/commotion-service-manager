@@ -26,12 +26,16 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
+#include <unistd.h>
 
 #include <avahi-core/core.h>
 
 #include "defs.h"
 #include "util.h"
 #include "debug.h"
+
+#include "extern/sha1.h"
 
 int isHex(const char *str, size_t len) {
   int i;
@@ -62,12 +66,12 @@ int isUCIEncoded(const char *s, size_t s_len) {
   return ret;
 }
 
-int isValidTtl(const char *ttl) {
-  return isNumeric(ttl) && atoi(ttl) >= 0;
+int isValidTtl(int ttl) {
+  return ttl >= 0 && ttl < 256;
 }
 
-int isValidLifetime(const char *lifetime_str) {
-  return isNumeric(lifetime_str) && atol(lifetime_str) >= 0;
+int isValidLifetime(long lifetime) {
+  return lifetime >= 0;
 }
 
 int isValidFingerprint(const char *sid, size_t sid_len) {
@@ -89,33 +93,60 @@ int cmpstringp(const void *p1, const void *p2) {
   return strcmp(* (char * const *) p1, * (char * const *) p2);
 }
 
-/**
- * Derives the UCI-encoded name of a service, as a concatenation of URI and port
- * @param i ServiceInfo object of the service
- * @param[out] uuid_len Length of the UCI-encoded name
- * @return UCI-encoded name
- */
-char *get_uuid(ServiceInfo *i, size_t *uuid_len) {
-  char *uuid = NULL;
-  char *uri_escaped = NULL;
-  char port[6] = "";
-  size_t uri_escaped_len;
-  
-  assert(i);
-  
-  CHECK(i->uri,"Missing values needed for deriving UUID");
-  
-  CHECK((uri_escaped = uci_escape(i->uri,strlen(i->uri),&uri_escaped_len)),"Failed to escape URI");
-  if (i->port > 0)
-    sprintf(port,"%d",i->port);
-  CHECK_MEM((uuid = (char*)calloc(uri_escaped_len + strlen(port),sizeof(char))));
-  strncpy(uuid,uri_escaped,uri_escaped_len);
-  strcat(uuid,port);
-  *uuid_len = uri_escaped_len + strlen(port);
+int tohex(unsigned char *str, size_t str_len, char *buf, size_t buf_size) {
+  CHECK(buf_size >= 2 * str_len,"Insufficient buffer size");
+  for (int i = 0; i < str_len; i++)
+    sprintf(&buf[i*2], "%02X", str[i]);
+  return 1;
+error:
+  return 0;
+}
 
+/**
+ * Derives the UUID of a service, as a SHA1sum of the concatenation of (UCI-escaped) URI, port, and hostname
+ * @param uri URI of the service
+ * @param uri_len length of the URI
+ * @param port (optional) the service port
+ * @param[out] buf character buffer in which to store UUID
+ * @param buf_size size of character buffer
+ * @return length of UUID on success, 0 on error
+ */
+int get_uuid(char *uri, size_t uri_len, int port, char *hostname, size_t hostname_len, char *buf, size_t buf_size) {
+  char *uri_escaped = NULL;
+  char *uuid = NULL;
+  int ret = 0;
+  
+  CHECK(buf_size >= 2 * SHA1_DIGEST_SIZE,"UUID buffer too small");
+  
+  CHECK(uri && uri_len > 0,"Missing values needed for deriving UUID");
+  
+  size_t uri_escaped_len;
+  uri_escaped = uci_escape(uri,uri_len,&uri_escaped_len);
+  CHECK(uri_escaped,"Failed to escape URI");
+  
+  char port_str[6] = {0};
+  if (port > 0)
+    sprintf(port_str,"%d",port);
+  
+  uuid = calloc(uri_escaped_len + strlen(port_str) + hostname_len + 1,sizeof(char));
+  CHECK_MEM(uuid);
+  
+  strncpy(uuid,uri_escaped,uri_escaped_len);
+  strcat(uuid,port_str);
+  strcat(uuid,hostname);
+  
+  SHA1_CTX ctx;
+  SHA1_Init(&ctx);
+  SHA1_Update(&ctx, (const uint8_t*)uuid, strlen(uuid));
+  unsigned char sha1sum[SHA1_DIGEST_SIZE] = {0};
+  SHA1_Final(&ctx, (uint8_t*)sha1sum);
+  CHECK(tohex(sha1sum,SHA1_DIGEST_SIZE,buf,buf_size),"Failed to convert sha1sum to hex");
+
+  ret = 2 * SHA1_DIGEST_SIZE;
 error:
   if (uri_escaped) free(uri_escaped);
-  return uuid;
+  if (uuid) free(uuid);
+  return ret;
 }
 
 /**
@@ -253,63 +284,4 @@ char *txt_list_to_string(AvahiStringList *txt) {
   }
 error:
   return list;
-}
-
-// TODO document
-char *createSigningTemplate(
-    const char *type,
-    const char *domain,
-    const int port,
-    const char *name,
-    const int ttl,
-    const char *uri,
-    const char **app_types,
-    const int app_types_len,
-    const char *icon,
-    const char *description,
-    const long lifetime,
-    int *ret_len) {
-    
-    const char type_template[] = "<txt-record>type=%s</txt-record>";
-    const char *str_template = "<type>%s</type>\n\
-<domain-name>%s</domain-name>\n\
-<port>%d</port>\n\
-<txt-record>name=%s</txt-record>\n\
-<txt-record>ttl=%d</txt-record>\n\
-<txt-record>uri=%s</txt-record>\n\
-%s\n\
-<txt-record>icon=%s</txt-record>\n\
-<txt-record>description=%s</txt-record>\n\
-<txt-record>lifetime=%d</txt-record>";
-    char *type_str = NULL, *sign_block = NULL, *app_type = NULL;
-    int j, prev_len = 0;
-    
-    *ret_len = 0;
-    
-    qsort(&app_types[0],app_types_len,sizeof(char*),cmpstringp); /* Sort types into alphabetical order */
-    
-    /* Concat the types into a single string to add to template */
-    for (j = 0; j < app_types_len; ++j) {
-      if (app_type) {
-	free(app_type);
-	app_type = NULL;
-      }
-      prev_len = type_str ? strlen(type_str) : 0;
-      CHECK_MEM(asprintf(&app_type,type_template,app_types[j]) != -1 &&
-      (type_str = (char*)realloc(type_str,prev_len + strlen(app_type) + 1)));
-      type_str[prev_len] = '\0';
-      strcat(type_str,app_type);
-    }
-    
-    /* Add the fields into the template */
-    CHECK_MEM(asprintf(&sign_block,str_template,type,domain,port,name,ttl,uri,app_types_len ? type_str : "",icon,description,lifetime) != -1);
-    
-    *ret_len = strlen(sign_block);
-    
-error:
-    if (app_type)
-      free(app_type);
-    if (type_str)
-      free(type_str);
-    return sign_block;
 }
