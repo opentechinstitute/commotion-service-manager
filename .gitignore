@@ -29,3 +29,5 @@ tags
 # Kate
 *~
 
+#Python
+__pycache__
