@@ -47,24 +47,28 @@
  */
 char *get_uuid(ServiceInfo *i, size_t *uuid_len) {
   char *uuid = NULL;
-  char *uri = NULL;
+  char *uri = NULL, *key = NULL;
   char *uri_escaped = NULL;
   char port[6] = "";
-  size_t uri_escaped_len, uri_len = 0;
-  AvahiStringList *uri_txt = NULL;
+  size_t uri_escaped_len, uri_len = 0, key_len = 0;
+  AvahiStringList *uri_txt = NULL, *key_txt = NULL;
   
   assert(i);
   
   CHECK((uri_txt = avahi_string_list_find(i->txt_lst,"uri")),"Failed to find uri txt record");
+  CHECK((key_txt = avahi_string_list_find(i->txt_lst,"fingerprint")),"Failed to find fingerprint txt record");
   avahi_string_list_get_pair(uri_txt,NULL,&uri,&uri_len);
+  avahi_string_list_get_pair(key_txt,NULL,&key,&key_len);
   CHECK(uri && uri_len,"Failed to fetch uri txt record");
+  CHECK(key && isValidFingerprint(key,key_len),"Failed to fetch fingerprint txt record");
   CHECK((uri_escaped = uci_escape(uri,uri_len,&uri_escaped_len)),"Failed to escape URI");
   if (i->port > 0)
     sprintf(port,"%d",i->port);
-  CHECK_MEM((uuid = (char*)calloc(uri_escaped_len + strlen(port),sizeof(char))));
+  CHECK_MEM((uuid = (char*)calloc(uri_escaped_len + strlen(port) + key_len + 1,sizeof(char))));
   strncpy(uuid,uri_escaped,uri_escaped_len);
   strcat(uuid,port);
-  *uuid_len = uri_escaped_len + strlen(port);
+  strcat(uuid,key);
+  *uuid_len = uri_escaped_len + strlen(port) + key_len;
 
 error:
   free(uri_escaped);
