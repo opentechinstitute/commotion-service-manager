@@ -133,7 +133,7 @@ void remove_service(AvahiTimeout *t, void *userdata) {
       avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
     
 #ifdef OPENWRT
-    if (t && is_local(i) == 1) {
+    if (t && is_local(i)) {
       // Delete Avahi service file
       DEBUG("Removing Avahi service file");
       size_t uuid_len = 0;
