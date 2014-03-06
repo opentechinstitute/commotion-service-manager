@@ -13,7 +13,8 @@ endif
 openwrt: commotion-service-manager
 
 ifeq ($(MAKECMDGOALS),linux)
-CFLAGS+=-DUSE_UCI -DUSESYSLOG -DUCIPATH="\"/opt/luci-commotion/etc/config\""
+CFLAGS+=-DUSE_UCI -DUSESYSLOG -DCLIENT -DUCIPATH="\"/opt/luci-commotion/etc/config\""
+LDFLAGS+=-lavahi-client
 OBJS+=uci-utils.o
 endif
 linux: commotion-service-manager

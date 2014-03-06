@@ -41,6 +41,12 @@
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>
+#include <avahi-core/core.h>
+#include <avahi-core/lookup.h>
+#ifdef CLIENT
+#include <avahi-client/client.h>
+#include <avahi-client/lookup.h>
+#endif
 
 #include "commotion.h"
 
@@ -64,7 +70,9 @@ extern int keyring_send_sas_request_client(const char *sid_str,
 ServiceInfo *services = NULL;
 
 AvahiSimplePoll *simple_poll = NULL;
+#ifndef CLIENT
 AvahiServer *server = NULL;
+#endif
 
 #define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
 
@@ -92,14 +100,18 @@ ServiceInfo *find_service(const char *name) {
  * @param domain domain service is advertised on (e.g. mesh.local)
  * @return ServiceInfo struct representing the service that was added
  */
-ServiceInfo *add_service(AvahiIfIndex interface, AvahiProtocol protocol, const char *name, const char *type, const char *domain) {
+ServiceInfo *add_service(BROWSER *b, AvahiIfIndex interface, AvahiProtocol protocol, const char *name, const char *type, const char *domain) {
     ServiceInfo *i;
+    
+#ifdef CLIENT
+    AvahiClient *client = avahi_service_browser_get_client(b);
+#endif
 
     i = avahi_new0(ServiceInfo, 1);
 
-    if (!(i->resolver = avahi_s_service_resolver_new(server, interface, protocol, name, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, i))) {
+    if (!(i->resolver = RESOLVER_NEW(interface, protocol, name, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, i))) {
         avahi_free(i);
-        INFO("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", name, type, domain, avahi_strerror(avahi_server_errno(server)));
+        INFO("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", name, type, domain, AVAHI_ERROR);
         return NULL;
     }
     i->interface = interface;
@@ -164,7 +176,7 @@ void remove_service(AvahiTimeout *t, void *userdata) {
     AVAHI_LLIST_REMOVE(ServiceInfo, info, services, i);
 
     if (i->resolver)
-        avahi_s_service_resolver_free(i->resolver);
+        RESOLVER_FREE(i->resolver);
 
     avahi_free(i->name);
     avahi_free(i->type);
@@ -349,7 +361,7 @@ error:
  *       the local list
  */
 void resolve_callback(
-    AvahiSServiceResolver *r,
+    RESOLVER *r,
     AVAHI_GCC_UNUSED AvahiIfIndex interface,
     AVAHI_GCC_UNUSED AvahiProtocol protocol,
     AvahiResolverEvent event,
@@ -374,10 +386,14 @@ void resolve_callback(
     long lifetime = 0, expiration;
     
     assert(r);
+    
+#ifdef CLIENT
+    AvahiClient *client = avahi_service_resolver_get_client(r);
+#endif
 
     switch (event) {
         case AVAHI_RESOLVER_FAILURE:
-            ERROR("(Resolver) Failed to resolve service '%s' of type '%s' in domain '%s': %s", name, type, domain, avahi_strerror(avahi_server_errno(server)));
+            ERROR("(Resolver) Failed to resolve service '%s' of type '%s' in domain '%s': %s", name, type, domain, AVAHI_ERROR);
             break;
 
         case AVAHI_RESOLVER_FOUND: {
@@ -484,7 +500,7 @@ void resolve_callback(
             i->resolved = 1;
         }
     }
-    avahi_s_service_resolver_free(i->resolver);
+    RESOLVER_FREE(i->resolver);
     i->resolver = NULL;
     if (event == AVAHI_RESOLVER_FOUND && !i->resolved) {
       remove_service(NULL, i);
@@ -496,7 +512,7 @@ void resolve_callback(
  * services becomes available on the LAN or is removed from the LAN
  */
 void browse_service_callback(
-    AvahiSServiceBrowser *b,
+    BROWSER *b,
     AvahiIfIndex interface,
     AvahiProtocol protocol,
     AvahiBrowserEvent event,
@@ -512,7 +528,7 @@ void browse_service_callback(
 
         case AVAHI_BROWSER_FAILURE:
 
-            ERROR("(Browser) %s", avahi_strerror(avahi_server_errno(server)));
+            ERROR("(Browser) %s", AVAHI_BROWSER_ERROR);
             avahi_simple_poll_quit(simple_poll);
             return;
 
@@ -525,7 +541,7 @@ void browse_service_callback(
 	    found_service=find_service(name); // name is fingerprint, so should be unique
             if (event == AVAHI_BROWSER_NEW && !found_service) {
                 /* add the service.*/
-                add_service(interface, protocol, name, type, domain);
+                add_service(b, interface, protocol, name, type, domain);
             }
             if (event == AVAHI_BROWSER_REMOVE && found_service) {
                 /* remove the service.*/
@@ -543,7 +559,7 @@ void browse_service_callback(
  * Handler for creating Avahi service browser
  */
 void browse_type_callback(
-    AvahiSServiceTypeBrowser *b,
+    TYPE_BROWSER *b,
     AvahiIfIndex interface,
     AvahiProtocol protocol,
     AvahiBrowserEvent event,
@@ -552,25 +568,26 @@ void browse_type_callback(
     AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
     void* userdata) {
 
-    AvahiServer *s = (AvahiServer*)userdata;
+#ifdef CLIENT
+    AvahiClient *client = (AvahiClient*)userdata;
+#else
+    AvahiServer *server = (AvahiServer*)userdata;
+#endif
     assert(b);
 
     INFO("Type browser got an event: %d", event);
     switch (event) {
         case AVAHI_BROWSER_FAILURE:
-            ERROR("(Browser) %s", 
-                avahi_strerror(avahi_server_errno(s)));
+            ERROR("(Browser) %s", AVAHI_ERROR);
             avahi_simple_poll_quit(simple_poll);
             return;
         case AVAHI_BROWSER_NEW:
-            if (!avahi_s_service_browser_new(s, 
-                                           AVAHI_IF_UNSPEC, 
+            if (!BROWSER_NEW(AVAHI_IF_UNSPEC, 
                                            AVAHI_PROTO_UNSPEC, 
                                            type, 
                                            domain, 
                                            0, 
-                                           browse_service_callback, 
-                                           s)) {
+                                           browse_service_callback)) {
                 ERROR("Service Browser: Failed to create a service " 
                                 "browser for type (%s) in domain (%s)", 
                                                                 type, 
