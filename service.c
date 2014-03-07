@@ -59,6 +59,13 @@
 #include "uci-utils.h"
 #endif
 
+#define OPEN_DELIMITER "\""
+#define OPEN_DELIMITER_LEN 1
+#define CLOSE_DELIMITER "\""
+#define CLOSE_DELIMITER_LEN 1
+#define FIELD_DELIMITER ","
+#define FIELD_DELIMITER_LEN 1
+
 // from libcommotion_serval-sas
 #define SAS_SIZE 32
 extern int keyring_send_sas_request_client(const char *sid_str, 
@@ -136,37 +143,93 @@ error:
 }
 
 /**
+ * Convert an AvahiStringList to a string
+ */
+static char *
+_csm_txt_list_to_string(char *cur, size_t *cur_len, char *append, size_t append_len)
+{
+  char *open_delimiter = OPEN_DELIMITER;
+  char *close_delimiter = CLOSE_DELIMITER;
+  char *field_delimiter = FIELD_DELIMITER;
+  char *escaped = escape(append, &append_len);
+  CHECK_MEM(escaped);
+  cur = realloc(cur, *cur_len
+		     + OPEN_DELIMITER_LEN
+		     + append_len
+		     + CLOSE_DELIMITER_LEN
+		     + FIELD_DELIMITER_LEN
+		     + 1);
+  CHECK_MEM(cur);
+  cur[*cur_len] = '\0';
+  
+  strcat(cur, open_delimiter);
+  strcat(cur, escaped);
+  strcat(cur, close_delimiter);
+  strcat(cur, field_delimiter);
+  
+  *cur_len += OPEN_DELIMITER_LEN + append_len + CLOSE_DELIMITER_LEN + FIELD_DELIMITER_LEN;
+  cur[*cur_len] = '\0';
+
+error:
+  if (escaped)
+    free(escaped);
+  return cur;
+}
+
+/**
  * Output service fields to a file
  * @param f File to output to
  * @param service the service to print
  */
-// static void _print_service(FILE *f, ServiceInfo *service) {
-//   char interface_string[IF_NAMESIZE];
-//   const char *protocol_string;
-//   
-//   if (!if_indextoname(service->interface, interface_string))
-//     WARN("Could not resolve the interface name!");
-//   
-//   if (!(protocol_string = avahi_proto_to_string(service->protocol)))
-//     WARN("Could not resolve the protocol name!");
-//   
-//   fprintf(f, "%s;%s;%s;%s;%s;%s;%s;%u;%s\n", interface_string,
-// 	  protocol_string,
-// 	  service->name,
-// 	  service->type,
-// 	  service->domain,
-// 	  service->host_name,
-// 	  service->address,
-// 	  service->port,
-// 	  service->txt ? service->txt : "");
-// }
+static void
+_print_service(FILE *f, ServiceInfo *service)
+{
+  char interface_string[IF_NAMESIZE];
+  const char *protocol_string;
+  
+  if (!if_indextoname(service->interface, interface_string))
+    WARN("Could not resolve the interface name!");
+  
+  if (!(protocol_string = avahi_proto_to_string(service->protocol)))
+    WARN("Could not resolve the protocol name!");
+  
+  char *txt = NULL;
+  size_t txt_len = 0;
+  txt = _csm_txt_list_to_string(txt, &txt_len, service->name, strlen(service->name));
+  txt = _csm_txt_list_to_string(txt, &txt_len, service->description, strlen(service->description));
+  txt = _csm_txt_list_to_string(txt, &txt_len, service->uri, strlen(service->uri));
+  txt = _csm_txt_list_to_string(txt, &txt_len, service->icon, strlen(service->icon));
+  for (int i = 0; i < service->cat_len; i++) {
+    txt = _csm_txt_list_to_string(txt, &txt_len, service->categories[i], strlen(service->categories[i]));
+  }
+  txt_len = asprintf(&txt, "%sttl=%d;lifetime=%ld;", txt, service->ttl, service->lifetime);
+  CHECK_MEM(txt_len != -1);
+  txt = _csm_txt_list_to_string(txt, &txt_len, service->key, strlen(service->key));
+  txt = _csm_txt_list_to_string(txt, &txt_len, service->signature, strlen(service->signature));
+  
+  fprintf(f, "%s;%s;%s;%s;%s;%s;%u;%s\n",
+	  interface_string,
+	  protocol_string,
+	  service->uuid,
+	  service->type,
+	  service->domain,
+	  service->host_name,
+	  service->port,
+	  txt);
+  
+error:
+  if (txt)
+    free(txt);
+}
 
 /* Public */
 
 /**
  * Check if a service uuid is in the current list of local services
  */
-ServiceInfo *find_service(const char *uuid) {
+ServiceInfo *
+find_service(const char *uuid)
+{
   ServiceInfo *i;
   
   for (i = services; i; i = i->info_next) {
@@ -186,40 +249,42 @@ ServiceInfo *find_service(const char *uuid) {
  * @param domain domain service is advertised on (e.g. mesh.local)
  * @return ServiceInfo struct representing the service that was added
  */
-ServiceInfo *add_service(BROWSER *b,
-			 AvahiIfIndex interface,
-			 AvahiProtocol protocol,
-			 const char *uuid,
-			 const char *type,
-			 const char *domain) {
-    ServiceInfo *i;
-    
-    i = h_calloc(1, sizeof(ServiceInfo));
+ServiceInfo *
+add_service(BROWSER *b,
+	    AvahiIfIndex interface,
+	    AvahiProtocol protocol,
+	    const char *uuid,
+	    const char *type,
+	    const char *domain)
+{
+  ServiceInfo *i;
+  
+  i = h_calloc(1, sizeof(ServiceInfo));
 
-    i->interface = interface;
-    i->protocol = protocol;
-    CSM_SET(i, uuid, uuid);
-    CSM_SET(i, type, type);
-    CSM_SET(i, domain, domain);
-    
-    if (b) {
+  i->interface = interface;
+  i->protocol = protocol;
+  CSM_SET(i, uuid, uuid);
+  CSM_SET(i, type, type);
+  CSM_SET(i, domain, domain);
+  
+  if (b) {
 #ifdef CLIENT
-      AvahiClient *client = avahi_service_browser_get_client(b);
+    AvahiClient *client = avahi_service_browser_get_client(b);
 #endif
-      if (!(i->resolver = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, i))) {
-        h_free(i);
-        INFO("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
-        return NULL;
-      }
-      i->resolved = 0;
+    if (!(i->resolver = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, i))) {
+      h_free(i);
+      INFO("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
+      return NULL;
     }
+    i->resolved = 0;
+  }
 
-    AVAHI_LLIST_PREPEND(ServiceInfo, info, services, i);
+  AVAHI_LLIST_PREPEND(ServiceInfo, info, services, i);
 
-    return i;
+  return i;
 error:
-    remove_service(NULL, i);
-    return NULL;
+  remove_service(NULL, i);
+  return NULL;
 }
 
 int
@@ -269,7 +334,7 @@ process_service(ServiceInfo *i)
   
 #ifdef USE_UCI
   /* Write out service to UCI */
-  if (config.uci && uci_write(i) < 0)
+  if (config.uci && uci_write(i) == 0)
     ERROR("(Resolver) Could not write to UCI");
 #endif
   
@@ -287,55 +352,56 @@ error:
  * @note If compiled for OpenWRT, the Avahi service file for the local service is removed
  * @note If compiled with UCI support, service is also removed from UCI list
  */
-void remove_service(AvahiTimeout *t, void *userdata) {
-    assert(userdata);
-    ServiceInfo *i = (ServiceInfo*)userdata;
+void
+remove_service(AvahiTimeout *t, void *userdata)
+{
+  assert(userdata);
+  ServiceInfo *i = (ServiceInfo*)userdata;
 
-    INFO("Removing service announcement: %s",i->uuid);
-    
-    /* Cancel expiration event */
-    if (!t && i->timeout)
-      avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
-    
+  INFO("Removing service announcement: %s",i->uuid);
+  
+  /* Cancel expiration event */
+  if (!t && i->timeout)
+    avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
+  
 #ifdef USE_UCI
-    if (t || !is_local(i)) {
-      // Delete UCI entry
-      if (config.uci && uci_remove(i) < 0)
-        ERROR("(Remove_Service) Could not remove from UCI");
-    }
+  if (t || !is_local(i)) {
+    // Delete UCI entry
+    if (config.uci && uci_remove(i) < 0)
+      ERROR("(Remove_Service) Could not remove from UCI");
+  }
 #endif
-    
-    AVAHI_LLIST_REMOVE(ServiceInfo, info, services, i);
+  
+  AVAHI_LLIST_REMOVE(ServiceInfo, info, services, i);
 
-    if (i->resolver)
-        RESOLVER_FREE(i->resolver);
+  if (i->resolver)
+    RESOLVER_FREE(i->resolver);
 
-    if (i->txt_lst)
-      avahi_string_list_free(i->txt_lst);
-    h_free(i);
+  if (i->txt_lst)
+    avahi_string_list_free(i->txt_lst);
+  h_free(i);
 }
 
 /**
  * Upon resceiving the USR1 signal, print local services
  */
-// void print_services(int signal) {
-//     ServiceInfo *i;
-//     FILE *f = NULL;
-// 
-//     if (!(f = fopen(config.output_file, "w+"))) {
-//         WARN("Could not open %s. Using stdout instead.", config.output_file);
-//         f = stdout;
-//     }
-// 
-//     for (i = services; i; i = i->info_next) {
-//         if (i->resolved)
-//             _print_service(f, i);
-//     }
-// 
-//     if (f != stdout) {
-//         fclose(f);
-//     }
-// }
+void print_services(int signal) {
+  ServiceInfo *i;
+  FILE *f = NULL;
+
+  if (!(f = fopen(config.output_file, "w+"))) {
+    WARN("Could not open %s. Using stdout instead.", config.output_file);
+    f = stdout;
+  }
+
+  for (i = services; i; i = i->info_next) {
+    if (i->resolved)
+      _print_service(f, i);
+  }
+
+  if (f != stdout)
+    fclose(f);
+}
 
 int
 verify_signature(ServiceInfo *i)

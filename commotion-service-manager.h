@@ -25,6 +25,16 @@
 #ifndef COMMOTION_SERVICE_MANAGER_H
 #define COMMOTION_SERVICE_MANAGER_H
 
+#define SERVICE_SET(T,M,O) { \
+  CHECK(IS_TREE(T),"Not a valid service");\
+  CHECK(co_tree_insert_force(T,\
+		       M,\
+		       sizeof(M),\
+		       O),\
+	"Failed to insert" M "into service"); \
+  }
+#define SERVICE_SET_STR(T,M,S) SERVICE_SET(T,M,co_str8_create((S),strlen(S)+1,0))
+
 // typedef char** StringArray;
 // typedef struct CSMService CSMService;
 // typedef CSMService** CSMServiceArray;

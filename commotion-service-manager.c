@@ -49,52 +49,43 @@ CSMService *service_new(CSMServiceList *services) {
   return NULL;
 }
 
-#define SERVICE_SET(M,O) { \
-  CHECK(IS_TREE(service),"Not a valid service");\
-  CHECK(co_tree_insert_force(service,\
-		       (#M),\
-		       sizeof(#M),\
-		       (O)),\
-	"Failed to insert" #M "into service"); \
-  }
-#define SERVICE_SET_STR(S) SERVICE_SET((S),co_str8_create((S),strlen(S)+1,0))
 int service_set_name(CSMService *service, char const *name) {
-  SERVICE_SET_STR(name);
+  SERVICE_SET_STR(service,"name",name);
   return 1;
 error:
   return 0;
 }
 
 int service_set_description(CSMService *service, char const *description) {
-  SERVICE_SET_STR(description);
+  SERVICE_SET_STR(service,"description",description);
   return 1;
 error:
   return 0;
 }
 
 int service_set_uri(CSMService *service, char const *uri) {
-  SERVICE_SET_STR(uri);
+  SERVICE_SET_STR(service,"uri",uri);
   return 1;
 error:
   return 0;
 }
 
 int service_set_icon(CSMService *service, char const *icon) {
-  SERVICE_SET_STR(icon);
+  SERVICE_SET_STR(service,"icon",icon);
   return 1;
 error:
   return 0;
 }
 
 int service_set_ttl(CSMService *service, int ttl) {
-  SERVICE_SET(ttl,co_uint8_create(ttl,0));
+  SERVICE_SET(service,"ttl",co_uint8_create(ttl,0));
   return 1;
 error:
   return 0;
 }
 
 int service_set_lifetime(CSMService *service, long lifetime) {
-  SERVICE_SET(lifetime,co_uint32_create(lifetime,0));
+  SERVICE_SET(service,"lifetime",co_uint32_create(lifetime,0));
   return 1;
 error:
   return 0;
@@ -107,7 +98,7 @@ int service_set_categories(CSMService *service, char const * const *categories, 
   for (int i = 0; i < cat_len; i++) {
     CHECK(co_list_append(category_list,co_str8_create(categories[i],strlen(categories[i])+1,0)),"Failed to insert category");
   }
-  SERVICE_SET(categories,category_list);
+  SERVICE_SET(service,"categories",category_list);
   return 1;
 error:
   return 0;

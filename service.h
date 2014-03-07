@@ -35,7 +35,7 @@
 #include <avahi-client/publish.h>
 #include <avahi-common/llist.h>
 
-ServiceInfo *find_service(const char *name);
+ServiceInfo *find_service(const char *uuid);
 ServiceInfo *add_service(BROWSER *b, 
 			 AvahiIfIndex interface, 
 			 AvahiProtocol protocol, 
@@ -44,7 +44,7 @@ ServiceInfo *add_service(BROWSER *b,
 			 const char *domain);
 int process_service(ServiceInfo *i);
 void remove_service(AvahiTimeout *t, void *userdata);
-// void print_services(int signal);
+void print_services(int signal);
 
 /**
  * Verify the Serval signature in a service announcement

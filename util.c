@@ -37,6 +37,13 @@
 
 #include "extern/sha1.h"
 
+#define ESCAPE_QUOTE "&quot;"
+#define ESCAPE_QUOTE_LEN 6
+#define ESCAPE_LF "&#10;"
+#define ESCAPE_LF_LEN 5
+#define ESCAPE_CR "&#13;"
+#define ESCAPE_CR_LEN 5
+
 int isHex(const char *str, size_t len) {
   int i;
   for (i = 0; i < len; ++i) {
@@ -202,7 +209,7 @@ error:
  * @return pointer to escaped string
  * @warning returned string must be freed by caller
  */
-char *escape(char *to_escape, int *escaped_len) {
+char *escape(char *to_escape, size_t *escaped_len) {
   char *escaped = NULL;
   char *escape_quote = ESCAPE_QUOTE;
   char *escape_lf = ESCAPE_LF;
@@ -244,44 +251,4 @@ char *escape(char *to_escape, int *escaped_len) {
   }
 error:
   return escaped;
-}
-
-/**
- * Convert an AvahiStringList to a string
- */
-char *txt_list_to_string(AvahiStringList *txt) {
-  char *list = NULL;
-  char *open_delimiter = OPEN_DELIMITER;
-  char *close_delimiter = CLOSE_DELIMITER;
-  char *field_delimiter = FIELD_DELIMITER;
-  int list_len = 0;
-  for (; txt; txt = txt->next) {
-    int escaped_len = 0;
-    char *escaped = escape((char*)txt->text, &escaped_len);
-    
-    CHECK_MEM((list = (char*)realloc(list, list_len + 
-    OPEN_DELIMITER_LEN +
-    CLOSE_DELIMITER_LEN +
-    escaped_len + 
-    1)));
-    list[list_len] = '\0';
-    
-    strcat(list, open_delimiter);
-    strcat(list, escaped);
-    strcat(list, close_delimiter);
-    
-    list_len += escaped_len + OPEN_DELIMITER_LEN + CLOSE_DELIMITER_LEN;
-    list[list_len] = '\0';
-    
-    if (txt->next) {
-      CHECK_MEM((list = (char*)realloc(list, list_len + FIELD_DELIMITER_LEN + 1)));
-      strcat(list, field_delimiter);
-      list_len += FIELD_DELIMITER_LEN;
-      list[list_len] = '\0';
-    }
-    
-    free(escaped);
-  }
-error:
-  return list;
 }

@@ -1,13 +1,17 @@
 TODO
-change UUID calculation in luci-commotion-apps (including .service file names)
-investigate backwards compatibility of UUID change, whether need to have CSM convert old entries in UCI upon starting
+UUID should be base32 encoding of key
+change UUID calculation in luci-commotion-apps
+investigate backwards compatibility of UUID change, whether need to have CSM convert old entries in UCI upon starting or with uci-defaults script
+	at least change version UCI option
 pull in gtest via makefile, don't include in repo
 pare down header includes
-finish client commands
-redo print services
+update UCI functions
 code cleanup
+update README
 
 DONE
+redo print services
+finish client commands
 replace avahi_malloc/avahi_strdup w/ halloc
 input validation in commotion-service-manager.c (set functions), CMD(commit_service) in main.c
 update get_uuid function

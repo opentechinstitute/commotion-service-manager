@@ -95,15 +95,12 @@ error:
 int uci_write(ServiceInfo *i) {
   struct uci_context *c = NULL;
   struct uci_ptr sec_ptr,sig_ptr,type_ptr;
-#ifndef CLIENT
+#ifdef OPENWRT
   struct uci_ptr approved_ptr;
 #endif
-  int uci_ret, ret = -1;
-  char *sig = NULL, *uuid = NULL;
+  int ret = 0;
   struct uci_package *pak = NULL;
   struct uci_element *e = NULL;
-  AvahiStringList *txt = NULL;
-  size_t sig_len = 0, uuid_len = 0;
   enum {
     NO_TYPE_SECTION,
     NO_TYPE_MATCHES,
@@ -111,29 +108,23 @@ int uci_write(ServiceInfo *i) {
   };
   int type_state = NO_TYPE_SECTION;
   
-  c = uci_alloc_context();
-  uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
-  assert(c);
   assert(i);
-
-  avahi_string_list_get_pair(avahi_string_list_find(i->txt_lst,"signature"),NULL,&sig,&sig_len);
   
-  CHECK((uuid = get_uuid(i,&uuid_len)),"Failed to get UUID");
-
-  CHECK(sig_len == SIG_LENGTH &&
-      isHex(sig,sig_len),
-      "(UCI) Invalid signature txt field");
+  c = uci_alloc_context();
+  CHECK_MEM(c);
   
+  uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
+
   /* Lookup application by name (concatenation of URI + port) */
-  CHECK(get_uci_section(c,&sec_ptr,"applications",12,uuid,uuid_len,NULL,0) > 0, "Failed application lookup");
+  CHECK(get_uci_section(c,&sec_ptr,"applications",12,i->uuid,strlen(i->uuid),NULL,0) > 0, "Failed application lookup");
   if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
-    INFO("(UCI) Found application: %s",uuid);
+    INFO("(UCI) Found application: %s",i->uuid);
     // check for service == fingerprint. if sig different, update it
-    CHECK(get_uci_section(c,&sig_ptr,"applications",12,uuid,uuid_len,"signature",9) > 0,"Failed signature lookup");
-    if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && sig && !strcmp(sig,sig_ptr.o->v.string)) {
+    CHECK(get_uci_section(c,&sig_ptr,"applications",12,i->uuid,strlen(i->uuid),"signature",9) > 0,"Failed signature lookup");
+    if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && i->signature && !strcmp(i->signature,sig_ptr.o->v.string)) {
       // signatures equal: do nothing
       INFO("(UCI) Signature the same, not updating");
-      ret = 0;
+      ret = 1;
       goto error;
     }
     // signatures differ: delete existing app
@@ -147,13 +138,13 @@ int uci_write(ServiceInfo *i) {
   
   // uci_add_section
   sec_ptr.package = "applications";
-  sec_ptr.section = uuid;
+  sec_ptr.section = i->uuid;
   sec_ptr.value = "application";
   UCI_CHECK(!uci_set(c, &sec_ptr),"(UCI) Failed to set section");
   INFO("(UCI) Section set succeeded");
   
   /* set type_opstr to lookup the 'type' fields */
-  CHECK(get_uci_section(c,&type_ptr,"applications",12,uuid,uuid_len,"type",4) > 0,"Failed type lookup");
+  CHECK(get_uci_section(c,&type_ptr,"applications",12,i->uuid,strlen(i->uuid),"type",4) > 0,"Failed type lookup");
   
   // uci set options/values
   txt = i->txt_lst;

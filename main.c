@@ -58,6 +58,7 @@
 #include "service.h"
 #include "browse.h"
 #include "debug.h"
+#include "commotion-service-manager.h"
 
 #define REQUEST_MAX 1024
 #define RESPONSE_MAX 1024
@@ -109,15 +110,11 @@ CMD(help)
   return co_cmd_process(_cmd_help_i, (void *)*output);
 }
 
-static co_obj_t *_print_cats(co_obj_t *data, co_obj_t *current, void *context) {
-  DEBUG("%s",((co_str8_t*)current)->data);
-  return NULL;
-}
-
 /** Add OR update a service */
 CMD(commit_service) {
-  co_obj_t *service = params;
+  CHECK(IS_LIST(params),"Received invalid params");
   
+  co_obj_t *service = co_list_element(params,0);
   CHECK(IS_TREE(service),"Received invalid service");
 
   co_obj_t *name_obj = co_tree_find(service,"name",sizeof("name"));
@@ -193,6 +190,29 @@ error:
 }
 
 CMD(remove_service) {
+  CHECK(IS_LIST(params),"Received invalid params");
+  
+  co_obj_t *key_obj = co_list_element(params,0);
+  CHECK(IS_STR(key_obj),"Received invalid key");
+  
+  char *key = NULL;
+  size_t key_len = co_obj_data(&key,key_obj);
+  
+  CHECK(isValidFingerprint(key,key_len),"Received invalid key");
+  
+  ServiceInfo *i = services;
+  
+  for (; i; i = i->info_next) {
+    if (strcasecmp(key,i->key) == 0)
+      break;
+  }
+  
+  if (i) {
+    remove_service(NULL, i);
+    CMD_OUTPUT("success",co_bool_create(true,0));
+  } else {
+    CMD_OUTPUT("success",co_bool_create(false,0));
+  }
   
   return 1;
 error:
@@ -200,9 +220,47 @@ error:
 }
 
 CMD(list_services) {
-  co_obj_t *str = co_str8_create("test",sizeof("test"),0);
-  CMD_OUTPUT("response",str);
+  // if we have more than UINT16_MAX services, we have more important problems
+  co_obj_t *service_list = co_list16_create();
+  CHECK_MEM(service_list);
+  
+  ServiceInfo *i = services;
+  if (!i) {
+    CMD_OUTPUT("success",co_bool_create(false,0));
+    return 1;
+  }
+  
+  for (; i; i = i->info_next) {
+    // make sure service is resolved before inserting
+    if (i->resolved) {
+      co_obj_t *service = co_tree16_create();
+      CHECK_MEM(service);
+      
+      SERVICE_SET_STR(service,"name",i->name);
+      SERVICE_SET_STR(service,"description",i->description);
+      SERVICE_SET_STR(service,"uri",i->uri);
+      SERVICE_SET_STR(service,"icon",i->icon);
+      SERVICE_SET(service,"ttl",co_uint8_create(i->ttl,0));
+      SERVICE_SET(service,"lifetime",co_uint32_create(i->lifetime,0));
+      SERVICE_SET_STR(service,"key",i->key);
+      SERVICE_SET_STR(service,"signature",i->signature);
+      co_obj_t *category_list = co_list16_create();
+      CHECK_MEM(category_list);
+      for (int j = 0; j < i->cat_len; j++) {
+	CHECK(co_list_append(category_list,co_str8_create(i->categories[j],strlen(i->categories[j])+1,0)),"Failed to insert category");
+      }
+      SERVICE_SET(service,"categories",category_list);
+      
+      CHECK(co_list_append(service_list,service),"Failed to append service");
+    }
+  }
+  
+  CMD_OUTPUT("services",service_list);
+  CMD_OUTPUT("success",co_bool_create(true,0));
+  
   return 1;
+error:
+  return 0;
 }
 
 static void socket_send(int fd, char const *str, size_t len) {

@@ -45,7 +45,7 @@ int uci_remove(ServiceInfo *i);
  */
 int uci_write(ServiceInfo *i);
 
-/** 
+/**
  * Lookup a UCI section or option
  * @param c uci_context pointer
  * @param[out] sec_ptr uci_ptr struct to be populated by uci_lookup_ptr()
@@ -66,13 +66,15 @@ int get_uci_section(struct uci_context *c,
 		    const char *op,
 		    const size_t op_len);
 
-/** Determine if a service is local to this node
+/** 
+ * Determine if a service is local to this node
  * @param i ServiceInfo object of the service
  * @return 1=it's local, 0=it's not local
  */
 int is_local(ServiceInfo *i);
 
-/** Fetch default lifetime from UCI
+/** 
+ * Fetch default lifetime from UCI
  * @return if applications.settings.allowpermanent==0, returns default lifetime
  */
 long default_lifetime(void);
