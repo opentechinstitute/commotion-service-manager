@@ -155,6 +155,7 @@ class CommotionService(object):
             for i in range(n):
                 c_categories[i] = c_char_p(self.categories[i])
             assert libCSM.service_set_categories(self.ptr,c_categories,c_int(n)).value == 1
+            # Upon commiting, key and signature will be set
             assert libCSM.commit_service(self.ptr).value == 1
             #c_sig = c_char_p
             #assert libCSM.commit_service(self.ptr,byref(c_sig)).value == 1

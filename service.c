@@ -230,9 +230,7 @@ error:
 ServiceInfo *
 find_service(const char *uuid)
 {
-  ServiceInfo *i;
-  
-  for (i = services; i; i = i->info_next) {
+  for (ServiceInfo *i = services; i; i = i->info_next) {
     if (strcasecmp(i->uuid, uuid) == 0)
       return i;
   }
@@ -263,7 +261,8 @@ add_service(BROWSER *b,
 
   i->interface = interface;
   i->protocol = protocol;
-  CSM_SET(i, uuid, uuid);
+  if (uuid)
+    CSM_SET(i, uuid, uuid);
   CSM_SET(i, type, type);
   CSM_SET(i, domain, domain);
   
@@ -365,7 +364,7 @@ remove_service(AvahiTimeout *t, void *userdata)
     avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
   
 #ifdef USE_UCI
-  if (t || !is_local(i)) {
+  if (i->resolved) {
     // Delete UCI entry
     if (config.uci && uci_remove(i) < 0)
       ERROR("(Remove_Service) Could not remove from UCI");
@@ -469,8 +468,13 @@ create_signature(ServiceInfo *i)
   CHECK(co_response_get_str(co_resp,&sid,"sid",sizeof("sid")),
 	"Failed to fetch SID from response");
   CSM_SET(i, signature, signature);
-  if (!i->key)
+  if (!i->key) {
     CSM_SET(i, key, sid);
+    // set UUID
+    char uuid[UUID_LEN + 1] = {0};
+    CHECK(get_uuid(sid,strlen(sid),uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
+    CSM_SET(i, uuid, uuid);
+  }
   
   return 1;
 error:

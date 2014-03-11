@@ -71,7 +71,7 @@ int get_uci_section(struct uci_context *c,
  * @param i ServiceInfo object of the service
  * @return 1=it's local, 0=it's not local
  */
-int is_local(ServiceInfo *i);
+// int is_local(ServiceInfo *i);
 
 /** 
  * Fetch default lifetime from UCI

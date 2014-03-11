@@ -57,12 +57,12 @@
 #include "util.h"
 #include "service.h"
 #include "browse.h"
+#include "publish.h"
 #include "debug.h"
 #include "commotion-service-manager.h"
 
 #define REQUEST_MAX 1024
 #define RESPONSE_MAX 1024
-#define UUID_LEN 40
 
 extern co_socket_t unix_socket_proto;
 extern ServiceInfo *services;
@@ -72,7 +72,10 @@ static int pid_filehandle;
 static co_socket_t *csm_socket = NULL;
 
 AvahiSimplePoll *simple_poll = NULL;
-#ifndef CLIENT
+TYPE_BROWSER *stb = NULL;
+#ifdef CLIENT
+AvahiClient *client = NULL;
+#else
 AvahiServer *server = NULL;
 #endif
 
@@ -124,39 +127,40 @@ CMD(commit_service) {
   co_obj_t *ttl_obj = co_tree_find(service,"ttl",sizeof("ttl"));
   co_obj_t *lifetime_obj = co_tree_find(service,"lifetime",sizeof("lifetime"));
   co_obj_t *categories_obj = co_tree_find(service,"categories",sizeof("categories"));
+  co_obj_t *key_obj = co_tree_find(service,"key",sizeof("key"));
   
   /* Check required fields */
   CHECK(name_obj && description_obj && uri_obj && icon_obj,
 	"Service missing required fields");
   
-  // TODO uuid will eventually be serval key
-  // for now, it's sha1sum of "%s%s",uci_encode(uri,port),hostname (see luci-commotion-apps controller)
-  char *uri = NULL;
-  size_t uri_size = co_obj_data(&uri, uri_obj);
-  char hostname[HOST_NAME_MAX] = {0};
-  CHECK(gethostname(hostname,HOST_NAME_MAX) == 0, "Failed to get hostname");
-  char uuid[UUID_LEN + 1] = {0};
-  CHECK(get_uuid(uri, uri_size - 1, 0, hostname, strlen(hostname), uuid, UUID_LEN + 1),"Failed to get UUID");
-  char *name = co_obj_data_ptr(name_obj);
+  ServiceInfo *i = NULL;
   
-  /* First check if service exists */
-  ServiceInfo *i = find_service(uuid);
-  
-  if (!i) {
+  if (key_obj) {
+    char *key = NULL;
+    size_t key_len = co_obj_data(&key, key_obj);
+    CHECK(key_len == FINGERPRINT_LEN, "Invalid key");
+    char uuid[UUID_LEN + 1] = {0};
+    CHECK(get_uuid(key,key_len,uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
+    i = find_service(uuid);
+    CHECK(i, "Failed to find service");
+    CHECK(i->key && isValidFingerprint(i->key,strlen(i->key)),"Found service missing or invalid key");
+    if (i->signature)
+      h_free(i->signature); // free signature so a new one is created in process_service
+  } else {
     // create ServiceInfo
-    i = add_service(NULL, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, uuid, "_commotion._tcp", "mesh.local");
-    
-    // TODO leave key blank to generate new one with signature
-    // for now, get host's main serval key
-    if (config.sid)
-      CSM_SET(i, key, config.sid);
+    i = add_service(NULL, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, NULL, "_commotion._tcp", "mesh.local");
   }
   
+  /* NOTE: hostname might change during life of program, so don't add it to local services */
+//   char hostname[HOST_NAME_MAX] = {0};
+//   CHECK(gethostname(hostname,HOST_NAME_MAX) == 0, "Failed to get hostname");
+  
   // set fields
-  CSM_SET(i, host_name, hostname);
-  CSM_SET(i, name, name);
+  CSM_SET(i, version, "1.1");
+//   CSM_SET(i, host_name, hostname);
+  CSM_SET(i, name, co_obj_data_ptr(name_obj));
   CSM_SET(i, description, co_obj_data_ptr(description_obj));
-  CSM_SET(i, uri, uri);
+  CSM_SET(i, uri, co_obj_data_ptr(uri_obj));
   CSM_SET(i, icon, co_obj_data_ptr(icon_obj));
   if (ttl_obj && IS_INT(ttl_obj))
     i->ttl = (int)(*co_obj_data_ptr(ttl_obj));
@@ -174,7 +178,10 @@ CMD(commit_service) {
   }
   
   if (process_service(i)) {
+    i->uptodate = 0; // flag used to indicate need to re-register w/ avahi server
+    // TODO call register_service
     // send back success, key, signature
+    CHECK(i->key && i->signature && i->uuid, "Failed to get key and signature");
     CMD_OUTPUT("success",co_bool_create(true,0));
     CMD_OUTPUT("key",co_str8_create(i->key,strlen(i->key)+1,0));
     CMD_OUTPUT("signature",co_str8_create(i->signature,strlen(i->signature)+1,0));
@@ -208,6 +215,7 @@ CMD(remove_service) {
   }
   
   if (i) {
+    // TODO call unregister_service
     remove_service(NULL, i);
     CMD_OUTPUT("success",co_bool_create(true,0));
   } else {
@@ -244,6 +252,7 @@ CMD(list_services) {
       SERVICE_SET(service,"lifetime",co_uint32_create(i->lifetime,0));
       SERVICE_SET_STR(service,"key",i->key);
       SERVICE_SET_STR(service,"signature",i->signature);
+      SERVICE_SET_STR(service,"version",i->version);
       co_obj_t *category_list = co_list16_create();
       CHECK_MEM(category_list);
       for (int j = 0; j < i->cat_len; j++) {
@@ -430,6 +439,17 @@ static void daemon_start(char *pidfile) {
   
 }
 
+static int
+create_service_browser(void)
+{
+  /* Create the service browser */
+  CHECK((stb = TYPE_BROWSER_NEW(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback)),
+	"Failed to create service browser: %s", AVAHI_ERROR);
+  return 1;
+  error:
+  return 0;
+}
+
 #ifdef CLIENT
 static void client_callback(AvahiClient *c, AvahiClientState state, AVAHI_GCC_UNUSED void * userdata) {
     assert(c);
@@ -439,21 +459,23 @@ static void client_callback(AvahiClient *c, AvahiClientState state, AVAHI_GCC_UN
       case AVAHI_CLIENT_S_RUNNING:
 	/* The server has startup successfully and registered its host
 	 * name on the network, so it's time to create our services */
-	// TODO re-register all local apps, if any
-	break;
-      case AVAHI_CLIENT_FAILURE:
-	ERROR("Server connection failure: %s", avahi_strerror(avahi_client_errno(c)));
-	avahi_simple_poll_quit(simple_poll);
+	if (!stb) {
+	  if (!create_service_browser()) {
+	    ERROR("Failed to create service type browser");
+	    avahi_simple_poll_quit(simple_poll);
+	  }
+	}
+	register_all(c);
 	break;
       case AVAHI_CLIENT_CONNECTING:
 	/* Avahi daemon is not currently running */
-	// TODO make sure nothing registers apps during this state
+	// make sure nothing registers apps during this state
 	// see: avahi-commotion/defs.h
 	sleep(1);
 	break;
       case AVAHI_CLIENT_S_COLLISION:
 	/* Let's drop our registered services. When the server is back
-	 * in AVAHI_SERVER_RUNNING state we will register them
+	 * in AVAHI_CLIENT_S_RUNNING state we will register them
 	 * again with the new host name. */
 	
 	/* drop through */
@@ -462,7 +484,31 @@ static void client_callback(AvahiClient *c, AvahiClientState state, AVAHI_GCC_UN
 	 * might be caused by a host name change. We need to wait
 	 * for our own records to register until the host name is
 	 * properly esatblished. */
-	// TODO unregister all local apps via avahi_entry_group_reset()
+	unregister_all();
+	break;
+      case AVAHI_CLIENT_FAILURE:
+	if (avahi_client_errno(c) == AVAHI_ERR_DISCONNECTED) {
+	  /* Remove all local services */
+	  unregister_all();
+	  
+	  /* Free service type browser */
+	  if (stb)
+	    TYPE_BROWSER_FREE(stb);
+	  
+	  /* Free client */
+	  FREE_AVAHI();
+	  
+	  /* Create new client */
+	  int error;
+	  client = avahi_client_new(avahi_simple_poll_get(simple_poll), AVAHI_CLIENT_NO_FAIL, client_callback, NULL, &error);
+	  if (!client) {
+	    ERROR("Failed to create client: %s", avahi_strerror(error));
+	    avahi_simple_poll_quit(simple_poll);
+	  }
+	} else {
+	  ERROR("Server connection failure: %s", avahi_strerror(avahi_client_errno(c)));
+	  avahi_simple_poll_quit(simple_poll);
+	}
 	break;
       default:
 	;
@@ -474,16 +520,10 @@ static void server_callback(AvahiServer *s, AvahiServerState state, AVAHI_GCC_UN
 
   /* Called whenever the server state changes */
   switch (state) {
-    case AVAHI_SERVER_REGISTERING:
-      //TODO
-      /* Let's drop our registered services. When the server is back
-       * in AVAHI_SERVER_RUNNING state we will register them
-       * again with the new host name. */
-      break;
-    case AVAHI_SERVER_FAILURE:
-      /* Terminate on failure */
-      ERROR("Server failure: %s", avahi_strerror(avahi_server_errno(s)));
-      avahi_simple_poll_quit(simple_poll);
+    case AVAHI_SERVER_RUNNING:
+      /* The serve has startup successfully and registered its host
+       * name on the network, so it's time to create our services */
+      register_all(s);
       break;
     case AVAHI_SERVER_COLLISION: {
       char *n;
@@ -499,6 +539,18 @@ static void server_callback(AvahiServer *s, AvahiServerState state, AVAHI_GCC_UN
 	return;
       }
     }
+      /* Fall through */
+    case AVAHI_SERVER_REGISTERING:
+      /* Let's drop our registered services. When the server is back
+       * in AVAHI_SERVER_RUNNING state we will register them
+       * again with the new host name. */
+      unregister_all();
+      break;
+    case AVAHI_SERVER_FAILURE:
+      /* Terminate on failure */
+      ERROR("Server failure: %s", avahi_strerror(avahi_server_errno(s)));
+      avahi_simple_poll_quit(simple_poll);
+      break;
     default:
       ;
   }
@@ -534,12 +586,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 }
 
 int main(int argc, char*argv[]) {
-#ifdef CLIENT
-    AvahiClient *client = NULL;
-#else
+#ifndef CLIENT
     AvahiServerConfig avahi_config;
 #endif
-    TYPE_BROWSER *stb = NULL;
     int error;
     int ret = 1;
 
@@ -556,6 +605,7 @@ int main(int argc, char*argv[]) {
       {"sid", 's', "SID", 0, "SID to use to sign service announcements"},
       { 0 }
     };
+    static struct argp argp = { options, parse_opt, NULL, doc };
     
     /* Set defaults */
     config.co_sock = COMMOTION_MANAGESOCK;
@@ -567,7 +617,14 @@ int main(int argc, char*argv[]) {
     config.pid_file = CSM_PIDFILE;
     config.sid = NULL;
     
-    static struct argp argp = { options, parse_opt, NULL, doc };
+    /* Set Avahi allocator to use halloc */
+    static AvahiAllocator hallocator = {
+      .malloc = h_malloc,
+      .free = h_free,
+      .realloc = h_realloc,
+      .calloc = h_calloc
+    };
+    avahi_set_allocator(&hallocator);
     
     argp_parse (&argp, argc, argv, 0, 0, &config);
     //fprintf(stdout,"uci: %d, out: %s\n",config.uci,config.output_file);
@@ -611,11 +668,9 @@ int main(int argc, char*argv[]) {
 
     /* Check wether creating the server object succeeded */
     CHECK(server,"Failed to create server: %s", avahi_strerror(error));
+    
+    CHECK(create_service_browser(),"Failed to create service type browser");
 #endif
-
-    /* Create the service browser */
-    CHECK((stb = TYPE_BROWSER_NEW(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback)),
-        "Failed to create service browser: %s", AVAHI_ERROR);
     
     /*TODO*/
     /* Register commands */

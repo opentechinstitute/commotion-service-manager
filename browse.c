@@ -86,9 +86,10 @@ extract_from_txt_list(ServiceInfo *i, AvahiStringList *txt)
   AvahiStringList *lifetime = avahi_string_list_find(txt,"lifetime");
   AvahiStringList *signature = avahi_string_list_find(txt,"signature");
   AvahiStringList *fingerprint = avahi_string_list_find(txt,"fingerprint");
+  AvahiStringList *version = avahi_string_list_find(txt,"version");
   
   /* Make sure all the required fields are there */
-  CHECK(name && uri && icon && description && ttl && lifetime && signature && fingerprint,
+  CHECK(name && uri && icon && description && ttl && lifetime && signature && fingerprint && version,
 	"Missing TXT field(s): %s", i->uuid);
   
   CSM_EXTRACT_TXT(i, name, name);
@@ -97,6 +98,7 @@ extract_from_txt_list(ServiceInfo *i, AvahiStringList *txt)
   CSM_EXTRACT_TXT(i, icon, icon);
   CSM_EXTRACT_TXT(i, signature, signature);
   CSM_EXTRACT_TXT(i, key, fingerprint);
+  CSM_EXTRACT_TXT(i, version, version);
   char *ttl_str = NULL, *lifetime_str = NULL;
   CHECK(avahi_string_list_get_pair(ttl,NULL,&ttl_str,NULL) == 0, "Failed to extract TTL from TXT list");
   CHECK(avahi_string_list_get_pair(lifetime,NULL,&lifetime_str,NULL) == 0, "Failed to extract lifetime from TXT list");

@@ -51,15 +51,14 @@ int cmpstringp(const void *p1, const void *p2);
 int tohex(unsigned char *str, size_t str_len, char *buf, size_t buf_size);
 
 /**
- * Derives the UUID of a service, as a SHA1sum of the concatenation of (UCI-escaped) URI, port, and hostname
- * @param uri URI of the service
- * @param uri_len length of the URI
- * @param port (optional) the service port
+ * Derives the UUID of a service, as a base32 encoding of the service's key
+ * @param key hex-encoded service key
+ * @param key_len length of service key
  * @param[out] buf character buffer in which to store UUID
  * @param buf_size size of character buffer
  * @return length of UUID on success, 0 on error
  */
-int get_uuid(char *uri, size_t uri_len, int port, char *hostname, size_t hostname_len, char *buf, size_t buf_size);
+int get_uuid(char *key, size_t key_len, char *buf, size_t buf_size);
 
 /**
  * UCI-escape a string. Alphanum and underscores are only chars allowed in UCI section titles

@@ -38,6 +38,19 @@
 
 #define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
 #define UCI_WARN(M, ...) char *err = NULL; uci_get_errorstr(c,&err,NULL); WARN(M ": %s", ##__VA_ARGS__, err); free(err);
+#define _UCI_SET(F,C,SRV,FLD,VAL) \
+  do { \
+    struct uci_ptr sec_ptr = {0}; \
+    sec_ptr.package = "applications"; \
+    sec_ptr.section = SRV->uuid; \
+    sec_ptr.option = #FLD; \
+    sec_ptr.value = VAL; \
+    int uci_ret = F(C, &sec_ptr); \
+    UCI_CHECK(uci_ret == 0,"Failed to set UCI field %s " #FLD); \
+  } while (0)
+#define UCI_SET(C,SRV,FLD,VAL) _UCI_SET(uci_set,SRV,FLD,VAL)
+#define UCI_SET_STR(C,SRV,FLD) UCI_SET(C,SRV,FLD,SRV->FLD)
+#define UCI_SET_CAT(C,SRV,CAT) _UCI_SET(uci_add_list,SRV,type,CAT)
 
 /** 
  * Lookup a UCI section or option
@@ -143,66 +156,56 @@ int uci_write(ServiceInfo *i) {
   UCI_CHECK(!uci_set(c, &sec_ptr),"(UCI) Failed to set section");
   INFO("(UCI) Section set succeeded");
   
-  /* set type_opstr to lookup the 'type' fields */
-  CHECK(get_uci_section(c,&type_ptr,"applications",12,i->uuid,strlen(i->uuid),"type",4) > 0,"Failed type lookup");
-  
   // uci set options/values
-  txt = i->txt_lst;
-  do {
-    if (avahi_string_list_get_pair(txt,(char **)&(sec_ptr.option),(char **)&(sec_ptr.value),NULL))
-      continue;
-    if (!strcmp(sec_ptr.option,"type")) {
-      // NOTE: the version of UCI packaged with LuCI doesn't have uci_del_list, so here's a stupid workaround
-      //uci_ret = uci_del_list(c, &sec_ptr);
-      type_state = NO_TYPE_MATCHES;
-      if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
-	uci_foreach_element(&(type_ptr.o->v.list), e) {
-	  if (!strcmp(e->name, sec_ptr.value)) {
-	    type_state = TYPE_MATCH_FOUND;
-	    break;
-	  }
+  UCI_SET_STR(c,i,name);
+  UCI_SET_STR(c,i,uri);
+  UCI_SET_STR(c,i,description);
+  UCI_SET_STR(c,i,icon);
+  UCI_SET_STR(c,i,signature);
+  UCI_SET_STR(c,i,fingerprint);
+  UCI_SET_STR(c,i,version);
+  UCI_SET_STR(c,i,uuid);
+  
+  char *ttl_str = NULL, *lifetime_str = NULL;
+  CHECK_MEM(asprintf(&ttl_str, "%d", i->ttl) != -1);
+  CHECK_MEM(asprintf(&lifetime_str, "%ld", i->lifetime) != -1);
+  UCI_SET(c,i,ttl,ttl_str);
+  UCI_SET(c,i,lifetime,lifetime_str);
+  
+  /* set type_ptr to lookup the 'type' list */
+  CHECK(get_uci_section(c,&type_ptr,"applications",12,i->uuid,strlen(i->uuid),"type",4) > 0,"Failed type lookup");
+  for (int j = 0; j < i->cat_len; j++) {
+    // NOTE: the version of UCI packaged with LuCI doesn't have uci_del_list, so here's a workaround
+    //uci_ret = uci_del_list(c, &sec_ptr);
+    type_state = NO_TYPE_MATCHES;
+    if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
+      uci_foreach_element(&(type_ptr.o->v.list), e) {
+	if (!strcmp(e->name, i->categories[j])) {
+	  type_state = TYPE_MATCH_FOUND;
+	  break;
 	}
       }
-      if (type_state != TYPE_MATCH_FOUND)
-	uci_ret = uci_add_list(c, &sec_ptr);
-    } else {
-      uci_ret = uci_set(c, &sec_ptr);
     }
-    UCI_CHECK(!uci_ret,"(UCI) Failed to set");
-    INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
-  } while ((txt = avahi_string_list_get_next(txt)));
+    if (type_state != TYPE_MATCH_FOUND)
+      UCI_SET_CAT(c, i, i->categories[j]);
+  }
   
-  // set uuid and approved fields
-  sec_ptr.option = "uuid";
-  sec_ptr.value = uuid;
-  uci_ret = uci_set(c, &sec_ptr);
-  UCI_CHECK(!uci_ret,"(UCI) Failed to set");
-  INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
-
 #ifdef OPENWRT
   // For OpenWRT: check known_applications list, approved or blacklisted
-  if (get_uci_section(c,&approved_ptr,"applications",12,"known_apps",10,uuid,uuid_len) == -1) {
+  if (get_uci_section(c,&approved_ptr,"applications",12,"known_apps",10,i->uuid,strlen(i->uuid)) == -1) {
     WARN("(UCI) Failed known_apps lookup");
   } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
-    sec_ptr.option = "approved";
     if (!strcmp(approved_ptr.o->v.string,"approved")) {
-      sec_ptr.value = "1";
+      UCI_SET(c, i, approved, "1");
     } else if (!strcmp(approved_ptr.o->v.string,"blacklisted")) {
-      sec_ptr.value = "0";
+      UCI_SET(c, i, approved, "0");
     }
-    uci_ret = uci_set(c, &sec_ptr);
-    UCI_CHECK(!uci_ret,"(UCI) Failed to set");
-    INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
   }
 #else
-  sec_ptr.option = "approved";
-  sec_ptr.value = "1";
-  uci_ret = uci_set(c, &sec_ptr);
-  UCI_CHECK(!uci_ret,"(UCI) Failed to set");
-  INFO("(UCI) Set succeeded: %s=%s",sec_ptr.option,sec_ptr.value);
+  UCI_SET(c, i, approved, "1");
 #endif
   
-  // if no type fields in new announcement, remove section from UCI (part of stupid workaround)
+  // if no type fields in new announcement, remove section from UCI (part of workaround)
   if (type_state == NO_TYPE_SECTION) {
     if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
       UCI_CHECK(uci_delete(c, &type_ptr) == UCI_OK,"(UCI) Failed to delete type section");
@@ -220,7 +223,10 @@ int uci_write(ServiceInfo *i) {
   
 error:
   if (c) uci_free_context(c);
-  if (uuid) free(uuid);
+  if (ttl_str)
+    free(ttl_str);
+  if (lifetime_str)
+    free(lifetime_str);
   return ret;
 }
 
@@ -234,21 +240,17 @@ int uci_remove(ServiceInfo *i) {
   struct uci_context *c = NULL;
   struct uci_ptr sec_ptr;
   struct uci_package *pak = NULL;
-  char *uuid = NULL;
-  size_t uuid_len = 0;
   
   c = uci_alloc_context();
   uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
   assert(c);
   assert(i);
   
-  CHECK((uuid = get_uuid(i,&uuid_len)),"Failed to get UUID");
+  /* Lookup application by UUID */
+  CHECK(get_uci_section(c,&sec_ptr,"applications",12,i->uuid,strlen(i->uuid),NULL,0) > 0, "(UCI_Remove) Failed application lookup");
   
-  /* Lookup application by name (concatination of URI + port) */
-  CHECK(get_uci_section(c,&sec_ptr,"applications",12,uuid,uuid_len,NULL,0) > 0, "(UCI_Remove) Failed application lookup");
-  
-  CHECK(sec_ptr.flags & UCI_LOOKUP_COMPLETE,"(UCI_Remove) Application not found: %s",uuid);
-  INFO("(UCI_Remove) Found application: %s",uuid);
+  CHECK(sec_ptr.flags & UCI_LOOKUP_COMPLETE,"(UCI_Remove) Application not found: %s",i->uuid);
+  INFO("(UCI_Remove) Found application: %s",i->uuid);
   
   UCI_CHECK(uci_delete(c, &sec_ptr) == UCI_OK,"(UCI_Remove) Failed to delete application");
   INFO("(UCI_Remove) Successfully deleted application");
@@ -266,7 +268,6 @@ int uci_remove(ServiceInfo *i) {
   
 error:
   if (c) uci_free_context(c);
-  if (uuid) free(uuid);
   return ret;
 }
 
@@ -274,18 +275,15 @@ error:
  * @param i ServiceInfo object of the service
  * @return 1=it's local, 0=it's not local, -1=error
  */
+#if 0
 int is_local(ServiceInfo *i) {
   struct uci_ptr local_ptr;
-  char *uuid = NULL;
-  size_t uuid_len = 0;
   int ret = -1;
   
   struct uci_context *c = uci_alloc_context();
   
-  CHECK((uuid = get_uuid(i,&uuid_len)),"Failed to get UUID");
-  
   /* Make sure application isn't local to this node */
-  CHECK(get_uci_section(c,&local_ptr,"applications",12,uuid,uuid_len,"localapp",8) > 0, "Failed application lookup");
+  CHECK(get_uci_section(c,&local_ptr,"applications",12,i->uuid,strlen(i->uuid),"localapp",8) > 0, "Failed application lookup");
   if (!(local_ptr.flags & UCI_LOOKUP_COMPLETE) || strcmp(local_ptr.o->v.string,"1") != 0) {
     INFO("Application NOT local");
     ret = 0;
@@ -296,9 +294,9 @@ int is_local(ServiceInfo *i) {
   
 error:
   if (c) uci_free_context(c);
-  if (uuid) free(uuid);
   return ret;
 }
+#endif
 
 /** Fetch default lifetime from UCI
  * @return if applications.settings.allowpermanent==0, returns default lifetime

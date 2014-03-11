@@ -43,6 +43,8 @@
 #define FINGERPRINT_LEN 64
 /** Length (in hex chars) of Serval-created signatures */
 #define SIG_LENGTH 128
+/** Length of UUID (which is base32 encoding of Serval ID) */
+#define UUID_LEN 52
 
 #define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
 
@@ -56,6 +58,7 @@
   } while (0)
 
 #ifdef CLIENT
+
 #define TYPE_BROWSER AvahiServiceTypeBrowser
 #define TYPE_BROWSER_NEW(A,B,C,D,E) avahi_service_type_browser_new(client,A,B,C,D,E,client)
 #define TYPE_BROWSER_FREE(J) avahi_service_type_browser_free(J)
@@ -65,10 +68,19 @@
 #define RESOLVER_NEW(A,B,C,D,E,F,G,H,I) avahi_service_resolver_new(client,A,B,C,D,E,F,G,H,I)
 #define RESOLVER_FREE(J) avahi_service_resolver_free(J)
 #define ENTRY_GROUP AvahiEntryGroup
+#define ENTRY_GROUP_NEW(A,B) avahi_entry_group_new(client,A,B)
+#define ENTRY_GROUP_EMPTY avahi_entry_group_is_empty
+#define ENTRY_GROUP_ADD_SERVICE(A,B,C,D,E,F,G,H,I,J) avahi_entry_group_add_service_strlst(A,B,C,D,E,F,G,H,I,J)
+#define ENTRY_GROUP_UPDATE_SERVICE(A,B,C,D,E,F,G,H) avahi_entry_group_update_service_txt_strlst(A,B,C,D,E,F,G,H)
+#define ENTRY_GROUP_COMMIT avahi_entry_group_commit
+#define ENTRY_GROUP_RESET avahi_entry_group_reset
+#define ENTRY_GROUP_FREE avahi_entry_group_free
 #define AVAHI_ERROR avahi_strerror(avahi_client_errno(client))
 #define AVAHI_BROWSER_ERROR avahi_strerror(avahi_client_errno(avahi_service_browser_get_client(b)))
 #define FREE_AVAHI() if (client) avahi_client_free(client);
+
 #else
+
 #define TYPE_BROWSER AvahiSServiceTypeBrowser
 #define TYPE_BROWSER_NEW(A,B,C,D,E) avahi_s_service_type_browser_new(server,A,B,C,D,E,server)
 #define TYPE_BROWSER_FREE(J) avahi_s_service_type_browser_free(J)
@@ -78,9 +90,17 @@
 #define RESOLVER_NEW(A,B,C,D,E,F,G,H,I) avahi_s_service_resolver_new(server,A,B,C,D,E,F,G,H,I)
 #define RESOLVER_FREE(J) avahi_s_service_resolver_free(J)
 #define ENTRY_GROUP AvahiSEntryGroup
+#define ENTRY_GROUP_NEW(A,B) avahi_s_entry_group_new(server,A,B)
+#define ENTRY_GROUP_EMPTY avahi_s_entry_group_is_empty
+#define ENTRY_GROUP_ADD_SERVICE(A,B,C,D,E,F,G,H,I,J) avahi_server_add_service_strlst(server,A,B,C,D,E,F,G,H,I,J)
+#define ENTRY_GROUP_UPDATE_SERVICE(A,B,C,D,E,F,G,H) avahi_server_update_service_txt_strlst(server,A,B,C,D,E,F,G,H)
+#define ENTRY_GROUP_COMMIT avahi_s_entry_group_commit
+#define ENTRY_GROUP_RESET avahi_s_entry_group_reset
+#define ENTRY_GROUP_FREE avahi_s_entry_group_free
 #define AVAHI_ERROR avahi_strerror(avahi_server_errno(server))
 #define AVAHI_BROWSER_ERROR AVAHI_ERROR
 #define FREE_AVAHI() if (server) avahi_server_free(server);
+
 #endif
 
 typedef struct csm_config csm_config;
@@ -107,6 +127,7 @@ struct ServiceTXTFields {
   long lifetime;
   char *key;
   char *signature;
+  char *version;
 };
 
 typedef struct ServiceInfo ServiceInfo;
@@ -114,7 +135,6 @@ typedef struct ServiceInfo {
   /** Common members for all services */
   AvahiIfIndex interface;
   AvahiProtocol protocol;
-  char *host_name;
   char *uuid;
   char *type;
   char *domain;
@@ -129,8 +149,10 @@ typedef struct ServiceInfo {
 
   /** Local services */
   ENTRY_GROUP *group;
+  int uptodate;
 
   /** Remote services */
+  char *host_name;
   char address[AVAHI_ADDRESS_STR_MAX];
   AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
 //   char *txt; /**< string representing all the txt fields */

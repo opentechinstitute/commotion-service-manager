@@ -249,6 +249,8 @@ int service_commit(CSMService *service) {
         && co_tree_find(service,"icon",sizeof("icon")),
 	"Service missing required fields");
   
+  co_obj_t *current_key = co_tree_find(service,"key",sizeof("key"));
+  
   /* Initialize socket pool for connecting to CSM */
   co_init();
   conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
@@ -270,7 +272,10 @@ int service_commit(CSMService *service) {
   CHECK(co_response_get_str(response,&signature,"signature",sizeof("signature")),"Failed to fetch signature from response");
   INFO("Successfully added/updated service %s with signature %s",key,signature);
   
-  co_tree_insert_force(service,"key",sizeof("key"),co_str8_create(key,strlen(key)+1,0));
+  if (!current_key)
+    co_tree_insert_force(service,"key",sizeof("key"),co_str8_create(key,strlen(key)+1,0));
+  else
+    CHECK(co_str_cmp_str(current_key,key) == 0,"Received invalid key");
   co_tree_insert_force(service,"signature",sizeof("signature"),co_str8_create(signature,strlen(signature)+1,0));
   
   ret = 1;

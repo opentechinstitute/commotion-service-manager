@@ -28,6 +28,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include <unistd.h>
+#include <math.h>
 
 #include <avahi-core/core.h>
 
@@ -35,7 +36,7 @@
 #include "util.h"
 #include "debug.h"
 
-#include "extern/sha1.h"
+#include "extern/base32.h"
 
 #define ESCAPE_QUOTE "&quot;"
 #define ESCAPE_QUOTE_LEN 6
@@ -109,50 +110,57 @@ error:
   return 0;
 }
 
+/* Copyright (C) 2012 Serval Project Inc. */
+static inline int hexvalue(char c)
+{
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return -1;
+}
+
+/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] to nbinary bytes of data.  Can be used to
+ *  perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
+ *  character is encountered, otherwise returns the number of binary bytes produced (= nbinary).
+ *  @author Andrew Bettison <andrew@servalproject.com>
+ *  Copyright (C) 2012 Serval Project Inc.
+ */
+static size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
+{
+  size_t count = 0;
+  while (count != nbinary) {
+    unsigned char high = hexvalue(*srcHex++);
+    if (high & 0xf0) return -1;
+    unsigned char low = hexvalue(*srcHex++);
+    if (low & 0xf0) return -1;
+    dstBinary[count++] = (high << 4) + low;
+  }
+  return count;
+}
+
 /**
- * Derives the UUID of a service, as a SHA1sum of the concatenation of (UCI-escaped) URI, port, and hostname
- * @param uri URI of the service
- * @param uri_len length of the URI
- * @param port (optional) the service port
+ * Derives the UUID of a service, as a base32 encoding of the service's key
+ * @param key hex-encoded service key
+ * @param key_len length of service key
  * @param[out] buf character buffer in which to store UUID
  * @param buf_size size of character buffer
  * @return length of UUID on success, 0 on error
  */
-int get_uuid(char *uri, size_t uri_len, int port, char *hostname, size_t hostname_len, char *buf, size_t buf_size) {
-  char *uri_escaped = NULL;
-  char *uuid = NULL;
+int get_uuid(char *key, size_t key_len, char *buf, size_t buf_size) {
   int ret = 0;
+  int uuid_len = (int)ceil((key_len / 2) * 8.0 / 5.0);
   
-  CHECK(buf_size >= 2 * SHA1_DIGEST_SIZE,"UUID buffer too small");
+  CHECK(buf_size >= uuid_len + 1, "Insufficient buffer size");
   
-  CHECK(uri && uri_len > 0,"Missing values needed for deriving UUID");
+  // TODO stow SID
+  uint8_t bin_key[FINGERPRINT_LEN / 2] = {0};
+  CHECK(fromhex(bin_key, key, FINGERPRINT_LEN / 2) == key_len / 2, "Unable to stow key");
   
-  size_t uri_escaped_len;
-  uri_escaped = uci_escape(uri,uri_len,&uri_escaped_len);
-  CHECK(uri_escaped,"Failed to escape URI");
+  ret = base32_encode(bin_key, key_len / 2, (uint8_t*)buf, buf_size);
   
-  char port_str[6] = {0};
-  if (port > 0)
-    sprintf(port_str,"%d",port);
+  CHECK(ret == uuid_len, "Failed to base32 encode UUID");
   
-  uuid = calloc(uri_escaped_len + strlen(port_str) + hostname_len + 1,sizeof(char));
-  CHECK_MEM(uuid);
-  
-  strncpy(uuid,uri_escaped,uri_escaped_len);
-  strcat(uuid,port_str);
-  strcat(uuid,hostname);
-  
-  SHA1_CTX ctx;
-  SHA1_Init(&ctx);
-  SHA1_Update(&ctx, (const uint8_t*)uuid, strlen(uuid));
-  unsigned char sha1sum[SHA1_DIGEST_SIZE] = {0};
-  SHA1_Final(&ctx, (uint8_t*)sha1sum);
-  CHECK(tohex(sha1sum,SHA1_DIGEST_SIZE,buf,buf_size),"Failed to convert sha1sum to hex");
-
-  ret = 2 * SHA1_DIGEST_SIZE;
 error:
-  if (uri_escaped) free(uri_escaped);
-  if (uuid) free(uuid);
   return ret;
 }
 

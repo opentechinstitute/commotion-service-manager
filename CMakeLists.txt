@@ -29,14 +29,14 @@ SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-SET(DAEMONSRC defs.h debug.h browse.h browse.c main.c service.h service.c util.h util.c extern/sha1.h extern/sha1.c extern/os_types.h)
+SET(DAEMONSRC defs.h debug.h browse.h browse.c publish.h publish.c main.c service.h service.c util.h util.c extern/base32.h extern/base32.c)
 SET(LIBSRC defs.h debug.h commotion-service-manager.h commotion-service-manager.c)
 
 ADD_EXECUTABLE(daemon ${DAEMONSRC})
 ADD_LIBRARY(library SHARED ${LIBSRC})
 ADD_EXECUTABLE(client ${LIBSRC})
 
-TARGET_LINK_LIBRARIES(daemon commotion commotion_serval-sas avahi-core avahi-common)
+TARGET_LINK_LIBRARIES(daemon commotion commotion_serval-sas avahi-core avahi-common m)
 TARGET_LINK_LIBRARIES(library commotion)
 TARGET_LINK_LIBRARIES(client commotion)
 TARGET_COMPILE_DEFINITIONS(client PUBLIC -DCLIENT_MAIN)

@@ -1,15 +1,19 @@
 TODO
-UUID should be base32 encoding of key
-change UUID calculation in luci-commotion-apps
-investigate backwards compatibility of UUID change, whether need to have CSM convert old entries in UCI upon starting or with uci-defaults script
-	at least change version UCI option
+UCI-defaults script
+	delete /etc/avahi/services
+	read all local==1 apps in UCI to lua tables, remove all UCI apps, import lua tables into CSM (which will write out to UCI)
 pull in gtest via makefile, don't include in repo
 pare down header includes
-update UCI functions
 code cleanup
 update README
 
 DONE
+update UCI functions to not use txt_lst
+actually multicast added apps
+change UUID calculation in luci-commotion-apps
+	UUID should be base32 encoding of key
+	for version 1.0 remote services, calculate UUID as hash of concat of URI, key
+add version property to services
 redo print services
 finish client commands
 replace avahi_malloc/avahi_strdup w/ halloc
