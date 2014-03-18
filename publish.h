@@ -25,8 +25,6 @@
 #ifndef CSM_PUBLISH_H
 #define CSM_PUBLISH_H
 
-#include "defs.h"
-
 // typedef struct csm_update_services csm_update_services;
 // struct csm_update_services {
 //   int (*update)(void);

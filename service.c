@@ -27,37 +27,26 @@
 #endif
 
 #include <stdio.h>
-#include <stdbool.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <time.h>
 #include <net/if.h>
-#include <string.h>
-#include <ctype.h>
-#ifdef USESYSLOG
-#include <syslog.h>
-#endif
 
-#include <avahi-core/core.h>
-#include <avahi-core/lookup.h>
-#include <avahi-client/client.h>
-#include <avahi-client/lookup.h>
-#include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>
 
 #include "commotion.h"
 
-#include "defs.h"
-#include "service.h"
-#include "browse.h"
-#include "debug.h"
-#include "util.h"
-
 #ifdef USE_UCI
 #include <uci.h>
 #include "uci-utils.h"
 #endif
+
+#include "defs.h"
+#include "browse.h"
+#include "debug.h"
+#include "util.h"
+#include "service.h"
 
 #define OPEN_DELIMITER "\""
 #define OPEN_DELIMITER_LEN 1
@@ -81,7 +70,7 @@ extern AvahiSimplePoll *simple_poll;
 extern AvahiServer *server;
 #endif
 
-extern csm_config config;
+extern struct csm_config csm_config;
 
 /* Private */
 
@@ -333,7 +322,7 @@ process_service(ServiceInfo *i)
   
 #ifdef USE_UCI
   /* Write out service to UCI */
-  if (config.uci && uci_write(i) == 0)
+  if (csm_config.uci && uci_write(i) == 0)
     ERROR("(Resolver) Could not write to UCI");
 #endif
   
@@ -366,7 +355,7 @@ remove_service(AvahiTimeout *t, void *userdata)
 #ifdef USE_UCI
   if (i->resolved) {
     // Delete UCI entry
-    if (config.uci && uci_remove(i) < 0)
+    if (csm_config.uci && uci_remove(i) < 0)
       ERROR("(Remove_Service) Could not remove from UCI");
   }
 #endif
@@ -388,8 +377,8 @@ void print_services(int signal) {
   ServiceInfo *i;
   FILE *f = NULL;
 
-  if (!(f = fopen(config.output_file, "w+"))) {
-    WARN("Could not open %s. Using stdout instead.", config.output_file);
+  if (!(f = fopen(csm_config.output_file, "w+"))) {
+    WARN("Could not open %s. Using stdout instead.", csm_config.output_file);
     f = stdout;
   }
 
@@ -406,7 +395,7 @@ int
 verify_signature(ServiceInfo *i)
 {
   int verdict = 0;
-  
+  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
   char *to_verify = NULL;
   CHECK(create_signing_template(i,&to_verify) > 0, "Failed to create signing template");
   
@@ -415,8 +404,7 @@ verify_signature(ServiceInfo *i)
   CHECK(keyring_send_sas_request_client(i->key,strlen(i->key),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
   
   bool output;
-  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
-  CHECK((co_conn = co_connect(config.co_sock,strlen(config.co_sock)+1)),
+  CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),
 	"Failed to connect to Commotion socket");
   CHECK_MEM((co_req = co_request_create()));
   CO_APPEND_STR(co_req,"verify");
@@ -450,7 +438,7 @@ create_signature(ServiceInfo *i)
   CHECK(create_signing_template(i,&to_sign) > 0, "Failed to create signing template");
   
   co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
-  CHECK((co_conn = co_connect(config.co_sock,strlen(config.co_sock)+1)),
+  CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),
 	"Failed to connect to Commotion socket");
   CHECK_MEM((co_req = co_request_create()));
   CO_APPEND_STR(co_req,"sign");

@@ -27,10 +27,8 @@
 
 #include <avahi-common/error.h>
 #include <avahi-core/core.h>
-#include <avahi-core/lookup.h>
 #include <avahi-core/publish.h>
 #include <avahi-client/client.h>
-#include <avahi-client/lookup.h>
 #include <avahi-client/publish.h>
 
 #include "defs.h"

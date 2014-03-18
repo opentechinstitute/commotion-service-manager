@@ -25,16 +25,6 @@
 #ifndef CSM_BROWSE_H
 #define CSM_BROWSE_H
 
-#include <stdlib.h>
-
-#include <avahi-core/core.h>
-#include <avahi-core/lookup.h>
-#include <avahi-client/client.h>
-#include <avahi-client/lookup.h>
-#include <avahi-common/llist.h>
-
-#include "defs.h"
-
 /**
  * Handler called whenever a service is (potentially) resolved
  * @param userdata the ServiceFile object of the service in question

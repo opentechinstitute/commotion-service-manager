@@ -25,14 +25,11 @@
 #ifndef CSM_INTERNAL_H
 #define CSM_INTERNAL_H
 
-#include <stdlib.h>
-
-#include <avahi-core/core.h>
-#include <avahi-core/lookup.h>
-#include <avahi-core/publish.h>
-#include <avahi-client/client.h>
-#include <avahi-client/lookup.h>
 #include <avahi-client/publish.h>
+#include <avahi-client/lookup.h>
+#include <avahi-common/address.h>
+#include <avahi-common/watch.h>
+#include <avahi-common/strlst.h>
 #include <avahi-common/llist.h>
 
 #include "extern/halloc.h"
@@ -103,7 +100,6 @@
 
 #endif
 
-typedef struct csm_config csm_config;
 struct csm_config {
   char *co_sock;
   #ifdef USE_UCI

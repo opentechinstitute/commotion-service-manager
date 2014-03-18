@@ -26,23 +26,14 @@
 #include <config.h>
 #endif
 
-#include <stdio.h>
-#include <stdbool.h>
-#include <assert.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <time.h>
-#include <net/if.h>
-#include <string.h>
-#include <ctype.h>
-#ifdef USESYSLOG
-#include <syslog.h>
-#endif
 
 #include <avahi-core/core.h>
 #include <avahi-core/lookup.h>
 #include <avahi-client/client.h>
 #include <avahi-client/lookup.h>
-#include <avahi-common/llist.h>
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>
@@ -50,15 +41,8 @@
 #include "defs.h"
 #include "service.h"
 #include "browse.h"
-#include "util.h"
 #include "debug.h"
 
-#ifdef USE_UCI
-#include <uci.h>
-#include "uci-utils.h"
-#endif
-
-extern csm_config config;
 extern AvahiSimplePoll *simple_poll;
 #ifndef CLIENT
 extern AvahiServer *server;

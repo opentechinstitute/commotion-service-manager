@@ -22,8 +22,6 @@
  * =====================================================================================
  */
 
-#include <stdlib.h>
-
 #include "commotion/obj.h"
 #include "commotion/list.h"
 #include "commotion/tree.h"

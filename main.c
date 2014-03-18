@@ -22,29 +22,18 @@
  * =====================================================================================
  */
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <argp.h>
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <sys/socket.h>
 
 #include <avahi-common/error.h>
-#include <avahi-common/alternative.h>
 #include <avahi-common/malloc.h>
 #include <avahi-common/simple-watch.h>
-#include <avahi-core/core.h>
-#include <avahi-core/lookup.h>
-#ifdef CLIENT
-#include <avahi-client/client.h>
-#include <avahi-client/lookup.h>
-#endif
 
-#include "commotion/obj.h"
 #include "commotion/cmd.h"
 #include "commotion/msg.h"
 #include "commotion/list.h"
@@ -67,7 +56,7 @@
 extern co_socket_t unix_socket_proto;
 extern ServiceInfo *services;
 
-csm_config config;
+struct csm_config csm_config;
 static int pid_filehandle;
 static co_socket_t *csm_socket = NULL;
 
@@ -440,7 +429,7 @@ static void daemon_start(char *pidfile) {
 }
 
 static int
-create_service_browser(void)
+create_service_browser(AvahiClient *client)
 {
   /* Create the service browser */
   CHECK((stb = TYPE_BROWSER_NEW(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback)),
@@ -460,7 +449,7 @@ static void client_callback(AvahiClient *c, AvahiClientState state, AVAHI_GCC_UN
 	/* The server has startup successfully and registered its host
 	 * name on the network, so it's time to create our services */
 	if (!stb) {
-	  if (!create_service_browser()) {
+	  if (!create_service_browser(c)) {
 	    ERROR("Failed to create service type browser");
 	    avahi_simple_poll_quit(simple_poll);
 	  }
@@ -561,24 +550,24 @@ static void server_callback(AvahiServer *s, AvahiServerState state, AVAHI_GCC_UN
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
   switch (key) {
     case 'b':
-      config.co_sock = arg;
+      csm_config.co_sock = arg;
       break;
       #ifdef USE_UCI
     case 'u':
-      config.uci = 1;
+      csm_config.uci = 1;
       break;
       #endif
     case 'o':
-      config.output_file = arg;
+      csm_config.output_file = arg;
       break;
     case 'n':
-      config.nodaemon = 1;
+      csm_config.nodaemon = 1;
       break;
     case 'p':
-      config.pid_file = arg;
+      csm_config.pid_file = arg;
       break;
     case 's':
-      config.sid = arg;
+      csm_config.sid = arg;
     default:
       return ARGP_ERR_UNKNOWN;
   }
@@ -608,14 +597,14 @@ int main(int argc, char*argv[]) {
     static struct argp argp = { options, parse_opt, NULL, doc };
     
     /* Set defaults */
-    config.co_sock = COMMOTION_MANAGESOCK;
+    csm_config.co_sock = COMMOTION_MANAGESOCK;
 #ifdef USE_UCI
-    config.uci = 0;
+    csm_config.uci = 0;
 #endif
-    config.nodaemon = 0;
-    config.output_file = CSM_DUMPFILE;
-    config.pid_file = CSM_PIDFILE;
-    config.sid = NULL;
+    csm_config.nodaemon = 0;
+    csm_config.output_file = CSM_DUMPFILE;
+    csm_config.pid_file = CSM_PIDFILE;
+    csm_config.sid = NULL;
     
     /* Set Avahi allocator to use halloc */
     static AvahiAllocator hallocator = {
@@ -626,11 +615,11 @@ int main(int argc, char*argv[]) {
     };
     avahi_set_allocator(&hallocator);
     
-    argp_parse (&argp, argc, argv, 0, 0, &config);
-    //fprintf(stdout,"uci: %d, out: %s\n",config.uci,config.output_file);
+    argp_parse (&argp, argc, argv, 0, 0, &csm_config);
+    //fprintf(stdout,"uci: %d, out: %s\n",csm_config.uci,csm_config.output_file);
     
-    if (!config.nodaemon)
-      daemon_start(config.pid_file);
+    if (!csm_config.nodaemon)
+      daemon_start(csm_config.pid_file);
     
     /* Initialize socket pool for connecting to commotiond */
     CHECK(co_init(),"Failed to initialize Commotion client");

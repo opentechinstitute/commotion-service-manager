@@ -25,16 +25,6 @@
 #ifndef CSM_SERVICE_H
 #define CSM_SERVICE_H
 
-#include <stdlib.h>
-
-#include <avahi-core/core.h>
-#include <avahi-core/lookup.h>
-#include <avahi-core/publish.h>
-#include <avahi-client/client.h>
-#include <avahi-client/lookup.h>
-#include <avahi-client/publish.h>
-#include <avahi-common/llist.h>
-
 ServiceInfo *find_service(const char *uuid);
 ServiceInfo *add_service(BROWSER *b, 
 			 AvahiIfIndex interface, 
