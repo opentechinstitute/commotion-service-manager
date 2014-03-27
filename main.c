@@ -151,15 +151,15 @@ static void query_type_browser(
   AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
   void* userdata) {
   
-  AvahiServer *s = (AvahiServer*)userdata;
-  assert(b && b = query_browser);
+  AvahiSServiceTypeBrowser **query_browser = (AvahiSServiceTypeBrowser**)userdata;
+  assert(b && b == *query_browser);
   
   INFO("Query browser got an event: %d", event);
   
   switch (event) {
         case AVAHI_BROWSER_FAILURE:
             ERROR("(Browser) %s", 
-                avahi_strerror(avahi_server_errno(s)));
+                avahi_strerror(avahi_server_errno(server)));
             avahi_simple_poll_quit(simple_poll);
             return;
         case AVAHI_BROWSER_NEW:
@@ -168,7 +168,7 @@ static void query_type_browser(
                                                                 type, 
                                                                 domain);
 	    avahi_s_service_type_browser_free(b);
-	    query_browser = NULL;
+	    *query_browser = NULL;
             break;
         case AVAHI_BROWSER_CACHE_EXHAUSTED:
             INFO("Query cache exhausted");
@@ -188,7 +188,7 @@ static void query_remote_services(AvahiTimeout *t, void *userdata) {
 						   "mesh.local",
 						   0,
 						   query_type_browser,
-						   server);
+						   query_browser);
   if (!*query_browser)
     ERROR("Failed to create query service browser: %s", avahi_strerror(avahi_server_errno(server)));
   else
