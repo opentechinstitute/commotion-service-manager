@@ -14,6 +14,8 @@
 #include "commotion-service-manager.h"
 #include "debug.h"
 
+#define UPDATE_INTERVAL 30
+
 extern struct arguments arguments;
 static int pid_filehandle;
 
@@ -139,9 +141,66 @@ static void daemon_start(char *pidfile) {
   
 }
 
+static void query_type_browser(
+  AvahiSServiceTypeBrowser *b,
+  AvahiIfIndex interface,
+  AvahiProtocol protocol,
+  AvahiBrowserEvent event,
+  const char *type,
+  const char *domain,
+  AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
+  void* userdata) {
+  
+  AvahiServer *s = (AvahiServer*)userdata;
+  assert(b);
+  
+  INFO("Query browser got an event: %d", event);
+  
+  switch (event) {
+        case AVAHI_BROWSER_FAILURE:
+            ERROR("(Browser) %s", 
+                avahi_strerror(avahi_server_errno(s)));
+            avahi_simple_poll_quit(simple_poll);
+            return;
+        case AVAHI_BROWSER_NEW:
+	    DEBUG("Query Service Browser: Successfully created a service " 
+                                "browser for type (%s) in domain (%s)", 
+                                                                type, 
+                                                                domain);
+	    avahi_s_service_type_browser_free(b);
+            break;
+        case AVAHI_BROWSER_CACHE_EXHAUSTED:
+            INFO("Query cache exhausted");
+            break;
+    }
+}
+
+static void query_remote_services(AvahiTimeout *t, void *userdata) {
+  AvahiSServiceTypeBrowser **query_browser = (AvahiSServiceTypeBrowser**)userdata;
+  
+  if (*query_browser)
+    return;
+  
+  *query_browser = avahi_s_service_type_browser_new(server, 
+						   AVAHI_IF_UNSPEC,
+						   AVAHI_PROTO_UNSPEC,
+						   "mesh.local",
+						   0,
+						   query_type_browser,
+						   server);
+  if (!*query_browser)
+    ERROR("Failed to create query service browser: %s", avahi_strerror(avahi_server_errno(server)));
+  else
+    INFO("Created query service browser");
+  
+  struct timeval tv = {0};
+  avahi_elapse_time(&tv, 1000*UPDATE_INTERVAL, 0);
+  avahi_simple_poll_get(simple_poll)->timeout_update(t, &tv); // create expiration event for service
+}
+
 int main(int argc, char*argv[]) {
     AvahiServerConfig config;
-    AvahiSServiceTypeBrowser *stb = NULL;
+    AvahiSServiceTypeBrowser *stb = NULL, *query_browser = NULL;
     int error;
     int ret = 1;
 
@@ -214,6 +273,11 @@ int main(int argc, char*argv[]) {
     /* Create the service browser */
     CHECK((stb = avahi_s_service_type_browser_new(server, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback, server)),
         "Failed to create service browser: %s", avahi_strerror(avahi_server_errno(server)));
+    
+    // Send out service queries periodically
+    struct timeval tv = {0};
+    avahi_elapse_time(&tv, 1000*UPDATE_INTERVAL, 0);
+    avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, query_remote_services, &query_browser);
     
     /* Run the main loop */
     avahi_simple_poll_loop(simple_poll);
