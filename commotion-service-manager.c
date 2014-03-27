@@ -381,9 +381,6 @@ void resolve_callback(
             break;
 
         case AVAHI_RESOLVER_FOUND: {
-	    if (found_service(name))
-	      return;
-	    
             avahi_address_snprint(i->address, 
                 sizeof(i->address),
                 address);
@@ -489,7 +486,7 @@ void resolve_callback(
     }
     avahi_s_service_resolver_free(i->resolver);
     i->resolver = NULL;
-    if (event == AVAHI_RESOLVER_FOUND && !i->resolved) {
+    if (event == AVAHI_RESOLVER_FOUND && !i->resolved && !found_service(name)) {
       remove_service(NULL, i);
     }
 }
