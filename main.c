@@ -152,7 +152,7 @@ static void query_type_browser(
   void* userdata) {
   
   AvahiServer *s = (AvahiServer*)userdata;
-  assert(b);
+  assert(b && b = query_browser);
   
   INFO("Query browser got an event: %d", event);
   
@@ -168,6 +168,7 @@ static void query_type_browser(
                                                                 type, 
                                                                 domain);
 	    avahi_s_service_type_browser_free(b);
+	    query_browser = NULL;
             break;
         case AVAHI_BROWSER_CACHE_EXHAUSTED:
             INFO("Query cache exhausted");
