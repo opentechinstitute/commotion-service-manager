@@ -14,11 +14,14 @@
 #include "commotion-service-manager.h"
 #include "debug.h"
 
+#define UPDATE_INTERVAL 30
+
 extern struct arguments arguments;
 static int pid_filehandle;
 
 extern AvahiSimplePoll *simple_poll;
 extern AvahiServer *server;
+AvahiServerConfig config;
 
 /** Parse commandline options */
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
@@ -139,8 +142,50 @@ static void daemon_start(char *pidfile) {
   
 }
 
+static void query_server_callback(AvahiServer *s, AvahiServerState state, void* userdata) {
+  AvahiServer **query_server = (AvahiServer**)userdata;
+  assert(s && s == *query_server);
+  
+  switch (state) {
+    case AVAHI_SERVER_RUNNING:
+      DEBUG("Query_server created and running");
+      avahi_server_free(s);
+      *query_server = NULL;
+      break;
+    case AVAHI_SERVER_COLLISION:
+      ERROR("AVAHI_SERVER_COLLISION");
+    case AVAHI_SERVER_REGISTERING:
+      ERROR("AVAHI_SERVER_REGISTERING");
+    case AVAHI_SERVER_INVALID:
+      ERROR("AVAHI_SERVER_INVALID");
+    case AVAHI_SERVER_FAILURE:
+      ERROR("Query_server failure: %s\n", avahi_strerror(avahi_server_errno(s)));
+      avahi_simple_poll_quit(simple_poll);
+  }
+}
+
+static void query_services(AvahiTimeout *t, void *userdata) {
+  AvahiServer **query_server = (AvahiServer**)userdata;
+  assert(query_server);
+  assert(t);
+  
+  if (*query_server) {
+    ERROR("query_server already exists");
+    return;
+  }
+  
+  int error;
+  *query_server = avahi_server_new(avahi_simple_poll_get(simple_poll), &config, query_server_callback, query_server, &error);
+  if (!*query_server)
+    ERROR("Failed to create server: %s", avahi_strerror(error));
+  
+  struct timeval tv = {0};
+  avahi_elapse_time(&tv, 1000*UPDATE_INTERVAL, 0);
+  timeout_update(t, &tv);
+}
+
 int main(int argc, char*argv[]) {
-    AvahiServerConfig config;
+    AvahiServer *query_server = NULL;
     AvahiSServiceTypeBrowser *stb = NULL;
     int error;
     int ret = 1;
@@ -215,6 +260,10 @@ int main(int argc, char*argv[]) {
     CHECK((stb = avahi_s_service_type_browser_new(server, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback, server)),
         "Failed to create service browser: %s", avahi_strerror(avahi_server_errno(server)));
     
+    struct timeval tv = {0};
+    avahi_elapse_time(&tv, 1000*UPDATE_INTERVAL, 0);
+    avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, query_services, &query_server); // create expiration event for service
+    
     /* Run the main loop */
     avahi_simple_poll_loop(simple_poll);
     
@@ -230,6 +279,9 @@ error:
 
     if (server)
         avahi_server_free(server);
+    
+    if (query_server)
+      avahi_server_free(query_server);
 
     if (simple_poll)
         avahi_simple_poll_free(simple_poll);
