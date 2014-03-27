@@ -181,7 +181,7 @@ static void query_services(AvahiTimeout *t, void *userdata) {
   
   struct timeval tv = {0};
   avahi_elapse_time(&tv, 1000*UPDATE_INTERVAL, 0);
-  timeout_update(t, &tv);
+  avahi_simple_poll_get(simple_poll)->timeout_update(t, &tv);
 }
 
 int main(int argc, char*argv[]) {
