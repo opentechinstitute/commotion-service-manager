@@ -381,6 +381,9 @@ void resolve_callback(
             break;
 
         case AVAHI_RESOLVER_FOUND: {
+	    if (found_service(name))
+	      return;
+	    
             avahi_address_snprint(i->address, 
                 sizeof(i->address),
                 address);
