@@ -240,7 +240,7 @@ int verify_announcement(ServiceInfo *i) {
   char *key, *val, *app, *uri, *icon, *desc, *sid, *sig;
   unsigned int ttl = 0;
   unsigned long lifetime = 0;
-  int j, verdict = 1, to_verify_len = 0;
+  int j, verdict = 1, to_verify_len = 0, found = 0;
   size_t val_len;
   
   assert(i->txt_lst);
@@ -299,7 +299,12 @@ int verify_announcement(ServiceInfo *i) {
   if (to_verify) {
     char sas_buf[2*SAS_SIZE+1] = {0};
     
-    CHECK(keyring_send_sas_request_client(sid,strlen(sid),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
+    for (j = 0; j < SAS_FETCH_MAX_ATTEMPTS; j++) {
+      found = keyring_send_sas_request_client(sid,strlen(sid),sas_buf,2*SAS_SIZE+1);
+      if (found)
+	break;
+    }
+    CHECK(found,"Failed to fetch signing key");
     
     bool output;
     CHECK((co_conn = co_connect(arguments.co_sock,strlen(arguments.co_sock)+1)),"Failed to connect to Commotion socket");
