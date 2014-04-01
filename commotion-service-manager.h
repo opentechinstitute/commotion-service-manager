@@ -47,6 +47,7 @@
 #endif
 
 #define DEFAULT_CO_SOCK "/var/run/commotiond.sock"
+#define SAS_FETCH_MAX_ATTEMPTS 5
 
 struct arguments {
   char *co_sock;
