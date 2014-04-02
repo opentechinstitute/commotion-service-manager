@@ -14,11 +14,15 @@
 #include "commotion-service-manager.h"
 #include "debug.h"
 
+#define UPDATE_INTERVAL 64
+
 extern struct arguments arguments;
 static int pid_filehandle;
 
 extern AvahiSimplePoll *simple_poll;
 extern AvahiServer *server;
+AvahiServerConfig config;
+AvahiSServiceTypeBrowser *stb = NULL;
 
 /** Parse commandline options */
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
@@ -139,10 +143,66 @@ static void daemon_start(char *pidfile) {
   
 }
 
+static void server_callback(AvahiServer *s, AvahiServerState state, void* userdata) {
+  assert(s);
+  
+  switch (state) {
+    case AVAHI_SERVER_RUNNING:
+      DEBUG("Server created and running");
+      /* Create the service browser */
+      stb = avahi_s_service_type_browser_new(s, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback, s);
+      if (!stb)
+	ERROR("Failed to create service type browser: %s", avahi_strerror(avahi_server_errno(s)));
+      break;
+    case AVAHI_SERVER_COLLISION:
+      WARN("AVAHI_SERVER_COLLISION");
+    case AVAHI_SERVER_REGISTERING:
+      WARN("AVAHI_SERVER_REGISTERING");
+    case AVAHI_SERVER_INVALID:
+      WARN("AVAHI_SERVER_INVALID");
+    case AVAHI_SERVER_FAILURE:
+      WARN("Server failure: %s", avahi_strerror(avahi_server_errno(s)));
+  }
+}
+
+static void start_server(AvahiTimeout *t, void *userdata) {
+  int error;
+  
+  assert(t);
+  
+  if (stb) {
+    DEBUG("Service type browser already exists");
+    avahi_s_service_type_browser_free(stb);
+    stb = NULL;
+  }
+  
+  if (server) {
+    DEBUG("Server already exists");
+    avahi_server_free(server);
+    server = NULL;
+  }
+  
+  /* Allocate a new server */
+  server = avahi_server_new(avahi_simple_poll_get(simple_poll), &config, server_callback, NULL, &error);
+  
+  /* Check whether creating the server object succeeded */
+  if (!server) {
+    ERROR("Failed to create server: %s", avahi_strerror(error));
+    avahi_simple_poll_quit(simple_poll);
+    return;
+  }
+  
+  /* every UPDATE_INTERVAL seconds, shut down and re-create server. This
+   * has the benefit of causing CSM to send queries to other nodes, prompting
+   * them to re-multicast their services. This is done because mDNS seems to
+   * be very unreliable on mesh, and often nodes don't get service announcements
+   * or can't resolve them. */
+  struct timeval tv = {0};
+  avahi_elapse_time(&tv, 1000*UPDATE_INTERVAL, 0);
+  avahi_simple_poll_get(simple_poll)->timeout_update(t, &tv);
+}
+
 int main(int argc, char*argv[]) {
-    AvahiServerConfig config;
-    AvahiSServiceTypeBrowser *stb = NULL;
-    int error;
     int ret = 1;
 
     argp_program_version = "1.0";
@@ -202,18 +262,10 @@ int main(int argc, char*argv[]) {
     config.n_wide_area_servers = 1;
     config.enable_wide_area = 1;
 
-    /* Allocate a new server */
-    server = avahi_server_new(avahi_simple_poll_get(simple_poll), &config, NULL, NULL, &error);
-
-    /* Free the configuration data */
-    avahi_server_config_free(&config);
-
-    /* Check wether creating the server object succeeded */
-    CHECK(server,"Failed to create server: %s", avahi_strerror(error));
-
-    /* Create the service browser */
-    CHECK((stb = avahi_s_service_type_browser_new(server, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback, server)),
-        "Failed to create service browser: %s", avahi_strerror(avahi_server_errno(server)));
+    // Start timer to create server
+    struct timeval tv = {0};
+    avahi_elapse_time(&tv, 0, 0);
+    avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &tv, start_server, NULL); // create expiration event for service
     
     /* Run the main loop */
     avahi_simple_poll_loop(simple_poll);
@@ -221,6 +273,9 @@ int main(int argc, char*argv[]) {
     ret = 0;
 
 error:
+
+    /* Free the configuration data */
+    avahi_server_config_free(&config);
 
     co_shutdown();
 
@@ -230,7 +285,7 @@ error:
 
     if (server)
         avahi_server_free(server);
-
+    
     if (simple_poll)
         avahi_simple_poll_free(simple_poll);
 

@@ -491,7 +491,7 @@ void resolve_callback(
     }
     avahi_s_service_resolver_free(i->resolver);
     i->resolver = NULL;
-    if (event == AVAHI_RESOLVER_FOUND && !i->resolved) {
+    if (!i->resolved) {
       remove_service(NULL, i);
     }
 }
