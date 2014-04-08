@@ -1,4 +1,4 @@
-CFLAGS+=-g
+CFLAGS+=-g -DUSESYSLOG
 LDFLAGS+=-lcommotion -lcommotion_serval-sas -lavahi-core -lavahi-common -luci
 TEST_OBJS=util.o commotion-service-manager.o
 OBJS=$(TEST_OBJS) main.o
@@ -13,7 +13,7 @@ endif
 openwrt: commotion-service-manager
 
 ifeq ($(MAKECMDGOALS),linux)
-CFLAGS+=-DUSE_UCI -DUSESYSLOG -DUCIPATH="\"/opt/luci-commotion/etc/config\""
+CFLAGS+=-DUSE_UCI -DUCIPATH="\"/opt/luci-commotion/etc/config\""
 OBJS+=uci-utils.o
 endif
 linux: commotion-service-manager
