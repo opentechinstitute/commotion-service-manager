@@ -27,11 +27,17 @@ libCSM.services_fetch.argtypes = [POINTER(c_void_p)]
 libCSM.services_get.restype = c_void_p
 
 class CSM(list):
+    """ Fetches all current services.
+
+    list : ????
+    """
     def __init__(self):
+        """ Sets all defaults to empty"""
 	self.services = []
 	self.len = 0
     
     def update(self):
+        """ Free's current list of services and repopulates it from the Commotion service manager."""
 	# first, free current list of services
 	if (self._service_list and self.len):
 	    assert libCSM.services_free(self._service_list).value == 1
@@ -57,7 +63,13 @@ class CSM(list):
 	    #self.services.append(CommotionService(c_services[i]))
 
 class CommotionService(object):
+    """A service object that handles service creation, modification, comparison, and deletion."""
     def __init__(self, ptr=None):
+        """
+        Uses a pointer to load an existing service, or requests a pointer for a new Commotion service.
+        
+        ptr : C pointer to a commotion service
+        """
         if (ptr):
             assert type(ptr) = c_void_p
             self.ptr = ptr
@@ -85,15 +97,30 @@ class CommotionService(object):
             #self.key = libCSM.service_get_key(self.ptr).value
     
     def __eq__(self, other):
+        """Test equality of this service and another.
+
+        other : CommotionService object
+        return : bool
+        """
         return (isinstance(other, self.__class__)
             and self.__dict__ == other.__dict__)
         #return (isinstance(other, self.__class__)
             #and self.ptr == other.ptr)
 
     def __ne__(self, other):
+        """Test inequality of this service and another.
+
+        other : CommotionService object
+        return : bool
+        """
         return not self.__eq__(other)
     
     def __repr__(self):
+        """
+        The official string representation of this service, formatted as a valid Python expression to recreate it.
+
+        return : string
+        """
         categories = '['
         for category in self.categories:
             categories += "%s, " % category
@@ -118,6 +145,12 @@ class CommotionService(object):
                                       self.signature)
     
     def __str__(self):
+                """
+        The human readable string representation of this service.
+
+        return : string
+        """
+
         categories = '['
         for category in self.categories:
             categories += "%s, " % category
@@ -142,6 +175,7 @@ class CommotionService(object):
                                         self.signature)
     
     def commit_service(self):
+        """Sets current service values to its pointer in the Commotion Service Manager """
         #try:
             assert libCSM.service_set_name(self.ptr,c_char_p(self.name)).value == 1
             assert libCSM.service_set_description(self.ptr,c_char_p(self.description)).value == 1
@@ -163,5 +197,6 @@ class CommotionService(object):
             
     
     def remove_service(self):
+        """Removes the service in both the Commotion Service Manager and locally."""
         assert libCSM.remove_service(self.ptr).value == 1
         self.__del__(self)
