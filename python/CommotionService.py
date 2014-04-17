@@ -2,8 +2,8 @@ from ctypes import *
 
 libCSM = CDLL("libcommotion-service-manager.so")
 
-libCSM.service_new.argtypes = [POINTER(c_char_p)]
-libCSM.service_new.restype = c_void_p
+libCSM.service_create.argtypes = [POINTER(c_char_p)]
+libCSM.service_create.restype = c_void_p
 
 libCSM.service_get_key.restype = c_char_p
 libCSM.service_get_name.restype = c_char_p
@@ -81,7 +81,7 @@ class CommotionService(object):
                 #self.categories.append(self.c_categories[i])
             self.signature = libCSM.service_get_signature(self.ptr).value
         else:
-            self.ptr = libCSM.service_new()
+            self.ptr = libCSM.service_create()
             #self.key = libCSM.service_get_key(self.ptr).value
     
     def __eq__(self, other):

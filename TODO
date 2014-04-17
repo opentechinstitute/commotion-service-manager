@@ -1,4 +1,5 @@
 TODO
+service updates registration/subscription and notifications for clients
 UCI-defaults script
 	delete /etc/avahi/services
 	read all local==1 apps in UCI to lua tables, remove all UCI apps, import lua tables into CSM (which will write out to UCI)

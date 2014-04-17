@@ -111,8 +111,7 @@ struct csm_config {
   char *sid;
 };
 
-typedef struct ServiceTXTFields ServiceTXTFields;
-struct ServiceTXTFields {
+typedef struct ServiceTXTFields {
   char *name;
   char *description;
   char *uri;
@@ -124,9 +123,8 @@ struct ServiceTXTFields {
   char *key;
   char *signature;
   char *version;
-};
+} ServiceTXTFields;
 
-typedef struct ServiceInfo ServiceInfo;
 typedef struct ServiceInfo {
   /** Common members for all services */
   AvahiIfIndex interface;

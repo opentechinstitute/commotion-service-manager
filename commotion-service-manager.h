@@ -35,26 +35,20 @@
   }
 #define SERVICE_SET_STR(T,M,S) SERVICE_SET(T,M,co_str8_create((S),strlen(S)+1,0))
 
-// typedef char** StringArray;
-// typedef struct CSMService CSMService;
-// typedef CSMService** CSMServiceArray;
 typedef void CSMService;
 typedef void CSMServiceList;
 typedef void CategoryList;
 
+int services_fetch(CSMServiceList **services);
+CSMService *services_get(CSMServiceList *services, int index);
+int services_free(CSMServiceList *services);
 
-
-// edit service if key exists in list of services, otherwise create new
-// int edit_service(char *key, CSMService *service);
-
-// CSMService *service_new(void);
-// void service_free(CSMService *service);
-void *service_new(void *services);
-// void service_free(void *service);
+void *service_create(void *services);
+int service_commit(CSMService *service);
+int service_remove(CSMService *service);
 
 /* It is the responsibility of the caller to make sure
  * all strings are NULL-terminated, and less than 256 chars. */
-// int service_set_key(CSMService *service,  const *key);
 int service_set_name(CSMService *service, char const *name);
 int service_set_description(CSMService *service, char const *description);
 int service_set_uri(CSMService *service, char const *uri);
@@ -64,8 +58,6 @@ int service_set_lifetime(CSMService *service, long lifetime);
 int service_set_categories(CSMService *service, char const * const *categories, size_t cat_len);
 int service_add_category(CSMService *service, char const *category);
 int service_remove_category(CSMService *service, char const *category);
-
-// CSMService *service_get(CSMService **services, char const *key);
 
 char *service_get_key(CSMService *service);
 char *service_get_name(CSMService *service);
@@ -77,20 +69,6 @@ long service_get_lifetime(CSMService *service);
 int service_get_categories(CSMService *service, CategoryList **categories);
 char *categories_get(CategoryList *categories, int index);
 char *service_get_signature(CSMService *service);
-
-/**
- * adds or updates service, also generates signature (and key if needed)
- */
-int service_commit(CSMService *service);
-/* calls service_free() */
-int service_remove(CSMService *service);
-/* returns # of services */
-// int get_services(CSMServiceArray *services);
-// int free_services(CSMServiceArray services, int n_services);
-
-int services_fetch(CSMServiceList **services);
-CSMService *services_get(CSMServiceList *services, int index);
-int services_free(CSMServiceList *services);
 
 // TODO register socket w/ CSM daemon for "push" notifications of service changes? (using DBus?)
 

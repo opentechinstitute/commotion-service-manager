@@ -1,5 +1,5 @@
 /**
- *       @file  main.c
+ *       @file  daemon.c
  *      @brief  Entry point and commands for CSM daemon
  *
  *     @author  Dan Staples (dismantl), danstaples@opentechinstitute.org
@@ -591,7 +591,7 @@ int main(int argc, char*argv[]) {
 #ifdef USE_UCI
       {"uci", 'u', 0, 0, "Store service cache in UCI" },
 #endif
-      {"sid", 's', "SID", 0, "SID to use to sign service announcements"},
+//       {"sid", 's', "SID", 0, "SID to use to sign service announcements"},
       { 0 }
     };
     static struct argp argp = { options, parse_opt, NULL, doc };
@@ -604,7 +604,7 @@ int main(int argc, char*argv[]) {
     csm_config.nodaemon = 0;
     csm_config.output_file = CSM_DUMPFILE;
     csm_config.pid_file = CSM_PIDFILE;
-    csm_config.sid = NULL;
+//     csm_config.sid = NULL;
     
     /* Set Avahi allocator to use halloc */
     static AvahiAllocator hallocator = {
@@ -626,8 +626,8 @@ int main(int argc, char*argv[]) {
     
     /* Register signal handlers */
     struct sigaction sa = {{0}};
-//     sa.sa_handler = print_services;
-//     CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
+    sa.sa_handler = print_services;
+    CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
     sa.sa_handler = csm_shutdown;
     CHECK(sigaction(SIGINT,&sa,NULL) == 0, "Failed to set signal handler");
     CHECK(sigaction(SIGTERM,&sa,NULL) == 0, "Failed to set signal handler");

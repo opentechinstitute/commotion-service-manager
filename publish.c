@@ -135,6 +135,7 @@ register_service(ServiceInfo *i, void *avahi)
   }
 #endif
 
+  // TODO should we exit if i->address?
   if (!i->address) { // only remote services have address set
     if (!i->group) {
 #ifdef CLIENT
@@ -188,6 +189,7 @@ register_service(ServiceInfo *i, void *avahi)
     CHECK(ENTRY_GROUP_COMMIT(i->group) == AVAHI_OK, "Failed to commit entry group");
     i->uptodate = 1;
   }
+  // TODO add callback function (for e.g. updating connected clients/subscribers of new services [push notifications])
   
   ret = 1;
 error:

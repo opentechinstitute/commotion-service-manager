@@ -33,7 +33,7 @@
 #include "defs.h"
 #include "commotion-service-manager.h"
 
-CSMService *service_new(CSMServiceList *services) {
+CSMService *service_create(CSMServiceList *services) {
   co_obj_t *service = co_tree16_create();
   CHECK_MEM(service);
   co_list_append(services,service);
@@ -349,20 +349,6 @@ int services_fetch(void **services) {
   CHECK(CO_TYPE(service_list) == _list16,"Invalid response");
   
   *services = (void*)service_list;
-//   return (void*)service_list;
-  
-// #define FETCH_STR(M) strdup(co_obj_data_ptr(co_tree_find(service_list[i],#M,sizeof(#M))))
-//   CSMService *services = h_calloc(co_list_length(service_list),sizeof(CSMService));
-//   for (int i = 0; i < co_list_length(service_list); i++) {
-//     services[i] = {.key = FETCH_STR(key),
-// 		   .name = FETCH_STR(name),
-// 		   .description = FETCH_STR(description),
-// 		   .uri = FETCH_STR(uri),
-// 		   .icon = FETCH_STR(icon),
-// 		   ...
-//     };
-//     hattach()????  
-//   }
   
   ret = co_list_length(service_list);
 error:
@@ -387,18 +373,3 @@ int services_free(void *services) {
 error:
   return 0;
 }
-
-// int free_services(CSMServiceArray services, int n_services) {
-//   for (int i = 0; i < n, i++) {
-//     CHECK(service_free(services[i]),"Failed to free service %d",i);
-//   }
-//   return 1;
-// error:
-//   return 0;
-// }
-
-#ifdef CLIENT_MAIN
-int main(int argc, char*argv[]) {
-  return 0;
-}
-#endif
