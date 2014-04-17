@@ -153,7 +153,7 @@ typedef struct ServiceInfo {
   RESOLVER *resolver;
 
   /** Linked list */
-  AVAHI_LLIST_FIELDS(ServiceInfo, info);
+  AVAHI_LLIST_FIELDS(struct ServiceInfo, info);
 } ServiceInfo;
 
 #endif
