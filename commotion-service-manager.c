@@ -43,60 +43,77 @@ CSMService *service_create(CSMServiceList *services) {
   CHECK(service_set_lifetime(service,0),"Failed to set default lifetime");
   
   return (CSMService*)service;
-  error:
+error:
   return NULL;
 }
 
-int service_set_name(CSMService *service, char const *name) {
-  SERVICE_SET_STR(service,"name",name);
-  return 1;
-error:
-  return 0;
+#define SERVICE_SET_STR(M) \
+int \
+service_set_##M##(CSMService *s, char const *m) \
+{ \
+  CHECK(IS_TREE(s),"Not a valid service"); \
+  co_obj_t *o = co_str8_create(m, strlen(m) + 1, 0); \
+  CHECK_MEM(o); \
+  CHECK(co_tree_insert_force(s, \
+			     "M", \
+			     sizeof("M"), \
+			     o), \
+	"Failed to insert M into service"); \
+  return 1; \
+error: \
+  return 0; \
 }
+SERVICE_SET_STR(name);
+SERVICE_SET_STR(description);
+SERVICE_SET_STR(uri);
+SERVICE_SET_STR(icon);
+#undefine SERVICE_SET_STR
 
-int service_set_description(CSMService *service, char const *description) {
-  SERVICE_SET_STR(service,"description",description);
-  return 1;
-error:
-  return 0;
-}
-
-int service_set_uri(CSMService *service, char const *uri) {
-  SERVICE_SET_STR(service,"uri",uri);
-  return 1;
-error:
-  return 0;
-}
-
-int service_set_icon(CSMService *service, char const *icon) {
-  SERVICE_SET_STR(service,"icon",icon);
-  return 1;
-error:
-  return 0;
-}
-
-int service_set_ttl(CSMService *service, int ttl) {
-  SERVICE_SET(service,"ttl",co_uint8_create(ttl,0));
+int
+service_set_ttl(CSMService *service, int ttl)
+{
+  CHECK(IS_TREE(service),"Not a valid service");
+  co_obj_t *o = co_uint8_create(ttl, 0);
+  CHECK_MEM(o);
+  CHECK(co_tree_insert_force(service,
+			     "ttl",
+			     sizeof("ttl"),
+			     o),
+	"Failed to insert ttl into service");
   return 1;
 error:
   return 0;
 }
 
 int service_set_lifetime(CSMService *service, long lifetime) {
-  SERVICE_SET(service,"lifetime",co_uint32_create(lifetime,0));
+  CHECK(IS_TREE(service),"Not a valid service");
+  co_obj_t *o = co_uint32_create(lifetime, 0);
+  CHECK_MEM(o);
+  CHECK(co_tree_insert_force(service,
+			     "lifetime",
+			     sizeof("lifetime"),
+			     o),
+	"Failed to insert lifetime into service");
   return 1;
 error:
   return 0;
 }
 
 int service_set_categories(CSMService *service, char const * const *categories, size_t cat_len) {
+  CHECK(IS_TREE(service),"Not a valid service");
   CHECK(cat_len < UINT16_MAX,"Too many categories");
   co_obj_t *category_list = co_list16_create();
   CHECK_MEM(category_list);
   for (int i = 0; i < cat_len; i++) {
-    CHECK(co_list_append(category_list,co_str8_create(categories[i],strlen(categories[i])+1,0)),"Failed to insert category");
+    co_obj_t *category = co_str8_create(categories[i],strlen(categories[i])+1,0);
+    CHECK_MEM(category);
+    CHECK(co_list_append(category_list,category),"Failed to insert category");
   }
-  SERVICE_SET(service,"categories",category_list);
+  CHECK(co_tree_insert_force(service,
+			     "categories",
+			     sizeof("categories"),
+			     category_list),
+	"Failed to insert categories into service");
   return 1;
 error:
   return 0;
@@ -106,13 +123,14 @@ int service_add_category(CSMService *service, char const *category) {
   CHECK(IS_TREE(service),"Not a valid service");
   if (!IS_LIST(co_tree_find(service,"categories",sizeof("categories")))) {
     CHECK(service_set_categories(service,&category,1),"Failed to add category");
-    return 1;
   } else {
+    co_obj_t *category_obj = co_str8_create(category,strlen(category)+1,0);
+    CHECK_MEM(category_obj);
     CHECK(co_list_append(co_tree_find(service,"categories",sizeof("categories")),
-			 co_str8_create(category,strlen(category)+1,0)),
+			 category_obj,
 	  "Failed to add category");
-    return 1;
   }
+  return 1;
 error:
   return 0;
 }
@@ -270,11 +288,16 @@ int service_commit(CSMService *service) {
   CHECK(co_response_get_str(response,&signature,"signature",sizeof("signature")),"Failed to fetch signature from response");
   INFO("Successfully added/updated service %s with signature %s",key,signature);
   
-  if (!current_key)
-    co_tree_insert_force(service,"key",sizeof("key"),co_str8_create(key,strlen(key)+1,0));
-  else
+  if (!current_key) {
+    co_obj_t *key_obj = co_str8_create(key,strlen(key)+1,0);
+    CHECK_MEM(key_obj);
+    co_tree_insert_force(service,"key",sizeof("key"),key_obj);
+  } else {
     CHECK(co_str_cmp_str(current_key,key) == 0,"Received invalid key");
-  co_tree_insert_force(service,"signature",sizeof("signature"),co_str8_create(signature,strlen(signature)+1,0));
+  }
+  co_obj_t *signature_obj = co_str8_create(signature,strlen(signature)+1,0);
+  CHECK_MEM(signature_obj);
+  co_tree_insert_force(service,"signature",sizeof("signature"),signature_obj);
   
   ret = 1;
 error:

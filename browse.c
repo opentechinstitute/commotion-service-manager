@@ -44,20 +44,11 @@
 #include "debug.h"
 
 extern AvahiSimplePoll *simple_poll;
-#ifndef CLIENT
-extern AvahiServer *server;
-#endif
 
-#define CSM_EXTRACT_TXT(I,M,T) \
-  do { \
-    char *val = NULL; \
-    CHECK(avahi_string_list_get_pair(T,NULL,&val,NULL) == 0, "Failed to extract " #T " from TXT list"); \
-    CSM_SET(I, M, val); \
-    avahi_free(val); \
-  } while (0)
+/* Private */
 
 static int
-extract_from_txt_list(ServiceInfo *i, AvahiStringList *txt)
+_csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt)
 {
   int ret = 0;
   char *key = NULL, *val = NULL;
@@ -74,8 +65,15 @@ extract_from_txt_list(ServiceInfo *i, AvahiStringList *txt)
   
   /* Make sure all the required fields are there */
   CHECK(name && uri && icon && description && ttl && lifetime && signature && fingerprint && version,
-	"Missing TXT field(s): %s", i->uuid);
+	"Missing TXT field(s): %s", s->uuid);
   
+#define CSM_EXTRACT_TXT(S,M,T) \
+  do { \
+    char *val = NULL; \
+    CHECK(avahi_string_list_get_pair(T,NULL,&val,NULL) == 0, "Failed to extract " #T " from TXT list"); \
+    CHECK(csm_service_set_##M##(S, val), "Failed to set service field %s", "M"); \
+    avahi_free(val); \
+  } while (0)
   CSM_EXTRACT_TXT(i, name, name);
   CSM_EXTRACT_TXT(i, uri, uri);
   CSM_EXTRACT_TXT(i, description, description);
@@ -83,27 +81,38 @@ extract_from_txt_list(ServiceInfo *i, AvahiStringList *txt)
   CSM_EXTRACT_TXT(i, signature, signature);
   CSM_EXTRACT_TXT(i, key, fingerprint);
   CSM_EXTRACT_TXT(i, version, version);
+#undefine CSM_EXTRACT_TXT
+  
   char *ttl_str = NULL, *lifetime_str = NULL;
   CHECK(avahi_string_list_get_pair(ttl,NULL,&ttl_str,NULL) == 0, "Failed to extract TTL from TXT list");
   CHECK(avahi_string_list_get_pair(lifetime,NULL,&lifetime_str,NULL) == 0, "Failed to extract lifetime from TXT list");
-  i->ttl = atoi(ttl_str);
-  i->lifetime = atol(lifetime_str);
+  CHECK(csm_service_set_ttl(s, atoi(ttl_str)), "Failed to set service field TTL");
+  CHECK(csm_service_set_lifetime(s, atol(lifetime_str)), "Failed to set service field lifetime");
   
   /** Add service categories */
+  co_obj_t *categories = NULL;
   do {
     avahi_string_list_get_pair(txt,&key,&val,NULL);
     if (!strcmp(key,"type")) {
       /* Add 'type' fields to a list to be sorted alphabetically later */
-      i->categories = h_realloc(i->categories,(i->cat_len + 1)*sizeof(char*));
-      CHECK_MEM(i->categories);
-      hattach(i->categories, i);
-      CSM_SET(i, categories[i->cat_len], val);
-      i->cat_len++;
+      co_obj_t *type = co_str8_create(val, strlen(val) + 1, 0);
+      CHECK_MEM(type);
+      if (!categories) {
+	categories = co_list16_create();
+	CHECK_MEM(categories);
+      }
+      if (!co_list_append(categories, type)) {
+	ERROR("Failed to add type to category list");
+	co_obj_free(type);
+	goto error;
+      }
     }
     avahi_free(val);
     avahi_free(key);
     val = key = NULL;
   } while ((txt = avahi_string_list_get_next(txt)));
+  if (categories)
+    CHECK(csm_service_set_categories(s, categories), "Failed to set service fields categories");
   
   ret = 1;
 error:
@@ -123,7 +132,7 @@ void resolve_callback(
     AVAHI_GCC_UNUSED AvahiIfIndex interface,
     AVAHI_GCC_UNUSED AvahiProtocol protocol,
     AvahiResolverEvent event,
-    const char *name,
+    const char *uuid,
     const char *type,
     const char *domain,
     const char *host_name,
@@ -133,49 +142,50 @@ void resolve_callback(
     AvahiLookupResultFlags flags,
     void* userdata) {
     
-    ServiceInfo *i = (ServiceInfo*)userdata;
-    
-    assert(r);
-    
+    assert(userdata);
+    csm_ctx *ctx = (csm_ctx*)userdata;
+    csm_service *s = ctx->service;
 #ifdef CLIENT
-    AvahiClient *client = avahi_service_resolver_get_client(r);
+    AvahiClient *client = ctx->client;
+#else
+    AvahiServer *server = ctx->server;
 #endif
+    assert(r);
 
     switch (event) {
         case AVAHI_RESOLVER_FAILURE:
-            ERROR("(Resolver) Failed to resolve service '%s' of type '%s' in domain '%s': %s", name, type, domain, AVAHI_ERROR);
+            ERROR("Failed to resolve service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
             break;
 
         case AVAHI_RESOLVER_FOUND: {
-            avahi_address_snprint(i->address, 
-                sizeof(i->address),
+            avahi_address_snprint(s->address, 
+                sizeof(s->address),
                 address);
-	    CSM_SET(i, host_name, host_name);
-	    if (port < 0 || port > 65535) {
-	      WARN("(Resolver) Invalid port: %s",name);
-	      break;
-	    }
-	    i->port = port;
-	    i->txt_lst = avahi_string_list_copy(txt);
+	    s->host_name = h_strdup(host_name);
 	    
-	    if (!extract_from_txt_list(i,txt)) {
-	      ERROR("Failed to extract TXT fields");
-	      break;
-	    }
+	    CHECK_MEM(s->host_name);
+	    hattach(s->host_name, s);
+
+	    CHECK(port >= 0 && port <= 65535, "Invalid port: %s",uuid);
+	    s->port = port;
+
+	    s->txt_lst = avahi_string_list_copy(txt);
+	    CHECK_MEM(s->txt_lst);
 	    
-	    if (process_service(i) == 0) {
-	      ERROR("Error processing service");
-	      break;
-	    }
+	    CHECK(_csm_extract_from_txt_list(s,txt), "Failed to extract TXT fields");
+	    
+	    CHECK(csm_add_service(ctx->service_list, s), "Error processing service");
 	    
 	    break;
         }
     }
 error:
-    RESOLVER_FREE(i->resolver);
-    i->resolver = NULL;
-    if (event == AVAHI_RESOLVER_FOUND && !i->resolved) {
-      remove_service(NULL, i);
+    RESOLVER_FREE(s->resolver);
+    s->resolver = NULL;
+    // if no signature is present, indicates service resolution failed
+    if (event == AVAHI_RESOLVER_FOUND && !csm_service_get_signature(s)) {
+      csm_remove_service(ctx->service_list, s);
+      csm_service_destroy(s);
     }
 }
 
@@ -184,32 +194,50 @@ void browse_service_callback(
     AvahiIfIndex interface,
     AvahiProtocol protocol,
     AvahiBrowserEvent event,
-    const char *name,
+    const char *uuid,
     const char *type,
     const char *domain,
     AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
     void* userdata) {
 
+    assert(userdata);
+    csm_ctx *ctx = (csm_ctx*)userdata;
+#ifdef CLIENT
+    AvahiClient *client = ctx->client;
+#else
+    AvahiServer *server = ctx->server;
+#endif
     assert(b);
 
     switch (event) {
 
         case AVAHI_BROWSER_FAILURE:
 
-            ERROR("(Browser) %s", AVAHI_BROWSER_ERROR);
+            ERROR("Service browser failure: %s", AVAHI_ERROR);
             avahi_simple_poll_quit(simple_poll);
             return;
 
         case AVAHI_BROWSER_NEW:
         case AVAHI_BROWSER_REMOVE: {
-            ServiceInfo *found_service = NULL;
-            INFO("Browser: %s: service '%s' of type '%s' in domain '%s'",event == AVAHI_BROWSER_NEW ? "NEW" : "REMOVE", name, type, domain);
+            INFO("Browser: %s: service '%s' of type '%s' in domain '%s'",event == AVAHI_BROWSER_NEW ? "NEW" : "REMOVE", uuid, type, domain);
 	    
 	    /* Lookup the service to see if it's already in our list */
-	    found_service=find_service(name); // name is fingerprint, so should be unique
+	    csm_service *found_service = find_service(ctx->service_list, uuid);
             if (event == AVAHI_BROWSER_NEW && !found_service) {
                 /* add the service.*/
-                add_service(b, interface, protocol, name, type, domain);
+		csm_service *s = csm_service_new(interface, protocol, uuid, type, domain);
+		if (!s) {
+		  ERROR("Failed to allocate new service");
+		  return NULL;
+		}
+		
+		ctx->service = s;
+		s->resolver = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, ctx);
+		if (!s->resolver) {
+		  csm_service_destroy(s);
+		  INFO("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
+		  return NULL;
+		}
             }
             if (event == AVAHI_BROWSER_REMOVE && found_service) {
                 /* remove the service.*/
@@ -218,7 +246,7 @@ void browse_service_callback(
             break;
         }
         case AVAHI_BROWSER_CACHE_EXHAUSTED:
-            INFO("(Browser) %s", "CACHE_EXHAUSTED");
+            INFO("Service browser cache exhausted");
             break;
 	default:
 	    break;
@@ -235,40 +263,43 @@ void browse_type_callback(
     AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
     void* userdata) {
 
+    assert(userdata);
+    csm_ctx *ctx = (csm_ctx*)userdata;
 #ifdef CLIENT
-    AvahiClient *client = (AvahiClient*)userdata;
+    AvahiClient *client = ctx->client;
 #else
-    AvahiServer *server = (AvahiServer*)userdata;
+    AvahiServer *server = ctx->server;
 #endif
     assert(b);
 
     INFO("Type browser got an event: %d", event);
     switch (event) {
         case AVAHI_BROWSER_FAILURE:
-            ERROR("(Browser) %s", AVAHI_ERROR);
+            ERROR("Service type browser failure: %s", AVAHI_ERROR);
             avahi_simple_poll_quit(simple_poll);
             return;
         case AVAHI_BROWSER_NEW:
             if (!BROWSER_NEW(AVAHI_IF_UNSPEC, 
-                                           AVAHI_PROTO_UNSPEC, 
-                                           type, 
-                                           domain, 
-                                           0, 
-                                           browse_service_callback)) {
-                ERROR("Service Browser: Failed to create a service " 
-                                "browser for type (%s) in domain (%s)", 
-                                                                type, 
-                                                                domain);
+                             AVAHI_PROTO_UNSPEC, 
+                             type, 
+                             domain, 
+                             0,
+                             browse_service_callback,
+			     ctx)) {
+                ERROR("Failed to create a service " 
+                      "browser for type (%s) in domain (%s)", 
+                      type, 
+                      domain);
                 avahi_simple_poll_quit(simple_poll);
             } else {
-                DEBUG("Service Browser: Successfully created a service " 
-                                "browser for type (%s) in domain (%s)", 
-                                                                type, 
-                                                                domain);
+                DEBUG("Successfully created a service " 
+                      "browser for type (%s) in domain (%s)", 
+                      type, 
+                      domain);
             }
             break;
         case AVAHI_BROWSER_CACHE_EXHAUSTED:
-            INFO("Cache exhausted");
+            INFO("Service type browser cache exhausted");
             break;
 	default:
 	    break;

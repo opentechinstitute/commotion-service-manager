@@ -25,16 +25,6 @@
 #ifndef COMMOTION_SERVICE_MANAGER_H
 #define COMMOTION_SERVICE_MANAGER_H
 
-#define SERVICE_SET(T,M,O) { \
-  CHECK(IS_TREE(T),"Not a valid service");\
-  CHECK(co_tree_insert_force(T,\
-		       M,\
-		       sizeof(M),\
-		       O),\
-	"Failed to insert" M "into service"); \
-  }
-#define SERVICE_SET_STR(T,M,S) SERVICE_SET(T,M,co_str8_create((S),strlen(S)+1,0))
-
 typedef void CSMService;
 typedef void CSMServiceList;
 typedef void CategoryList;
@@ -43,7 +33,7 @@ int services_fetch(CSMServiceList **services);
 CSMService *services_get(CSMServiceList *services, int index);
 int services_free(CSMServiceList *services);
 
-void *service_create(void *services);
+CSMService *service_create(CSMServiceList *services);
 int service_commit(CSMService *service);
 int service_remove(CSMService *service);
 

@@ -26,34 +26,16 @@
 #include <config.h>
 #endif
 
-#include <stdio.h>
 #include <assert.h>
-#include <stdlib.h>
-#include <time.h>
-#include <net/if.h>
 
-#include <avahi-common/error.h>
-#include <avahi-common/simple-watch.h>
+#include <commotion/tree.h>
 
-#include "commotion.h"
+#include "extern/halloc.h"
 
-#ifdef USE_UCI
-#include <uci.h>
-#include "uci-utils.h"
-#endif
-
-#include "defs.h"
-#include "browse.h"
-#include "debug.h"
-#include "util.h"
 #include "service.h"
+#include "commotion-service-manager.h"
 
-#define OPEN_DELIMITER "\""
-#define OPEN_DELIMITER_LEN 1
-#define CLOSE_DELIMITER "\""
-#define CLOSE_DELIMITER_LEN 1
-#define FIELD_DELIMITER ","
-#define FIELD_DELIMITER_LEN 1
+extern csm_config csm_config;
 
 // from libcommotion_serval-sas
 #define SAS_SIZE 32
@@ -62,20 +44,31 @@ extern int keyring_send_sas_request_client(const char *sid_str,
 					   char *sas_buf,
 					   const size_t sas_buf_len);
 
-/** Linked list of all the local services */
-ServiceInfo *services = NULL;
-
-extern AvahiSimplePoll *simple_poll;
-#ifndef CLIENT
-extern AvahiServer *server;
-#endif
-
-extern struct csm_config csm_config;
-
 /* Private */
 
+/**
+ * caller is responsible for freeing category array
+ */
 static size_t
-create_signing_template(ServiceInfo *i, char **template)
+_csm_categories_to_array(csm_service *s, char ***cat_array)
+{
+  size_t cat_len = 0;
+  co_obj_t *cats_obj = csm_service_get_categories(s);
+  if (cats_obj) {
+    cat_len = co_list_length(cats_obj);
+    *cat_array = h_calloc(cat_len, sizeof(char*));
+    CHECK_MEM(cat_array);
+    for (int i = 0; i < cat_len; i++) {
+      co_obj_data(&categories[i], co_list_element(cats_obj, i));
+    }
+    /* Sort types into alphabetical order */
+    qsort(categories,cat_len,sizeof(char*),cmpstringp);
+  }
+  return cat_len;
+}
+
+static size_t
+_csm_create_signing_template(csm_service *s, char **template)
 {
   int ret = 0;
   const char *type_template = "<txt-record>type=%s</txt-record>";
@@ -90,22 +83,24 @@ create_signing_template(ServiceInfo *i, char **template)
 			     "<txt-record>description=%s</txt-record>\n"
 			     "<txt-record>lifetime=%ld</txt-record>";
 
-  /* Sort types into alphabetical order */
-  qsort(i->categories,i->cat_len,sizeof(char*),cmpstringp);
-  
-  /* Concat the types into a single string to add to template */
-  char *app_type = NULL, *type_str = NULL;
-  int prev_len = 0;
-  for (int j = 0; j < i->cat_len; j++) {
-    if (app_type) {
-      free(app_type);
-      app_type = NULL;
+  char **categories = NULL;
+  size_t cat_len = _csm_categories_to_array(s, &categories);
+  if (cat_len) {
+    /* Concat the types into a single string to add to template */
+    char *app_type = NULL, *type_str = NULL;
+    int prev_len = 0;
+    for (int j = 0; j < cat_len; j++) {
+      if (app_type) {
+	free(app_type);
+	app_type = NULL;
+      }
+      prev_len = type_str ? strlen(type_str) : 0;
+      CHECK_MEM(asprintf(&app_type, type_template, categories[j]) != -1);
+      type_str = h_realloc(type_str, prev_len + strlen(app_type) + 1);
+      CHECK_MEM(type_str);
+      type_str[prev_len] = '\0';
+      strcat(type_str, app_type);
     }
-    prev_len = type_str ? strlen(type_str) : 0;
-    CHECK_MEM(asprintf(&app_type,type_template,i->categories[j]) != -1
-	      && (type_str = realloc(type_str,prev_len + strlen(app_type) + 1)));
-    type_str[prev_len] = '\0';
-    strcat(type_str,app_type);
   }
   
   /* Add the fields into the template */
@@ -114,55 +109,192 @@ create_signing_template(ServiceInfo *i, char **template)
 		     i->type,
 		     i->domain,
 		     i->port,
-		     i->name,
-		     i->ttl,
-		     i->uri,
-		     i->cat_len ? type_str : "",
-		     i->icon,
-		     i->description,
-		     i->lifetime) != -1);
+		     csm_service_get_name(s),
+		     csm_service_get_ttl(s),
+		     csm_service_get_uri(s),
+		     cat_len ? type_str : "",
+		     csm_service_get_icon(s),
+		     csm_service_get_description(s),
+		     csm_service_get_lifetime(s)) != -1);
   
   ret = strlen(*template);
 error:
+  if (categories)
+    h_free(categories);
   if (app_type)
-    free(app_type);
+    free(app_type); // alloc'd using asprintf
   if (type_str)
-    free(type_str);
+    h_free(type_str);
   return ret;
 }
 
-/**
- * Convert an AvahiStringList to a string
- */
-static char *
-_csm_txt_list_to_string(char *cur, size_t *cur_len, char *append, size_t append_len)
-{
-  char *open_delimiter = OPEN_DELIMITER;
-  char *close_delimiter = CLOSE_DELIMITER;
-  char *field_delimiter = FIELD_DELIMITER;
-  char *escaped = escape(append, &append_len);
-  CHECK_MEM(escaped);
-  cur = realloc(cur, *cur_len
-		     + OPEN_DELIMITER_LEN
-		     + append_len
-		     + CLOSE_DELIMITER_LEN
-		     + FIELD_DELIMITER_LEN
-		     + 1);
-  CHECK_MEM(cur);
-  cur[*cur_len] = '\0';
-  
-  strcat(cur, open_delimiter);
-  strcat(cur, escaped);
-  strcat(cur, close_delimiter);
-  strcat(cur, field_delimiter);
-  
-  *cur_len += OPEN_DELIMITER_LEN + append_len + CLOSE_DELIMITER_LEN + FIELD_DELIMITER_LEN;
-  cur[*cur_len] = '\0';
+/* Public */
 
+csm_service *
+csm_service_new(AvahiIfIndex interface,
+		AvahiProtocol protocol,
+		const char *uuid,
+		const char *type,
+		const char *domain)
+{
+  csm_service *s = h_calloc(1, sizeof(csm_service));
+  CHECK_MEM(s);
+  
+  s->interface = interface;
+  s->protocol = protocol;
+  if (uuid) {
+    s->uuid = h_strdup(uuid);
+    CHECK_MEM(s->uuid);
+    hattach(s->uuid, s);
+  }
+  s->type = h_strdup(type);
+  CHECK_MEM(s->type);
+  hattach(s->type, s);
+  s->domain = h_strdup(domain);
+  CHECK_MEM(s->domain);
+  hattach(s->domain, s);
+  
+  // create tree for holding user-defined service fields
+  co_obj_t *fields = co_tree16_create();
+  CHECK_MEM(fields);
+  
+  // set current CSM protocol version
+  co_obj_t *version = co_str8_create(CSM_PROTO_VERSION, strlen(CSM_PROTO_VERSION) + 1, 0);
+  CHECK_MEM(version);
+  CHECK(co_list_append(fields, version));
+  
+  s->fields = fields;
+  hattach(s->fields, s);
+  return s;
+}
+
+void
+csm_service_destroy(csm_service *s)
+{
+  assert(s);
+  
+  if (s->resolver)
+    RESOLVER_FREE(s->resolver);
+  
+  if (s->txt_lst)
+    avahi_string_list_free(s->txt_lst);
+  
+  h_free(s);
+}
+
+/**
+ * most getters and setters are wrappers around calls to 
+ * functions in commotion-service-manager.h/c
+ */
+#define SERVICE_GET(M,T) \
+inline T \
+csm_service_get_##M##(csm_service *s) \
+{ \
+  return service_get_##M##(s->fields); \
+}
+SERVICE_GET(name,char *);
+SERVICE_GET(description,char *);
+SERVICE_GET(uri,char *);
+SERVICE_GET(icon,char *);
+SERVICE_GET(ttl,int);
+SERVICE_GET(lifetime,long);
+SERVICE_GET(key,char *);
+SERVICE_GET(signature,char *);
+#undefine SERVICE_GET
+
+co_obj_t *
+csm_service_get_categories(csm_service *s)
+{
+  assert(IS_TREE(s->fields));
+  return co_tree_find(s->fields, "categories", sizeof("categories"));
+}
+
+char *
+csm_service_get_version(csm_service *s)
+{
+  assert(IS_TREE(s->fields));
+  co_obj_t *version = co_tree_find(s,"version",sizeof("version"));
+  CHECK(version,"Service does not have version");
+  return ((co_str8_t*)version)->data;
 error:
-  if (escaped)
-    free(escaped);
-  return cur;
+  return NULL;
+}
+
+#define SERVICE_SET(M,T) \
+inline int \
+csm_service_set_##M##(csm_service *s, T m) \
+{ \
+  return service_set_##M##(s, m); \
+}
+SERVICE_SET(name, char const *);
+SERVICE_SET(description, char const *);
+SERVICE_SET(uri, char const *);
+SERVICE_SET(icon, char const *);
+SERVICE_SET(ttl, int);
+SERVICE_SET(lifetime, long);
+#undefine SERVICE_SET
+
+int
+csm_service_set_categories(csm_service *s, co_obj_t *categories)
+{
+  assert(IS_TREE(s->fields));
+  assert(IS_LIST(categories));
+  CHECK(co_tree_insert_force(s->fields,
+			     "categories",
+			     sizeof("categories"),
+			     categories),
+	"Failed to insert categories into service");
+  return 1;
+error:
+  return 0;
+}
+
+int
+csm_service_set_key(csm_service *s, char *key)
+{
+  assert(IS_TREE(s->fields));
+  co_obj_t *key_obj = co_str8_create(key, strlen(key) + 1, 0);
+  CHECK_MEM(key_obj);
+  CHECK(co_tree_insert_force(s->fields,
+			     "key",
+			     sizeof("key"),
+			     key_obj),
+	"Failed to insert key into service");
+  return 1;
+error:
+  return 0;
+}
+
+int
+csm_service_set_signature(csm_service *s, char *signature)
+{
+  assert(IS_TREE(s->fields));
+  co_obj_t *sig_obj = co_str8_create(signature, strlen(signature) + 1, 0);
+  CHECK_MEM(sig_obj);
+  CHECK(co_tree_insert_force(s->fields,
+			     "signature",
+			     sizeof("signature"),
+			     sig_obj),
+	"Failed to insert signature into service");
+  return 1;
+error:
+  return 0;
+}
+
+int
+csm_service_set_version(csm_service *s, char *version)
+{
+  assert(IS_TREE(s->fields));
+  co_obj_t *version_obj = co_str8_create(version, strlen(version) + 1, 0);
+  CHECK_MEM(version_obj);
+  CHECK(co_tree_insert_force(s->fields,
+			     "version",
+			     sizeof("version"),
+			     version_obj),
+	"Failed to insert version into service");
+  return 1;
+error:
+  return 0;
 }
 
 /**
@@ -170,238 +302,76 @@ error:
  * @param f File to output to
  * @param service the service to print
  */
-static void
-_print_service(FILE *f, ServiceInfo *service)
+void
+print_service(FILE *f, csm_service *s)
 {
   char interface_string[IF_NAMESIZE];
   const char *protocol_string;
   
-  if (!if_indextoname(service->interface, interface_string))
+  if (!if_indextoname(s->interface, interface_string))
     WARN("Could not resolve the interface name!");
   
-  if (!(protocol_string = avahi_proto_to_string(service->protocol)))
+  if (!(protocol_string = avahi_proto_to_string(s->protocol)))
     WARN("Could not resolve the protocol name!");
   
   char *txt = NULL;
   size_t txt_len = 0;
-  txt = _csm_txt_list_to_string(txt, &txt_len, service->name, strlen(service->name));
-  txt = _csm_txt_list_to_string(txt, &txt_len, service->description, strlen(service->description));
-  txt = _csm_txt_list_to_string(txt, &txt_len, service->uri, strlen(service->uri));
-  txt = _csm_txt_list_to_string(txt, &txt_len, service->icon, strlen(service->icon));
-  for (int i = 0; i < service->cat_len; i++) {
-    txt = _csm_txt_list_to_string(txt, &txt_len, service->categories[i], strlen(service->categories[i]));
+  char *name = csm_service_get_name(s);
+  txt = csm_txt_list_to_string(txt, &txt_len, name, strlen(name));
+  CHECK_MEM(txt);
+  char *description = csm_service_get_description(s);
+  txt = csm_txt_list_to_string(txt, &txt_len, description, strlen(description));
+  CHECK_MEM(txt);
+  char *uri = csm_service_get_uri(s);
+  txt = csm_txt_list_to_string(txt, &txt_len, uri, strlen(uri));
+  CHECK_MEM(txt);
+  char *icon = csm_service_get_icon(s);
+  txt = csm_txt_list_to_string(txt, &txt_len, icon, strlen(icon));
+  CHECK_MEM(txt);
+  char **categories = NULL;
+  int cat_len = _csm_categories_to_array(s, &categories);
+  for (int i = 0; i < cat_len; i++) {
+    txt = csm_txt_list_to_string(txt, &txt_len, categories[i], strlen(categories[i]));
   }
-  txt_len = asprintf(&txt, "%sttl=%d;lifetime=%ld;", txt, service->ttl, service->lifetime);
+  txt_len = asprintf(&txt, "%sttl=%d;lifetime=%ld;", txt, csm_service_get_ttl(s), csm_service_get_lifetime(s));
   CHECK_MEM(txt_len != -1);
-  txt = _csm_txt_list_to_string(txt, &txt_len, service->key, strlen(service->key));
-  txt = _csm_txt_list_to_string(txt, &txt_len, service->signature, strlen(service->signature));
+  char *key = csm_service_get_key(s);
+  txt = csm_txt_list_to_string(txt, &txt_len, key, strlen(key));
+  CHECK_MEM(txt);
+  char *signature = csm_service_get_signature(s);
+  txt = csm_txt_list_to_string(txt, &txt_len, signature, strlen(signature));
+  CHECK_MEM(txt);
   
   fprintf(f, "%s;%s;%s;%s;%s;%s;%u;%s\n",
 	  interface_string,
 	  protocol_string,
-	  service->uuid,
-	  service->type,
-	  service->domain,
-	  service->host_name,
-	  service->port,
+	  s->uuid,
+	  s->type,
+	  s->domain,
+	  s->host_name,
+	  s->port,
 	  txt);
   
 error:
+  if (categories)
+    h_free(categories);
   if (txt)
-    free(txt);
-}
-
-/* Public */
-
-/**
- * Check if a service uuid is in the current list of local services
- */
-ServiceInfo *
-find_service(const char *uuid)
-{
-  for (ServiceInfo *i = services; i; i = i->info_next) {
-    if (strcasecmp(i->uuid, uuid) == 0)
-      return i;
-  }
-    
-  return NULL;
-}
-
-/**
- * Add a remote service to the list of services
- * @param interface
- * @param protocol
- * @param name service name
- * @param type service type (e.g. _commotion._tcp)
- * @param domain domain service is advertised on (e.g. mesh.local)
- * @return ServiceInfo struct representing the service that was added
- */
-ServiceInfo *
-add_service(BROWSER *b,
-	    AvahiIfIndex interface,
-	    AvahiProtocol protocol,
-	    const char *uuid,
-	    const char *type,
-	    const char *domain)
-{
-  ServiceInfo *i;
-  
-  i = h_calloc(1, sizeof(ServiceInfo));
-
-  i->interface = interface;
-  i->protocol = protocol;
-  if (uuid)
-    CSM_SET(i, uuid, uuid);
-  CSM_SET(i, type, type);
-  CSM_SET(i, domain, domain);
-  
-  if (b) {
-#ifdef CLIENT
-    AvahiClient *client = avahi_service_browser_get_client(b);
-#endif
-    if (!(i->resolver = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, i))) {
-      h_free(i);
-      INFO("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
-      return NULL;
-    }
-    i->resolved = 0;
-  }
-
-  AVAHI_LLIST_PREPEND(ServiceInfo, info, services, i);
-
-  return i;
-error:
-  remove_service(NULL, i);
-  return NULL;
+    free(txt); // alloc'd with realloc from csm_txt_list_to_string()
 }
 
 int
-process_service(ServiceInfo *i)
-{
-  /* Input validation */
-  CHECK(isValidTtl(i->ttl),"Invalid TTL value: %s -> %d",i->uuid,i->ttl);
-  CHECK(isValidLifetime(i->lifetime),"Invalid lifetime value: %s -> %ld",i->uuid,i->lifetime);
-  if (i->key)
-    CHECK(isValidFingerprint(i->key,strlen(i->key)),"Invalid fingerprint: %s -> %s",i->uuid,i->key);
-  if (i->signature)
-    CHECK(isValidSignature(i->signature,strlen(i->signature)),"Invalid signature: %s -> %s",i->uuid,i->signature);
-  
-  /* Create or verify signature */
-  if (i->signature)
-    CHECK(verify_signature(i),"Invalid signature");
-  else
-    CHECK(create_signature(i),"Failed to create signature");
-  
-  /* Set expiration timer on the service */
-#ifdef USE_UCI
-  long def_lifetime = default_lifetime();
-  if (i->lifetime == 0 || (def_lifetime < i->lifetime && def_lifetime > 0))
-    i->lifetime = def_lifetime;
-#endif
-  if (i->lifetime > 0) {
-    struct timeval tv;
-    avahi_elapse_time(&tv, 1000*i->lifetime, 0);
-    time_t current_time = time(NULL);
-    // create expiration event for service
-    i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll),
-								 &tv,
-								 remove_service,
-								 i);
-    /* Convert lifetime period into timestamp */
-    if (current_time != ((time_t)-1)) {
-      struct tm *timestr = localtime(&current_time);
-      timestr->tm_sec += i->lifetime;
-      current_time = mktime(timestr);
-      char *c_time_string = ctime(&current_time);
-      if (c_time_string) {
-	c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
-	CSM_SET(i, expiration, c_time_string);
-      }
-    }
-  }
-  
-#ifdef USE_UCI
-  /* Write out service to UCI */
-  if (csm_config.uci && uci_write(i) == 0)
-    ERROR("(Resolver) Could not write to UCI");
-#endif
-  
-  i->resolved = 1;
-  return 1;
-error:
-  return 0;
-}
-
-/**
- * Remove service from list of local services
- * @param t timer set to service's expiration data. This param is only passed 
- *          when the service is being expired, otherwise it is NULL.
- * @param userdata should be cast as the ServiceInfo object of the service to remove
- * @note If compiled for OpenWRT, the Avahi service file for the local service is removed
- * @note If compiled with UCI support, service is also removed from UCI list
- */
-void
-remove_service(AvahiTimeout *t, void *userdata)
-{
-  assert(userdata);
-  ServiceInfo *i = (ServiceInfo*)userdata;
-
-  INFO("Removing service announcement: %s",i->uuid);
-  
-  /* Cancel expiration event */
-  if (!t && i->timeout)
-    avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
-  
-#ifdef USE_UCI
-  if (i->resolved) {
-    // Delete UCI entry
-    if (csm_config.uci && uci_remove(i) < 0)
-      ERROR("(Remove_Service) Could not remove from UCI");
-  }
-#endif
-  
-  AVAHI_LLIST_REMOVE(ServiceInfo, info, services, i);
-
-  if (i->resolver)
-    RESOLVER_FREE(i->resolver);
-
-  if (i->txt_lst)
-    avahi_string_list_free(i->txt_lst);
-  h_free(i);
-}
-
-/**
- * Upon resceiving the USR1 signal, print local services
- */
-void print_services(int signal) {
-  ServiceInfo *i;
-  FILE *f = NULL;
-
-  if (!(f = fopen(csm_config.output_file, "w+"))) {
-    WARN("Could not open %s. Using stdout instead.", csm_config.output_file);
-    f = stdout;
-  }
-
-  for (i = services; i; i = i->info_next) {
-    if (i->resolved)
-      _print_service(f, i);
-  }
-
-  if (f != stdout)
-    fclose(f);
-}
-
-int
-verify_signature(ServiceInfo *i)
+verify_signature(csm_service *s)
 {
   int verdict = 0;
   co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
   char *to_verify = NULL;
-  CHECK(create_signing_template(i,&to_verify) > 0, "Failed to create signing template");
+  CHECK(_csm_create_signing_template(s,&to_verify) > 0, "Failed to create signing template");
+  CHECK_MEM(to_verify);
   
   char sas_buf[2*SAS_SIZE+1] = {0};
   
-  CHECK(keyring_send_sas_request_client(i->key,strlen(i->key),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
+  char *key = csm_service_get_key(s);
+  CHECK(keyring_send_sas_request_client(key,strlen(key),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
   
   bool output;
   CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),
@@ -409,7 +379,7 @@ verify_signature(ServiceInfo *i)
   CHECK_MEM((co_req = co_request_create()));
   CO_APPEND_STR(co_req,"verify");
   CO_APPEND_STR(co_req,sas_buf);
-  CO_APPEND_STR(co_req,i->signature);
+  CO_APPEND_STR(co_req,csm_service_get_signature(s));
   CO_APPEND_STR(co_req,to_verify);
   CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req)
 	&& co_response_get_bool(co_resp,&output,"result",sizeof("result")),
@@ -427,23 +397,25 @@ error:
   if (co_conn)
     co_disconnect(co_conn);
   if (to_verify)
-    free(to_verify);
+    free(to_verify); // alloc'd using asprint from _csm_create_signing_template()
   return verdict;
 }
 
 int
-create_signature(ServiceInfo *i)
+create_signature(csm_service *s)
 {
   char *to_sign = NULL;
-  CHECK(create_signing_template(i,&to_sign) > 0, "Failed to create signing template");
+  CHECK(_csm_create_signing_template(s,&to_sign) > 0, "Failed to create signing template");
+  CHECK_MEM(to_sign);
   
   co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
   CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),
 	"Failed to connect to Commotion socket");
   CHECK_MEM((co_req = co_request_create()));
   CO_APPEND_STR(co_req,"sign");
-  if (i->key) {
-    CO_APPEND_STR(co_req,i->key);
+  char *key = csm_service_get_key(s);
+  if (key) {
+    CO_APPEND_STR(co_req,key);
   }
   CO_APPEND_STR(co_req,to_sign);
   
@@ -455,13 +427,15 @@ create_signature(ServiceInfo *i)
 	"Failed to fetch signature from response");
   CHECK(co_response_get_str(co_resp,&sid,"sid",sizeof("sid")),
 	"Failed to fetch SID from response");
-  CSM_SET(i, signature, signature);
-  if (!i->key) {
-    CSM_SET(i, key, sid);
+  CHECK(csm_service_set_signature(s, signature), "Failed to set signature");
+  if (!key) {
+    csm_service_set_key(s, sid);
     // set UUID
     char uuid[UUID_LEN + 1] = {0};
     CHECK(get_uuid(sid,strlen(sid),uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
-    CSM_SET(i, uuid, uuid);
+    s->uuid = h_strdup(uuid);
+    CHECK_MEM(s->uuid);
+    hattach(s->uuid, s);
   }
   
   return 1;
@@ -473,6 +447,6 @@ error:
   if (co_conn)
     co_disconnect(co_conn);
   if (to_sign)
-    free(to_sign);
+    free(to_sign); // alloc'd using asprint from _csm_create_signing_template()
   return 0;
 }

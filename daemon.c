@@ -54,18 +54,22 @@
 #define RESPONSE_MAX 1024
 
 extern co_socket_t unix_socket_proto;
+#if 0
 extern ServiceInfo *services;
+#endif
 
-struct csm_config csm_config;
+csm_config csm_config;
 static int pid_filehandle;
 static co_socket_t *csm_socket = NULL;
 
 AvahiSimplePoll *simple_poll = NULL;
+#if 0
 TYPE_BROWSER *stb = NULL;
 #ifdef CLIENT
 AvahiClient *client = NULL;
 #else
 AvahiServer *server = NULL;
+#endif
 #endif
 
 static co_obj_t *
@@ -229,6 +233,8 @@ CMD(list_services) {
   
   for (; i; i = i->info_next) {
     // make sure service is resolved before inserting
+    // TODO instead of using ->resolved, check if signature is present (indicates fully resolved)
+    // or better yet, there shouldn't be any services in the service_list that aren't fully resolved or incomplete. so no need for this check.
     if (i->resolved) {
       co_obj_t *service = co_tree16_create();
       CHECK_MEM(service);
@@ -275,6 +281,9 @@ static void socket_send(int fd, char const *str, size_t len) {
 }
 
 static void request_handler(AvahiWatch *w, int fd, AvahiWatchEvent events, void *userdata) {
+  assert(userdata);
+  csm_ctx *ctx = (csm_ctx*)userdata;
+  
   char reqbuf[REQUEST_MAX], respbuf[RESPONSE_MAX];
   ssize_t reqlen = 0;
   size_t resplen = 0;
@@ -302,7 +311,11 @@ static void request_handler(AvahiWatch *w, int fd, AvahiWatchEvent events, void 
     CHECK(co_list_append(csm_socket->rfd_lst,new_rfd),"Failed to append rfd");
     int flags = fcntl(rfd, F_GETFL, 0);
     fcntl(rfd, F_SETFL, flags | O_NONBLOCK); //Set non-blocking.
-    avahi_simple_poll_get(simple_poll)->watch_new(avahi_simple_poll_get(simple_poll), rfd, AVAHI_WATCH_IN | AVAHI_WATCH_IN, request_handler, NULL);
+    avahi_simple_poll_get(simple_poll)->watch_new(avahi_simple_poll_get(simple_poll), 
+						  rfd, 
+						  AVAHI_WATCH_IN | AVAHI_WATCH_IN, 
+						  request_handler, 
+						  ctx);
     return;
   }
   reqlen = recv(fd,reqbuf,sizeof(reqbuf),0);
@@ -321,6 +334,7 @@ static void request_handler(AvahiWatch *w, int fd, AvahiWatchEvent events, void 
   CHECK(co_obj_data((char **)&id, co_list_element(request, 1)) == sizeof(uint32_t), "Not a valid request ID.");
   
   /* Run command */
+  // TODO pass ctx to cmd_exec somehow, maybe prepend to params
   if(co_cmd_exec(co_list_element(request, 2), &ret, co_list_element(request, 3))) {
     resplen = co_response_alloc(respbuf, sizeof(respbuf), *id, nil, ret);
     socket_send(fd,respbuf,resplen);
@@ -338,8 +352,8 @@ error:
 }
 
 static void csm_shutdown(int signal) {
-      DEBUG("Received %s, goodbye!", signal == SIGINT ? "SIGINT" : "SIGTERM");
-      avahi_simple_poll_quit(simple_poll);
+  DEBUG("Received %s, goodbye!", signal == SIGINT ? "SIGINT" : "SIGTERM");
+  avahi_simple_poll_quit(simple_poll);
 }
 
 /**
@@ -429,18 +443,26 @@ static void daemon_start(char *pidfile) {
 }
 
 static int
-create_service_browser(AvahiClient *client)
+create_service_browser(csm_ctx *ctx)
 {
+#ifdef CLIENT
+  AvahiClient *client = ctx->client;
+#else
+  AvahiServer *server = ctx->server;
+#endif
+  
   /* Create the service browser */
-  CHECK((stb = TYPE_BROWSER_NEW(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback)),
+  CHECK((ctx->stb = TYPE_BROWSER_NEW(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback, ctx)),
 	"Failed to create service browser: %s", AVAHI_ERROR);
   return 1;
-  error:
+error:
   return 0;
 }
 
 #ifdef CLIENT
-static void client_callback(AvahiClient *c, AvahiClientState state, AVAHI_GCC_UNUSED void * userdata) {
+static void client_callback(AvahiClient *c, AvahiClientState state, void *userdata) {
+    assert(userdata);
+    csm_ctx *ctx = (csm_ctx*)userdata;
     assert(c);
 
     /* Called whenever the client or server state changes */
@@ -448,8 +470,8 @@ static void client_callback(AvahiClient *c, AvahiClientState state, AVAHI_GCC_UN
       case AVAHI_CLIENT_S_RUNNING:
 	/* The server has startup successfully and registered its host
 	 * name on the network, so it's time to create our services */
-	if (!stb) {
-	  if (!create_service_browser(c)) {
+	if (!ctx->stb) {
+	  if (!create_service_browser(ctx)) {
 	    ERROR("Failed to create service type browser");
 	    avahi_simple_poll_quit(simple_poll);
 	  }
@@ -481,15 +503,15 @@ static void client_callback(AvahiClient *c, AvahiClientState state, AVAHI_GCC_UN
 	  unregister_all();
 	  
 	  /* Free service type browser */
-	  if (stb)
-	    TYPE_BROWSER_FREE(stb);
+	  if (ctx->stb)
+	    TYPE_BROWSER_FREE(ctx->stb);
 	  
 	  /* Free client */
-	  FREE_AVAHI();
+	  FREE_AVAHI(ctx);
 	  
 	  /* Create new client */
 	  int error;
-	  client = avahi_client_new(avahi_simple_poll_get(simple_poll), AVAHI_CLIENT_NO_FAIL, client_callback, NULL, &error);
+	  client = avahi_client_new(avahi_simple_poll_get(simple_poll), AVAHI_CLIENT_NO_FAIL, client_callback, ctx, &error);
 	  if (!client) {
 	    ERROR("Failed to create client: %s", avahi_strerror(error));
 	    avahi_simple_poll_quit(simple_poll);
@@ -505,6 +527,8 @@ static void client_callback(AvahiClient *c, AvahiClientState state, AVAHI_GCC_UN
 }
 #else
 static void server_callback(AvahiServer *s, AvahiServerState state, AVAHI_GCC_UNUSED void * userdata) {
+  assert(userdata);
+  csm_ctx *ctx = (csm_ctx*)userdata;
   assert(s);
 
   /* Called whenever the server state changes */
@@ -515,13 +539,11 @@ static void server_callback(AvahiServer *s, AvahiServerState state, AVAHI_GCC_UN
       register_all(s);
       break;
     case AVAHI_SERVER_COLLISION: {
-      char *n;
-      int r;
       /* A host name collision happened. Let's pick a new name for the server */
-      n = avahi_alternative_host_name(avahi_server_get_host_name(s));
-      ERROR("Host name collision, retrying with '%s'", n);
-      r = avahi_server_set_host_name(s, n);
-      avahi_free(n);
+      char *new_host_name = avahi_alternative_host_name(avahi_server_get_host_name(s));
+      ERROR("Host name collision, retrying with '%s'", new_host_name);
+      int r = avahi_server_set_host_name(s, new_host_name);
+      avahi_free(new_host_name);
       if (r < 0) {
 	ERROR("Failed to set new host name: %s", avahi_strerror(r));
 	avahi_simple_poll_quit(simple_poll);
@@ -575,6 +597,8 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 }
 
 int main(int argc, char*argv[]) {
+    csm_ctx ctx = {0};
+    ctx.service_list = csm_services_init();
 #ifndef CLIENT
     AvahiServerConfig avahi_config;
 #endif
@@ -640,25 +664,25 @@ int main(int argc, char*argv[]) {
 
 #ifdef CLIENT
     /* Allocate a new client */
-    client = avahi_client_new(avahi_simple_poll_get(simple_poll), AVAHI_CLIENT_NO_FAIL, client_callback, NULL, &error);
-    CHECK(client,"Failed to create client: %s", avahi_strerror(error));
+    ctx.client = avahi_client_new(avahi_simple_poll_get(simple_poll), AVAHI_CLIENT_NO_FAIL, client_callback, &ctx, &error);
+    CHECK(ctx.client,"Failed to create client: %s", avahi_strerror(error));
 #else
     /* Do not publish any local records */
     avahi_server_config_init(&avahi_config);
-    CHECK_MEM((avahi_config.host_name = calloc(HOST_NAME_MAX,sizeof(char))));
+    CHECK_MEM((avahi_config.host_name = h_calloc(HOST_NAME_MAX,sizeof(char))));
     CHECK(gethostname(avahi_config.host_name,HOST_NAME_MAX) == 0, "Failed to fetch hostname");
     avahi_config.publish_workstation = 0;
 
     /* Allocate a new server */
-    server = avahi_server_new(avahi_simple_poll_get(simple_poll), &avahi_config, server_callback, NULL, &error);
+    ctx.server = avahi_server_new(avahi_simple_poll_get(simple_poll), &avahi_config, server_callback, &ctx, &error);
 
     /* Free the configuration data */
     avahi_server_config_free(&avahi_config);
 
     /* Check wether creating the server object succeeded */
-    CHECK(server,"Failed to create server: %s", avahi_strerror(error));
+    CHECK(ctx.server,"Failed to create server: %s", avahi_strerror(error));
     
-    CHECK(create_service_browser(),"Failed to create service type browser");
+    CHECK(create_service_browser(&ctx),"Failed to create service type browser");
 #endif
     
     /*TODO*/
@@ -672,7 +696,11 @@ int main(int argc, char*argv[]) {
     /* Set up CSM management socket */
     csm_socket = (co_socket_t*)NEW(co_socket, unix_socket);
     csm_socket->bind((co_obj_t*)csm_socket, CSM_MANAGESOCK);
-    AvahiWatch *csm_watch = avahi_simple_poll_get(simple_poll)->watch_new(avahi_simple_poll_get(simple_poll), csm_socket->fd->fd, AVAHI_WATCH_IN | AVAHI_WATCH_HUP, request_handler, NULL);
+    AvahiWatch *csm_watch = avahi_simple_poll_get(simple_poll)->watch_new(avahi_simple_poll_get(simple_poll),
+									  csm_socket->fd->fd, 
+									  AVAHI_WATCH_IN | AVAHI_WATCH_HUP, 
+									  request_handler, 
+									  &ctx);
     
     /* Run the main loop */
     avahi_simple_poll_loop(simple_poll);
@@ -685,18 +713,21 @@ error:
     co_shutdown();
 
     /* Cleanup things */
-    if (stb)
-        TYPE_BROWSER_FREE(stb);
+    if (ctx.stb)
+        TYPE_BROWSER_FREE(ctx.stb);
 
     /* Remove main socket watch */
     avahi_simple_poll_get(simple_poll)->watch_free(csm_watch);
 
     /* Free server/client */
-    FREE_AVAHI();
+    FREE_AVAHI(&ctx);
+    
+    /* Destroy services */
+    csm_services_destroy(ctx.service_list);
 
     /* Free event loop */
     if (simple_poll)
         avahi_simple_poll_free(simple_poll);
-
+    
     return ret;
 }

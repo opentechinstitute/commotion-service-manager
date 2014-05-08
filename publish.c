@@ -35,7 +35,9 @@
 #include "debug.h"
 #include "publish.h"
 
+#if 0
 extern ServiceInfo *services;
+#endif
 
 /* Private */
 

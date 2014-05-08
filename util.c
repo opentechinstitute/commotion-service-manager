@@ -45,6 +45,13 @@
 #define ESCAPE_CR "&#13;"
 #define ESCAPE_CR_LEN 5
 
+#define OPEN_DELIMITER "\""
+#define OPEN_DELIMITER_LEN 1
+#define CLOSE_DELIMITER "\""
+#define CLOSE_DELIMITER_LEN 1
+#define FIELD_DELIMITER ","
+#define FIELD_DELIMITER_LEN 1
+
 int isHex(const char *str, size_t len) {
   int i;
   for (i = 0; i < len; ++i) {
@@ -259,4 +266,38 @@ char *escape(char *to_escape, size_t *escaped_len) {
   }
 error:
   return escaped;
+}
+
+/**
+ * Convert an AvahiStringList to a string
+ */
+char *
+csm_txt_list_to_string(char *cur, size_t *cur_len, char *append, size_t append_len)
+{
+  char *open_delimiter = OPEN_DELIMITER;
+  char *close_delimiter = CLOSE_DELIMITER;
+  char *field_delimiter = FIELD_DELIMITER;
+  char *escaped = escape(append, &append_len);
+  CHECK_MEM(escaped);
+  cur = realloc(cur, *cur_len
+		     + OPEN_DELIMITER_LEN
+		     + append_len
+		     + CLOSE_DELIMITER_LEN
+		     + FIELD_DELIMITER_LEN
+		     + 1);
+  CHECK_MEM(cur);
+  cur[*cur_len] = '\0';
+  
+  strcat(cur, open_delimiter);
+  strcat(cur, escaped);
+  strcat(cur, close_delimiter);
+  strcat(cur, field_delimiter);
+  
+  *cur_len += OPEN_DELIMITER_LEN + append_len + CLOSE_DELIMITER_LEN + FIELD_DELIMITER_LEN;
+  cur[*cur_len] = '\0';
+
+error:
+  if (escaped)
+    free(escaped);
+  return cur;
 }

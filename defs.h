@@ -45,6 +45,7 @@
 
 #define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
 
+#if 0
 #define CSM_SET(I,M,S) \
   do { \
     I->M = halloc(I->M, strlen(S) + 1); \
@@ -53,14 +54,15 @@
     hattach(I->M, I); \
     strcpy(I->M, S); \
   } while (0)
-
+#endif
+  
 #ifdef CLIENT
 
 #define TYPE_BROWSER AvahiServiceTypeBrowser
-#define TYPE_BROWSER_NEW(A,B,C,D,E) avahi_service_type_browser_new(client,A,B,C,D,E,client)
+#define TYPE_BROWSER_NEW(A,B,C,D,E,F) avahi_service_type_browser_new(client,A,B,C,D,E,F)
 #define TYPE_BROWSER_FREE(J) avahi_service_type_browser_free(J)
 #define BROWSER AvahiServiceBrowser
-#define BROWSER_NEW(A,B,C,D,E,F) avahi_service_browser_new(client,A,B,C,D,E,F,client)
+#define BROWSER_NEW(A,B,C,D,E,F,G) avahi_service_browser_new(client,A,B,C,D,E,F,G)
 #define RESOLVER AvahiServiceResolver
 #define RESOLVER_NEW(A,B,C,D,E,F,G,H,I) avahi_service_resolver_new(client,A,B,C,D,E,F,G,H,I)
 #define RESOLVER_FREE(J) avahi_service_resolver_free(J)
@@ -73,16 +75,15 @@
 #define ENTRY_GROUP_RESET avahi_entry_group_reset
 #define ENTRY_GROUP_FREE avahi_entry_group_free
 #define AVAHI_ERROR avahi_strerror(avahi_client_errno(client))
-#define AVAHI_BROWSER_ERROR avahi_strerror(avahi_client_errno(avahi_service_browser_get_client(b)))
-#define FREE_AVAHI() if (client) avahi_client_free(client);
+#define FREE_AVAHI(CTX) do { if (ctx->client) avahi_client_free(ctx->client); } while(0)
 
 #else
 
 #define TYPE_BROWSER AvahiSServiceTypeBrowser
-#define TYPE_BROWSER_NEW(A,B,C,D,E) avahi_s_service_type_browser_new(server,A,B,C,D,E,server)
+#define TYPE_BROWSER_NEW(A,B,C,D,E,F) avahi_s_service_type_browser_new(server,A,B,C,D,E,F)
 #define TYPE_BROWSER_FREE(J) avahi_s_service_type_browser_free(J)
 #define BROWSER AvahiSServiceBrowser
-#define BROWSER_NEW(A,B,C,D,E,F) avahi_s_service_browser_new(server,A,B,C,D,E,F,server)
+#define BROWSER_NEW(A,B,C,D,E,F,G) avahi_s_service_browser_new(server,A,B,C,D,E,F,G)
 #define RESOLVER AvahiSServiceResolver
 #define RESOLVER_NEW(A,B,C,D,E,F,G,H,I) avahi_s_service_resolver_new(server,A,B,C,D,E,F,G,H,I)
 #define RESOLVER_FREE(J) avahi_s_service_resolver_free(J)
@@ -95,22 +96,33 @@
 #define ENTRY_GROUP_RESET avahi_s_entry_group_reset
 #define ENTRY_GROUP_FREE avahi_s_entry_group_free
 #define AVAHI_ERROR avahi_strerror(avahi_server_errno(server))
-#define AVAHI_BROWSER_ERROR AVAHI_ERROR
-#define FREE_AVAHI() if (server) avahi_server_free(server);
+#define FREE_AVAHI(CTX) do { if (ctx->server) avahi_server_free(ctx->server); } while(0)
 
 #endif
 
-struct csm_config {
+typedef struct {
   char *co_sock;
-  #ifdef USE_UCI
+#ifdef USE_UCI
   int uci;
-  #endif
+#endif
   int nodaemon;
   char *output_file;
   char *pid_file;
   char *sid;
-};
+} csm_config;
 
+typedef struct {
+#ifdef CLIENT
+  AvahiClient *client;
+#else
+  AvahiServer *server;
+#endif
+  TYPE_BROWSER *stb;
+  csm_service_list *service_list;
+  csm_service *service;
+} csm_ctx;
+
+#if 0
 typedef struct ServiceTXTFields {
   char *name;
   char *description;
@@ -149,11 +161,11 @@ typedef struct ServiceInfo {
   char *host_name;
   char address[AVAHI_ADDRESS_STR_MAX];
   AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
-//   char *txt; /**< string representing all the txt fields */
   RESOLVER *resolver;
 
   /** Linked list */
   AVAHI_LLIST_FIELDS(struct ServiceInfo, info);
 } ServiceInfo;
+#endif
 
 #endif

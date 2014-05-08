@@ -79,4 +79,6 @@ char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len);
  */
 char *escape(char *to_escape, size_t *escaped_len);
 
+char *csm_txt_list_to_string(char *cur, size_t *cur_len, char *append, size_t append_len);
+
 #endif

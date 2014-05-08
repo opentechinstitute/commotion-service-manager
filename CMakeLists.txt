@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.6)
 
 set(PROJECT_NAME_STR commotion-service-manager)
 PROJECT(${PROJECT_NAME_STR})
+SET(CSM_PROTO_VERSION "1.1")
 SET(NO_OPTIMIZE ON CACHE BOOL "Disable optimization flags.")
 SET(DEBUG ON CACHE BOOL "Turn on debugging.")
 SET(OPENWRT OFF CACHE BOOL "Disable subsystems that are unnecessary for OpenWRT platform.")
@@ -29,7 +30,7 @@ SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-SET(DAEMONSRC defs.h debug.h browse.h browse.c publish.h publish.c daemon.c service.h service.c util.h util.c extern/base32.h extern/base32.c)
+SET(DAEMONSRC defs.h debug.h service.h service.c service_list.h service_list.c commotion-service-manager.h commotion-service-manager.c browse.h browse.c publish.h publish.c daemon.c service.h service.c util.h util.c extern/base32.h extern/base32.c)
 SET(LIBSRC defs.h debug.h commotion-service-manager.h commotion-service-manager.c)
 # SET(CLIENTSRC client.c ${LIBSRC})
 
