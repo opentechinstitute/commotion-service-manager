@@ -75,7 +75,7 @@
 #define ENTRY_GROUP_RESET avahi_entry_group_reset
 #define ENTRY_GROUP_FREE avahi_entry_group_free
 #define AVAHI_ERROR avahi_strerror(avahi_client_errno(client))
-#define FREE_AVAHI(CTX) do { if (ctx->client) avahi_client_free(ctx->client); } while(0)
+#define FREE_AVAHI(CTX) do { if (CTX->client) avahi_client_free(CTX->client); } while(0)
 
 #else
 
@@ -96,11 +96,11 @@
 #define ENTRY_GROUP_RESET avahi_s_entry_group_reset
 #define ENTRY_GROUP_FREE avahi_s_entry_group_free
 #define AVAHI_ERROR avahi_strerror(avahi_server_errno(server))
-#define FREE_AVAHI(CTX) do { if (ctx->server) avahi_server_free(ctx->server); } while(0)
+#define FREE_AVAHI(CTX) do { if (CTX->server) avahi_server_free(CTX->server); } while(0)
 
 #endif
 
-typedef struct {
+struct csm_config {
   char *co_sock;
 #ifdef USE_UCI
   int uci;
@@ -109,7 +109,10 @@ typedef struct {
   char *output_file;
   char *pid_file;
   char *sid;
-} csm_config;
+};
+
+struct csm_service;
+struct csm_service_list;
 
 typedef struct {
 #ifdef CLIENT
@@ -118,8 +121,8 @@ typedef struct {
   AvahiServer *server;
 #endif
   TYPE_BROWSER *stb;
-  csm_service_list *service_list;
-  csm_service *service;
+  struct csm_service_list *service_list;
+  struct csm_service *service;
 } csm_ctx;
 
 #if 0

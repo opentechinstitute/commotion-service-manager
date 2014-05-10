@@ -31,8 +31,13 @@
 #include <avahi-client/client.h>
 #include <avahi-client/publish.h>
 
+#include <commotion/debug.h>
+#include <commotion/obj.h>
+#include <commotion/list.h>
+
 #include "defs.h"
-#include "debug.h"
+#include "service.h"
+#include "service_list.h"
 #include "publish.h"
 
 #if 0
@@ -70,35 +75,61 @@ server_entry_group_callback(AvahiServer *s, AvahiSEntryGroup *g, AvahiEntryGroup
 }
 #endif
 
+static co_obj_t *
+_csm_publish_service_i(co_obj_t *list, co_obj_t *current, void *context)
+{
+  if (IS_LIST(current)) return NULL;
+  assert(context);
+  csm_ctx *ctx = (csm_ctx*)context;
+  CHECK(csm_publish_service(((co_service_t*)current)->service, ctx),
+        "Failed to publish service");
+  return NULL;
+error:
+  return current;
+}
+
+static co_obj_t *
+_csm_unpublish_service_i(co_obj_t *list, co_obj_t *current, void *context)
+{
+  if (IS_LIST(current)) return NULL;
+  assert(context);
+  csm_ctx *ctx = (csm_ctx*)context;
+  CHECK(csm_unpublish_service(((co_service_t*)current)->service, ctx),
+        "Failed to unpublish service");
+  return NULL;
+error:
+  return current;
+}
+
 /* Public */
 
 int
-register_all(void *avahi)
+csm_publish_all(csm_ctx *ctx)
 {
-  for (ServiceInfo *i = services; i; i = i->info_next)
-    CHECK(register_service(i, avahi), "Failed to register service %s", i->uuid);
+  CHECK(co_list_parse(ctx->service_list->services, _csm_publish_service_i, ctx) == NULL,
+        "Error publishing services");
   return 1;
 error:
   return 0;
 }
 
 int
-unregister_all(void)
+csm_unpublish_all(csm_ctx *ctx)
 {
-  for (ServiceInfo *i = services; i; i = i->info_next)
-    CHECK(unregister_service(i), "Failed to unregister service %s", i->uuid);
+  CHECK(co_list_parse(ctx->service_list->services, _csm_unpublish_service_i, ctx) == NULL,
+	"Error publishing services");
   return 1;
 error:
   return 0;
 }
 
 int
-unregister_service(ServiceInfo *i)
+csm_unpublish_service(csm_service *s, csm_ctx *ctx)
 {
-  if (!i->address && i->group) { // only remote services have address set
-    CHECK(ENTRY_GROUP_RESET(i->group) == AVAHI_OK, "Failed to reset entry group");
-    ENTRY_GROUP_FREE(i->group);
-    i->uptodate = 0;
+  if (!s->address && s->group) { // only remote services have address set
+    CHECK(ENTRY_GROUP_RESET(s->group) == AVAHI_OK, "Failed to reset entry group");
+    ENTRY_GROUP_FREE(s->group);
+    s->uptodate = 0;
   }
   return 1;
 error:
@@ -106,95 +137,103 @@ error:
 }
 
 int
-register_service(ServiceInfo *i, void *avahi)
+csm_publish_service(csm_service *s, csm_ctx *ctx)
 {
+  assert(ctx);
+  
   int ret = 0;
   AvahiStringList *t = NULL;
   
-  CHECK(i &&
-	i->name &&
-	i->description &&
-	i->uri &&
-	i->icon &&
-	i->ttl &&
-	i->lifetime &&
-	i->categories,
+  char *name = csm_service_get_name(s);
+  char *description = csm_service_get_description(s);
+  char *uri = csm_service_get_uri(s);
+  char *icon = csm_service_get_icon(s);
+  int ttl = csm_service_get_ttl(s);
+  long lifetime = csm_service_get_lifetime(s);
+  char **categories = NULL;
+  int cat_len = csm_service_categories_to_array(s, &categories);
+  char *key = csm_service_get_key(s);
+  char *signature = csm_service_get_signature(s);
+  
+  CHECK(s &&
+	name &&
+	description &&
+	uri &&
+	icon &&
+	ttl &&
+	lifetime &&
+	cat_len,
 	"Service missing required fields");
   
 #ifdef CLIENT
-  AvahiClient *client = avahi;
+  AvahiClient *client = ctx->client;
   AvahiClientState state = avahi_client_get_state(client);
-  if (state != AVAHI_CLIENT_S_RUNNING) {
-    WARN("Avahi server in bad state");
-    goto error;
-  }
+  CHECK(state == AVAHI_CLIENT_S_RUNNING, "Avahi server in bad state");
 #else
-  AvahiServer *server = avahi;
+  AvahiServer *server = ctx->server;
   AvahiServerState state = avahi_server_get_state(server);
-  if (state != AVAHI_SERVER_RUNNING) {
-    WARN("Avahi server in bad state");
-    goto error;
-  }
+  CHECK(state == AVAHI_SERVER_RUNNING, "Avahi server in bad state");
 #endif
 
   // TODO should we exit if i->address?
-  if (!i->address) { // only remote services have address set
-    if (!i->group) {
+  if (!s->address) { // only remote services have address set
+    if (!s->group) {
 #ifdef CLIENT
-      i->group = ENTRY_GROUP_NEW(client_entry_group_callback, NULL);
+      s->group = ENTRY_GROUP_NEW(client_entry_group_callback, NULL);
 #else
-      i->group = ENTRY_GROUP_NEW(server_entry_group_callback, NULL);
+      s->group = ENTRY_GROUP_NEW(server_entry_group_callback, NULL);
 #endif
-      CHECK(i->group,"ENTRY_GROUP_NEW failed: %s", AVAHI_ERROR);
-      hattach(i->group, i);
+      CHECK(s->group,"ENTRY_GROUP_NEW failed: %s", AVAHI_ERROR);
+      hattach(s->group, s);
     }
     
-    t = avahi_string_list_add_printf(t, "%s=%s", "name", i->name);
-    t = avahi_string_list_add_printf(t, "%s=%s", "description", i->description);
-    t = avahi_string_list_add_printf(t, "%s=%s", "uri", i->uri);
-    t = avahi_string_list_add_printf(t, "%s=%s", "icon", i->icon);
-    t = avahi_string_list_add_printf(t, "%s=%s", "fingerprint", i->key);
-    t = avahi_string_list_add_printf(t, "%s=%s", "signature", i->signature);
-    t = avahi_string_list_add_printf(t, "%s=%d", "ttl", i->ttl);
-    t = avahi_string_list_add_printf(t, "%s=%ld", "lifetime", i->lifetime);
-    for (int j = 0; j < i->cat_len; j++) {
-      t = avahi_string_list_add_printf(t, "%s=%s", "type", i->categories[j]);
+    t = avahi_string_list_add_printf(t, "%s=%s", "name", name);
+    t = avahi_string_list_add_printf(t, "%s=%s", "description", description);
+    t = avahi_string_list_add_printf(t, "%s=%s", "uri", uri);
+    t = avahi_string_list_add_printf(t, "%s=%s", "icon", icon);
+    t = avahi_string_list_add_printf(t, "%s=%s", "fingerprint", key);
+    t = avahi_string_list_add_printf(t, "%s=%s", "signature", signature);
+    t = avahi_string_list_add_printf(t, "%s=%d", "ttl", ttl);
+    t = avahi_string_list_add_printf(t, "%s=%ld", "lifetime", lifetime);
+    for (int j = 0; j < cat_len; j++) {
+      t = avahi_string_list_add_printf(t, "%s=%s", "type", categories[j]);
     }
     
     /* If the group is empty (either because it was just created, or
     * because it was reset previously, add our entries.  */
-    if (ENTRY_GROUP_EMPTY(i->group)) {
+    if (ENTRY_GROUP_EMPTY(s->group)) {
       char hostname[HOST_NAME_MAX] = {0};
       CHECK(gethostname(hostname,HOST_NAME_MAX) == 0, "Failed to get hostname");
-      int avahi_ret = ENTRY_GROUP_ADD_SERVICE(i->group,
-					      i->interface,
-					      i->protocol,
+      int avahi_ret = ENTRY_GROUP_ADD_SERVICE(s->group,
+					      s->interface,
+					      s->protocol,
 					      0,
-					      i->uuid,
-					      i->type,
-					      i->domain,
+					      s->uuid,
+					      s->type,
+					      s->domain,
 					      hostname,
-					      i->port,
+					      s->port,
 					      t);
       CHECK(avahi_ret == AVAHI_OK, "Failed to add entry group");
-    } else if (!i->uptodate) {
-      int avahi_ret = ENTRY_GROUP_UPDATE_SERVICE(i->group,
-						 i->interface,
-						 i->protocol,
+    } else if (!s->uptodate) {
+      int avahi_ret = ENTRY_GROUP_UPDATE_SERVICE(s->group,
+						 s->interface,
+						 s->protocol,
 						 0,
-						 i->uuid,
-						 i->type,
-						 i->domain,
+						 s->uuid,
+						 s->type,
+						 s->domain,
 						 t);
       CHECK(avahi_ret == AVAHI_OK, "Failed to update entry group");
     }
-    CHECK(ENTRY_GROUP_COMMIT(i->group) == AVAHI_OK, "Failed to commit entry group");
-    i->uptodate = 1;
+    CHECK(ENTRY_GROUP_COMMIT(s->group) == AVAHI_OK, "Failed to commit entry group");
+    s->uptodate = 1;
   }
-  // TODO add callback function (for e.g. updating connected clients/subscribers of new services [push notifications])
   
   ret = 1;
 error:
+  if (categories)
+    h_free(categories);
   if (t)
     avahi_string_list_free(t);
   return ret;

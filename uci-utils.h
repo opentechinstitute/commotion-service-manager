@@ -36,14 +36,14 @@
  * @param i ServiceInfo object of the service
  * @return 0=success, -1=fail
  */
-int uci_remove(ServiceInfo *i);
+int uci_remove(csm_service *s);
 
 /**
  * Write a service to UCI
  * @param i ServiceInfo object of the service
  * @return 0=success, -1=fail
  */
-int uci_write(ServiceInfo *i);
+int uci_write(csm_service *s);
 
 /**
  * Lookup a UCI section or option

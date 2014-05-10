@@ -31,9 +31,10 @@
 
 #include <uci.h>
 
+#include <commotion/debug.h>
+
 #include "defs.h"
 #include "uci-utils.h"
-#include "debug.h"
 #include "util.h"
 
 #define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
@@ -46,10 +47,10 @@
     sec_ptr.option = #FLD; \
     sec_ptr.value = VAL; \
     int uci_ret = F(C, &sec_ptr); \
-    UCI_CHECK(uci_ret == 0,"Failed to set UCI field %s " #FLD); \
+    UCI_CHECK(uci_ret == 0,"Failed to set UCI field " #FLD); \
   } while (0)
 #define UCI_SET(C,SRV,FLD,VAL) _UCI_SET(uci_set,SRV,FLD,VAL)
-#define UCI_SET_STR(C,SRV,FLD) UCI_SET(C,SRV,FLD,SRV->FLD)
+#define UCI_SET_STR(C,SRV,FLD) UCI_SET(C,SRV,FLD,csm_service_get_##FLD##(SRV))
 #define UCI_SET_CAT(C,SRV,CAT) _UCI_SET(uci_add_list,SRV,type,CAT)
 
 /** 
@@ -100,6 +101,136 @@ error:
   return ret;
 }
 
+int uci_write(csm_service *s) {
+  struct uci_context *c = NULL;
+  struct uci_ptr sec_ptr,sig_ptr,type_ptr;
+#ifdef OPENWRT
+  struct uci_ptr approved_ptr;
+#endif
+  int ret = 0;
+  struct uci_package *pak = NULL;
+  struct uci_element *e = NULL;
+  enum {
+    NO_TYPE_SECTION,
+    NO_TYPE_MATCHES,
+    TYPE_MATCH_FOUND,
+  };
+  int type_state = NO_TYPE_SECTION;
+  
+  assert(s);
+  
+  c = uci_alloc_context();
+  CHECK_MEM(c);
+  
+  uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
+
+  /* Lookup application by name (concatenation of URI + port) */
+  CHECK(get_uci_section(c,&sec_ptr,"applications",12,s->uuid,strlen(s->uuid),NULL,0) > 0, "Failed application lookup");
+  if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
+    INFO("(UCI) Found application: %s",s->uuid);
+    // check for service == fingerprint. if sig different, update it
+    char *signature = csm_service_get_signature(s);
+    CHECK(get_uci_section(c,&sig_ptr,"applications",12,s->uuid,strlen(s->uuid),"signature",9) > 0,"Failed signature lookup");
+    if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && signature && !strcmp(signature,sig_ptr.o->v.string)) {
+      // signatures equal: do nothing
+      INFO("(UCI) Signature the same, not updating");
+      ret = 1;
+      goto error;
+    }
+    // signatures differ: delete existing app
+    INFO("(UCI) Signature differs, updating");
+  } else {
+    INFO("(UCI) Application not found, creating");
+  }
+  
+  pak = sec_ptr.p;
+  memset(&sec_ptr, 0, sizeof(struct uci_ptr));
+  
+  // uci_add_section
+  sec_ptr.package = "applications";
+  sec_ptr.section = s->uuid;
+  sec_ptr.value = "application";
+  UCI_CHECK(!uci_set(c, &sec_ptr),"(UCI) Failed to set section");
+  INFO("(UCI) Section set succeeded");
+  
+  // uci set options/values
+  UCI_SET_STR(c,s,name);
+  UCI_SET_STR(c,s,uri);
+  UCI_SET_STR(c,s,description);
+  UCI_SET_STR(c,s,icon);
+  UCI_SET_STR(c,s,signature);
+  UCI_SET_STR(c,s,fingerprint);
+  UCI_SET_STR(c,s,version);
+  UCI_SET(c,s,uuid,s->uuid);
+  
+  char *ttl_str = NULL, *lifetime_str = NULL;
+  CHECK_MEM(asprintf(&ttl_str, "%d", csm_service_get_ttl(s)) != -1);
+  CHECK_MEM(asprintf(&lifetime_str, "%ld", csm_service_get_lifetime(s)) != -1);
+  UCI_SET(c,i,ttl,ttl_str);
+  UCI_SET(c,i,lifetime,lifetime_str);
+  
+  /* set type_ptr to lookup the 'type' list */
+  co_obj_t *cat_obj = csm_service_get_categories(s);
+  if (cat_obj) {
+  CHECK(get_uci_section(c,&type_ptr,"applications",12,s->uuid,strlen(s->uuid),"type",4) > 0,"Failed type lookup");
+    for (int j = 0; j < co_list_length(cat_obj); j++) {
+      // NOTE: the version of UCI packaged with LuCI doesn't have uci_del_list, so here's a workaround
+      //uci_ret = uci_del_list(c, &sec_ptr);
+      type_state = NO_TYPE_MATCHES;
+      if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
+	uci_foreach_element(&(type_ptr.o->v.list), e) {
+	  if (!strcmp(e->name, co_list_element(cat_obj, j))) {
+	    type_state = TYPE_MATCH_FOUND;
+	    break;
+	  }
+	}
+      }
+      if (type_state != TYPE_MATCH_FOUND)
+	UCI_SET_CAT(c, s, co_list_element(cat_obj, j));
+    }
+  }
+  
+#ifdef OPENWRT
+  // For OpenWRT: check known_applications list, approved or blacklisted
+  if (get_uci_section(c,&approved_ptr,"applications",12,"known_apps",10,s->uuid,strlen(s->uuid)) == -1) {
+    WARN("(UCI) Failed known_apps lookup");
+  } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
+    if (!strcmp(approved_ptr.o->v.string,"approved")) {
+      UCI_SET(c, s, approved, "1");
+    } else if (!strcmp(approved_ptr.o->v.string,"blacklisted")) {
+      UCI_SET(c, s, approved, "0");
+    }
+  }
+#else
+  UCI_SET(c, s, approved, "1");
+#endif
+  
+  // if no type fields in new announcement, remove section from UCI (part of workaround)
+  if (type_state == NO_TYPE_SECTION) {
+    if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
+      UCI_CHECK(uci_delete(c, &type_ptr) == UCI_OK,"(UCI) Failed to delete type section");
+    }
+  }
+  
+  // uci_save
+  UCI_CHECK(uci_save(c, pak) == UCI_OK,"(UCI) Failed to save");
+  INFO("(UCI) Save succeeded");
+  
+  UCI_CHECK(uci_commit(c,&pak,false) == UCI_OK,"(UCI) Failed to commit");
+  INFO("(UCI) Commit succeeded");
+
+  ret = 0;
+  
+error:
+  if (c) uci_free_context(c);
+  if (ttl_str)
+    free(ttl_str);
+  if (lifetime_str)
+    free(lifetime_str);
+  return ret;
+}
+
+#if 0
 /**
  * Write a service to UCI
  * @param i ServiceInfo object of the service
@@ -229,12 +360,52 @@ error:
     free(lifetime_str);
   return ret;
 }
+#endif
 
 /**
  * Remove a service from UCI
  * @param i ServiceInfo object of the service
  * @return 0=success, -1=fail
  */
+int uci_remove(csm_service *s) {
+  int ret = -1;
+  struct uci_context *c = NULL;
+  struct uci_ptr sec_ptr;
+  struct uci_package *pak = NULL;
+  
+  assert(s);
+  
+  c = uci_alloc_context();
+  CHECK_MEM(c);
+  uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
+  
+  /* Lookup application by UUID */
+  CHECK(get_uci_section(c,&sec_ptr,"applications",12,s->uuid,strlen(s->uuid),NULL,0) > 0,
+	"(UCI_Remove) Failed application lookup");
+  
+  CHECK(sec_ptr.flags & UCI_LOOKUP_COMPLETE,"(UCI_Remove) Application not found: %s",s->uuid);
+  INFO("(UCI_Remove) Found application: %s",s->uuid);
+  
+  UCI_CHECK(uci_delete(c, &sec_ptr) == UCI_OK,"(UCI_Remove) Failed to delete application");
+  INFO("(UCI_Remove) Successfully deleted application");
+  
+  pak = sec_ptr.p;
+  
+  // uci_save
+  UCI_CHECK(uci_save(c, pak) == UCI_OK,"(UCI_Remove) Failed to save");
+  INFO("(UCI_Remove) Save succeeded");
+  
+  UCI_CHECK(uci_commit(c,&pak,false) == UCI_OK,"(UCI_Remove) Failed to commit");
+  INFO("(UCI_Remove) Commit succeeded");
+  
+  ret = 0;
+  
+error:
+  if (c) uci_free_context(c);
+  return ret;
+}
+
+#if 0
 int uci_remove(ServiceInfo *i) {
   int ret = -1;
   struct uci_context *c = NULL;
@@ -270,6 +441,7 @@ error:
   if (c) uci_free_context(c);
   return ret;
 }
+#endif
 
 /** Determine if a service is local to this node
  * @param i ServiceInfo object of the service

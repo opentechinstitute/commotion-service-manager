@@ -27,15 +27,22 @@
 #endif
 
 #include <assert.h>
+#include <net/if.h>
 
+#include <commotion/debug.h>
+#include <commotion/obj.h>
 #include <commotion/tree.h>
+#include <commotion/list.h>
+#include <commotion.h>
 
 #include "extern/halloc.h"
 
+#include "defs.h"
+#include "util.h"
 #include "service.h"
 #include "commotion-service-manager.h"
 
-extern csm_config csm_config;
+extern struct csm_config csm_config;
 
 // from libcommotion_serval-sas
 #define SAS_SIZE 32
@@ -45,27 +52,6 @@ extern int keyring_send_sas_request_client(const char *sid_str,
 					   const size_t sas_buf_len);
 
 /* Private */
-
-/**
- * caller is responsible for freeing category array
- */
-static size_t
-_csm_categories_to_array(csm_service *s, char ***cat_array)
-{
-  size_t cat_len = 0;
-  co_obj_t *cats_obj = csm_service_get_categories(s);
-  if (cats_obj) {
-    cat_len = co_list_length(cats_obj);
-    *cat_array = h_calloc(cat_len, sizeof(char*));
-    CHECK_MEM(cat_array);
-    for (int i = 0; i < cat_len; i++) {
-      co_obj_data(&categories[i], co_list_element(cats_obj, i));
-    }
-    /* Sort types into alphabetical order */
-    qsort(categories,cat_len,sizeof(char*),cmpstringp);
-  }
-  return cat_len;
-}
 
 static size_t
 _csm_create_signing_template(csm_service *s, char **template)
@@ -83,11 +69,10 @@ _csm_create_signing_template(csm_service *s, char **template)
 			     "<txt-record>description=%s</txt-record>\n"
 			     "<txt-record>lifetime=%ld</txt-record>";
 
-  char **categories = NULL;
-  size_t cat_len = _csm_categories_to_array(s, &categories);
+  char **categories = NULL, *type_str = NULL, *app_type = NULL;
+  size_t cat_len = csm_service_categories_to_array(s, &categories);
   if (cat_len) {
     /* Concat the types into a single string to add to template */
-    char *app_type = NULL, *type_str = NULL;
     int prev_len = 0;
     for (int j = 0; j < cat_len; j++) {
       if (app_type) {
@@ -106,9 +91,9 @@ _csm_create_signing_template(csm_service *s, char **template)
   /* Add the fields into the template */
   CHECK_MEM(asprintf(template,
 		     str_template,
-		     i->type,
-		     i->domain,
-		     i->port,
+		     s->type,
+		     s->domain,
+		     s->port,
 		     csm_service_get_name(s),
 		     csm_service_get_ttl(s),
 		     csm_service_get_uri(s),
@@ -129,6 +114,18 @@ error:
 }
 
 /* Public */
+
+co_obj_t *co_service_create(csm_service *service) {
+  co_service_t *output = h_calloc(1,sizeof(co_service_t));
+  CHECK_MEM(output);
+  output->_header._type = _ext8;
+  output->_exttype = _service;
+  output->_len = (sizeof(co_service_t));
+  output->service = service;
+  return (co_obj_t*)output;
+error:
+  return NULL;
+}
 
 csm_service *
 csm_service_new(AvahiIfIndex interface,
@@ -161,11 +158,13 @@ csm_service_new(AvahiIfIndex interface,
   // set current CSM protocol version
   co_obj_t *version = co_str8_create(CSM_PROTO_VERSION, strlen(CSM_PROTO_VERSION) + 1, 0);
   CHECK_MEM(version);
-  CHECK(co_list_append(fields, version));
+  CHECK(co_list_append(fields, version), "Failed to append version to service fields");
   
   s->fields = fields;
   hattach(s->fields, s);
   return s;
+error:
+  return NULL;
 }
 
 void
@@ -188,9 +187,9 @@ csm_service_destroy(csm_service *s)
  */
 #define SERVICE_GET(M,T) \
 inline T \
-csm_service_get_##M##(csm_service *s) \
+csm_service_get_##M(csm_service *s) \
 { \
-  return service_get_##M##(s->fields); \
+  return service_get_##M(s->fields); \
 }
 SERVICE_GET(name,char *);
 SERVICE_GET(description,char *);
@@ -200,7 +199,7 @@ SERVICE_GET(ttl,int);
 SERVICE_GET(lifetime,long);
 SERVICE_GET(key,char *);
 SERVICE_GET(signature,char *);
-#undefine SERVICE_GET
+#undef SERVICE_GET
 
 co_obj_t *
 csm_service_get_categories(csm_service *s)
@@ -213,7 +212,7 @@ char *
 csm_service_get_version(csm_service *s)
 {
   assert(IS_TREE(s->fields));
-  co_obj_t *version = co_tree_find(s,"version",sizeof("version"));
+  co_obj_t *version = co_tree_find(s->fields,"version",sizeof("version"));
   CHECK(version,"Service does not have version");
   return ((co_str8_t*)version)->data;
 error:
@@ -222,67 +221,86 @@ error:
 
 #define SERVICE_SET(M,T) \
 inline int \
-csm_service_set_##M##(csm_service *s, T m) \
+csm_service_set_##M(csm_service *s, T m) \
 { \
-  return service_set_##M##(s, m); \
+  return service_set_##M(s, m); \
 }
-SERVICE_SET(name, char const *);
-SERVICE_SET(description, char const *);
-SERVICE_SET(uri, char const *);
-SERVICE_SET(icon, char const *);
+SERVICE_SET(name, const char *);
+SERVICE_SET(description, const char *);
+SERVICE_SET(uri, const char *);
+SERVICE_SET(icon, const char *);
 SERVICE_SET(ttl, int);
 SERVICE_SET(lifetime, long);
-#undefine SERVICE_SET
+#undef SERVICE_SET
 
 int
 csm_service_set_categories(csm_service *s, co_obj_t *categories)
 {
   assert(IS_TREE(s->fields));
-  assert(IS_LIST(categories));
-  CHECK(co_tree_insert_force(s->fields,
-			     "categories",
-			     sizeof("categories"),
-			     categories),
-	"Failed to insert categories into service");
+  if (categories) {
+    assert(IS_LIST(categories));
+    CHECK(co_tree_insert_force(s->fields,
+			      "categories",
+			      sizeof("categories"),
+			      categories),
+	  "Failed to insert categories into service");
+  } else {
+    co_obj_t *cat_obj = co_tree_delete(s->fields, "categories", sizeof("categories"));
+    if (cat_obj)
+      co_obj_free(cat_obj);
+  }
   return 1;
 error:
   return 0;
 }
 
 int
-csm_service_set_key(csm_service *s, char *key)
+csm_service_set_key(csm_service *s, const char *key)
 {
   assert(IS_TREE(s->fields));
-  co_obj_t *key_obj = co_str8_create(key, strlen(key) + 1, 0);
-  CHECK_MEM(key_obj);
-  CHECK(co_tree_insert_force(s->fields,
-			     "key",
-			     sizeof("key"),
-			     key_obj),
-	"Failed to insert key into service");
+  if (key) {
+    co_obj_t *key_obj = co_str8_create(key, strlen(key) + 1, 0);
+    CHECK_MEM(key_obj);
+    CHECK(co_tree_insert_force(s->fields,
+			      "key",
+			      sizeof("key"),
+			      key_obj),
+	  "Failed to insert key into service");
+  } else {
+    co_obj_t *key_obj = co_tree_delete(s->fields, "key", sizeof("key"));
+    if (key_obj)
+      co_obj_free(key_obj);
+  }
+  
   return 1;
 error:
   return 0;
 }
 
 int
-csm_service_set_signature(csm_service *s, char *signature)
+csm_service_set_signature(csm_service *s, const char *signature)
 {
   assert(IS_TREE(s->fields));
-  co_obj_t *sig_obj = co_str8_create(signature, strlen(signature) + 1, 0);
-  CHECK_MEM(sig_obj);
-  CHECK(co_tree_insert_force(s->fields,
-			     "signature",
-			     sizeof("signature"),
-			     sig_obj),
-	"Failed to insert signature into service");
+  if (signature) {
+    co_obj_t *sig_obj = co_str8_create(signature, strlen(signature) + 1, 0);
+    CHECK_MEM(sig_obj);
+    CHECK(co_tree_insert_force(s->fields,
+			       "signature",
+			       sizeof("signature"),
+			       sig_obj),
+	  "Failed to insert signature into service");
+  } else {
+    co_obj_t *sig_obj = co_tree_delete(s->fields, "signature", sizeof("signature"));
+    if (sig_obj)
+      co_obj_free(sig_obj);
+  }
   return 1;
 error:
   return 0;
 }
 
 int
-csm_service_set_version(csm_service *s, char *version)
+csm_service_set_version(csm_service *s, const char *version)
 {
   assert(IS_TREE(s->fields));
   co_obj_t *version_obj = co_str8_create(version, strlen(version) + 1, 0);
@@ -329,7 +347,7 @@ print_service(FILE *f, csm_service *s)
   txt = csm_txt_list_to_string(txt, &txt_len, icon, strlen(icon));
   CHECK_MEM(txt);
   char **categories = NULL;
-  int cat_len = _csm_categories_to_array(s, &categories);
+  int cat_len = csm_service_categories_to_array(s, &categories);
   for (int i = 0; i < cat_len; i++) {
     txt = csm_txt_list_to_string(txt, &txt_len, categories[i], strlen(categories[i]));
   }
@@ -357,6 +375,29 @@ error:
     h_free(categories);
   if (txt)
     free(txt); // alloc'd with realloc from csm_txt_list_to_string()
+}
+
+/**
+ * caller is responsible for freeing category array
+ */
+size_t
+csm_service_categories_to_array(csm_service *s, char ***cat_array)
+{
+  size_t cat_len = 0;
+  co_obj_t *cats_obj = csm_service_get_categories(s);
+  if (cats_obj) {
+    cat_len = co_list_length(cats_obj);
+    *cat_array = h_calloc(cat_len, sizeof(char*));
+    CHECK_MEM(cat_array);
+    for (int i = 0; i < cat_len; i++) {
+      co_obj_data(&(*cat_array[i]), co_list_element(cats_obj, i));
+    }
+    /* Sort types into alphabetical order */
+    qsort(*cat_array,cat_len,sizeof(char*),cmpstringp);
+  }
+  return cat_len;
+error:
+  return 0;
 }
 
 int

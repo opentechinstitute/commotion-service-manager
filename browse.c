@@ -38,10 +38,14 @@
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>
 
+#include <commotion/debug.h>
+#include <commotion/obj.h>
+#include <commotion/list.h>
+
 #include "defs.h"
 #include "service.h"
+#include "service_list.h"
 #include "browse.h"
-#include "debug.h"
 
 extern AvahiSimplePoll *simple_poll;
 
@@ -71,17 +75,17 @@ _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt)
   do { \
     char *val = NULL; \
     CHECK(avahi_string_list_get_pair(T,NULL,&val,NULL) == 0, "Failed to extract " #T " from TXT list"); \
-    CHECK(csm_service_set_##M##(S, val), "Failed to set service field %s", "M"); \
+    CHECK(csm_service_set_##M(S, val), "Failed to set service field %s", "M"); \
     avahi_free(val); \
   } while (0)
-  CSM_EXTRACT_TXT(i, name, name);
-  CSM_EXTRACT_TXT(i, uri, uri);
-  CSM_EXTRACT_TXT(i, description, description);
-  CSM_EXTRACT_TXT(i, icon, icon);
-  CSM_EXTRACT_TXT(i, signature, signature);
-  CSM_EXTRACT_TXT(i, key, fingerprint);
-  CSM_EXTRACT_TXT(i, version, version);
-#undefine CSM_EXTRACT_TXT
+  CSM_EXTRACT_TXT(s, name, name);
+  CSM_EXTRACT_TXT(s, uri, uri);
+  CSM_EXTRACT_TXT(s, description, description);
+  CSM_EXTRACT_TXT(s, icon, icon);
+  CSM_EXTRACT_TXT(s, signature, signature);
+  CSM_EXTRACT_TXT(s, key, fingerprint);
+  CSM_EXTRACT_TXT(s, version, version);
+#undef CSM_EXTRACT_TXT
   
   char *ttl_str = NULL, *lifetime_str = NULL;
   CHECK(avahi_string_list_get_pair(ttl,NULL,&ttl_str,NULL) == 0, "Failed to extract TTL from TXT list");
@@ -222,13 +226,13 @@ void browse_service_callback(
             INFO("Browser: %s: service '%s' of type '%s' in domain '%s'",event == AVAHI_BROWSER_NEW ? "NEW" : "REMOVE", uuid, type, domain);
 	    
 	    /* Lookup the service to see if it's already in our list */
-	    csm_service *found_service = find_service(ctx->service_list, uuid);
+	    csm_service *found_service = csm_find_service(ctx->service_list, uuid);
             if (event == AVAHI_BROWSER_NEW && !found_service) {
                 /* add the service.*/
 		csm_service *s = csm_service_new(interface, protocol, uuid, type, domain);
 		if (!s) {
 		  ERROR("Failed to allocate new service");
-		  return NULL;
+		  return;
 		}
 		
 		ctx->service = s;
@@ -236,12 +240,12 @@ void browse_service_callback(
 		if (!s->resolver) {
 		  csm_service_destroy(s);
 		  INFO("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
-		  return NULL;
+		  return;
 		}
             }
             if (event == AVAHI_BROWSER_REMOVE && found_service) {
                 /* remove the service.*/
-                remove_service(NULL, found_service);
+                csm_remove_service(NULL, found_service);
             }
             break;
         }

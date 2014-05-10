@@ -22,14 +22,14 @@
  * =====================================================================================
  */
 
-#include "commotion/obj.h"
-#include "commotion/list.h"
-#include "commotion/tree.h"
-#include "commotion.h"
+#include <commotion/debug.h>
+#include <commotion/obj.h>
+#include <commotion/list.h>
+#include <commotion/tree.h>
+#include <commotion.h>
 
 #include "extern/halloc.h"
 
-#include "debug.h"
 #include "defs.h"
 #include "commotion-service-manager.h"
 
@@ -49,16 +49,22 @@ error:
 
 #define SERVICE_SET_STR(M) \
 int \
-service_set_##M##(CSMService *s, char const *m) \
+service_set_##M(CSMService *s, char const *m) \
 { \
   CHECK(IS_TREE(s),"Not a valid service"); \
-  co_obj_t *o = co_str8_create(m, strlen(m) + 1, 0); \
-  CHECK_MEM(o); \
-  CHECK(co_tree_insert_force(s, \
-			     "M", \
-			     sizeof("M"), \
-			     o), \
-	"Failed to insert M into service"); \
+  if (m) { \
+    co_obj_t *o = co_str8_create(m, strlen(m) + 1, 0); \
+    CHECK_MEM(o); \
+    CHECK(co_tree_insert_force(s, \
+			      "M", \
+			      sizeof("M"), \
+			      o), \
+	  "Failed to insert M into service"); \
+  } else { \
+    co_obj_t *val = co_tree_delete(s, "M", sizeof("M")); \
+    if (val) \
+      co_obj_free(val); \
+  } \
   return 1; \
 error: \
   return 0; \
@@ -67,7 +73,7 @@ SERVICE_SET_STR(name);
 SERVICE_SET_STR(description);
 SERVICE_SET_STR(uri);
 SERVICE_SET_STR(icon);
-#undefine SERVICE_SET_STR
+#undef SERVICE_SET_STR
 
 int
 service_set_ttl(CSMService *service, int ttl)
@@ -101,19 +107,25 @@ error:
 
 int service_set_categories(CSMService *service, char const * const *categories, size_t cat_len) {
   CHECK(IS_TREE(service),"Not a valid service");
-  CHECK(cat_len < UINT16_MAX,"Too many categories");
-  co_obj_t *category_list = co_list16_create();
-  CHECK_MEM(category_list);
-  for (int i = 0; i < cat_len; i++) {
-    co_obj_t *category = co_str8_create(categories[i],strlen(categories[i])+1,0);
-    CHECK_MEM(category);
-    CHECK(co_list_append(category_list,category),"Failed to insert category");
+  CHECK(cat_len < UINT16_MAX && cat_len >= 0,"Too many categories/invalid category count");
+  if (cat_len) {
+    co_obj_t *category_list = co_list16_create();
+    CHECK_MEM(category_list);
+    for (int i = 0; i < cat_len; i++) {
+      co_obj_t *category = co_str8_create(categories[i],strlen(categories[i])+1,0);
+      CHECK_MEM(category);
+      CHECK(co_list_append(category_list,category),"Failed to insert category");
+    }
+    CHECK(co_tree_insert_force(service,
+			      "categories",
+			      sizeof("categories"),
+			      category_list),
+	  "Failed to insert categories into service");
+  } else {
+    co_obj_t *cat_obj = co_tree_delete(service, "categories", sizeof("categories"));
+    if (cat_obj)
+      co_obj_free(cat_obj);
   }
-  CHECK(co_tree_insert_force(service,
-			     "categories",
-			     sizeof("categories"),
-			     category_list),
-	"Failed to insert categories into service");
   return 1;
 error:
   return 0;
@@ -121,13 +133,14 @@ error:
 
 int service_add_category(CSMService *service, char const *category) {
   CHECK(IS_TREE(service),"Not a valid service");
+  CHECK(category, "Invalid category");
   if (!IS_LIST(co_tree_find(service,"categories",sizeof("categories")))) {
     CHECK(service_set_categories(service,&category,1),"Failed to add category");
   } else {
     co_obj_t *category_obj = co_str8_create(category,strlen(category)+1,0);
     CHECK_MEM(category_obj);
     CHECK(co_list_append(co_tree_find(service,"categories",sizeof("categories")),
-			 category_obj,
+			 category_obj),
 	  "Failed to add category");
   }
   return 1;

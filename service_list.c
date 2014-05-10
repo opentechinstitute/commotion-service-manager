@@ -35,9 +35,10 @@
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>
 
-#include "commotion/obj.h"
-#include "commotion/profile.h"
-#include "commotion.h"
+#include <commotion/debug.h>
+#include <commotion/obj.h>
+#include <commotion/profile.h>
+#include <commotion/list.h>
 
 #ifdef USE_UCI
 #include <uci.h>
@@ -46,7 +47,6 @@
 
 #include "defs.h"
 #include "browse.h"
-#include "debug.h"
 #include "util.h"
 #include "service.h"
 #include "service_list.h"
@@ -60,32 +60,8 @@ extern AvahiServer *server;
 extern struct csm_config csm_config;
 #endif
 
-/** 
- * libcommotion object extended type for CSM services 
- * (used for storing in lists) 
- */
-typedef struct {
-  co_obj_t _header;
-  uint8_t _exttype;
-  uint8_t _len;
-  csm_service *service;
-} co_service_t;
 
-#define _service 1337
-
-#define IS_SERVICE(J) (IS_EXT(J) && ((co_service_t *)J)->_exttype == _service)
-
-static co_obj_t *co_service_create(csm_service *service) {
-  co_service_t *output = h_calloc(1,sizeof(co_service_t));
-  CHECK_MEM(output);
-  output->_header._type = _ext8;
-  output->_exttype = _service;
-  output->_len = (sizeof(co_service_t));
-  output->service = service;
-  return (co_obj_t*)output;
-error:
-  return NULL;
-}
+extern AvahiSimplePoll *simple_poll;
 
 /* Private */
 
@@ -102,8 +78,8 @@ _csm_services_commit_i(co_obj_t *list, co_obj_t *current, void *context)
   return NULL;
 }
 
-co_obj_t *
-_csm_find_service_i(co_obj_t *list, *co_obj_t *current, void *context)
+static co_obj_t *
+_csm_find_service_i(co_obj_t *list, co_obj_t *current, void *context)
 {
   if (IS_LIST(current)) return NULL;
   
@@ -127,6 +103,16 @@ _csm_expire_service(AvahiTimeout *t, void *userdata)
   if (!csm_remove_service(services, s))
     ERROR("Error expiring service %s", s->uuid);
   csm_service_destroy(s);
+}
+
+static co_obj_t *
+_csm_service_list_find_service(co_obj_t *list, co_obj_t *current, void *context)
+{
+  if (IS_LIST(current)) return NULL;
+  csm_service *srv_ptr = (csm_service*)context;
+  if (((co_service_t*)current)->service == srv_ptr)
+    return current;
+  return NULL;
 }
 
 /* Public */
@@ -164,10 +150,22 @@ csm_services_destroy(csm_service_list *services)
   h_free(services);
 }
 
+size_t
+csm_services_length(csm_service_list *services)
+{
+  size_t fields_len = co_list_length(services->service_fields);
+  size_t services_len = co_list_length(services->services);
+  if (fields_len != services_len) {
+    ERROR("Inconsistent service list length");
+    return 0;
+  }
+  return fields_len;
+}
+
 int
 csm_services_commit(csm_service_list *services)
 {
-  CHECK(co_list_parse(services, _csm_services_commit_i, services->services) == NULL,
+  CHECK(co_list_parse(services->services, _csm_services_commit_i, services->services) == NULL,
 	"Error committing service");
   return 1;
 error:
@@ -182,7 +180,7 @@ error:
 int
 csm_services_register_commit_hook(csm_service_list *services, co_cb_t handler)
 {
-  co_cbptr_t *callback = h_calloc(1, sizeof(co_cbptr_t)));
+  co_cbptr_t *callback = h_calloc(1, sizeof(co_cbptr_t));
   CHECK_MEM(callback);
   callback->_header._type = _ext8;
   callback->_header._ref = 0;
@@ -260,7 +258,7 @@ csm_update_service(csm_service_list *services, csm_service *service)
     service->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll),
 								       &tv,
 								       _csm_expire_service,
-								       s);
+								       service);
     /* Convert lifetime period into timestamp */
     if (current_time != ((time_t)-1)) {
       struct tm *timestr = localtime(&current_time);
@@ -295,7 +293,7 @@ error:
 csm_service *
 csm_find_service(csm_service_list *services, const char *uuid)
 {
-  co_obj_t *match = co_list_parse(services->services, _csm_find_service_i, uuid);
+  co_obj_t *match = co_list_parse(services->services, _csm_find_service_i, (char*)uuid);
   if (match)
     return ((co_service_t*)match)->service;
   return NULL;
@@ -312,15 +310,19 @@ csm_remove_service(csm_service_list *services, csm_service *s)
   
   // find associated fields obj, dettach it from service_list's tree, and
   // reattach it to the original csm_service
-  co_obj_t *fields = service->fields;
+  co_obj_t *fields = s->fields;
   if (fields && services && co_list_contains(services->service_fields, fields)) {
     co_list_delete(services->service_fields, fields);
     hattach(s->fields, s);
   }
   
   // remove service from service list
-  if (services && co_list_contains(services->services, s))
-    co_list_delete(services->services, s);
+  
+  if (services) {
+    co_obj_t *service_obj = co_list_parse(services->services, _csm_service_list_find_service, s);
+    if (service_obj)
+      co_list_delete(services->services, service_obj);
+  }
   
   // finalize removal by running update handlers
   if (services)
@@ -338,6 +340,7 @@ csm_print_services(csm_service_list *services)
 /**
  * Check if a service uuid is in the current list of local services
  */
+#if 0
 ServiceInfo *
 find_service(const char *uuid)
 {
@@ -348,6 +351,7 @@ find_service(const char *uuid)
     
   return NULL;
 }
+#endif
 
 #if 0
 /**

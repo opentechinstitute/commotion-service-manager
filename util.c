@@ -32,9 +32,10 @@
 
 #include <avahi-core/core.h>
 
+#include <commotion/debug.h>
+
 #include "defs.h"
 #include "util.h"
-#include "debug.h"
 
 #include "extern/base32.h"
 

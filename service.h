@@ -25,10 +25,19 @@
 #ifndef CSM_SERVICE_H
 #define CSM_SERVICE_H
 
+#include <avahi-common/address.h>
+#include <avahi-common/watch.h>
+
+#include <commotion/obj.h>
+
+#include "defs.h"
+
+struct csm_service_list;
+
 typedef struct csm_service {
   /** Common members for all services */
   co_obj_t *fields; // co_tree16_t map of user-defined service fields
-  csm_service_list *parent;
+  struct csm_service_list *parent;
   
   AvahiIfIndex interface;
   AvahiProtocol protocol;
@@ -68,20 +77,38 @@ char *csm_service_get_key(csm_service *s);
 char *csm_service_get_signature(csm_service *s);
 char *csm_service_get_version(csm_service *s);
 
-int csm_service_set_name(csm_service *s, char *str);
-int csm_service_set_description(csm_service *s, char *str);
-int csm_service_set_uri(csm_service *s, char *str);
-int csm_service_set_icon(csm_service *s, char *str);
+int csm_service_set_name(csm_service *s, const char *str);
+int csm_service_set_description(csm_service *s, const char *str);
+int csm_service_set_uri(csm_service *s, const char *str);
+int csm_service_set_icon(csm_service *s, const char *str);
 int csm_service_set_categories(csm_service *s, co_obj_t *categories);
 int csm_service_set_ttl(csm_service *s, int ttl);
 int csm_service_set_lifetime(csm_service *s, long lifetime);
-int csm_service_set_key(csm_service *s, char *str);
-int csm_service_set_signature(csm_service *s, char *str);
-int csm_service_set_version(csm_service *s, char *str);
+int csm_service_set_key(csm_service *s, const char *str);
+int csm_service_set_signature(csm_service *s, const char *str);
+int csm_service_set_version(csm_service *s, const char *str);
 
 void print_service(FILE *f, csm_service *s);
+size_t csm_service_categories_to_array(csm_service *s, char ***cat_array);
 
 int verify_signature(csm_service *service);
 int create_signature(csm_service *service);
+
+/** 
+ * libcommotion object extended type for CSM services 
+ * (used for storing in lists) 
+ */
+typedef struct {
+  co_obj_t _header;
+  uint8_t _exttype;
+  uint8_t _len;
+  csm_service *service;
+} co_service_t;
+
+#define _service 254
+
+#define IS_SERVICE(J) (IS_EXT(J) && ((co_service_t *)J)->_exttype == _service)
+
+co_obj_t *co_service_create(csm_service *service);
 
 #endif
