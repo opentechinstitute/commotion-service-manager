@@ -25,8 +25,14 @@
 #ifndef CSM_INTERNAL_H
 #define CSM_INTERNAL_H
 
+#ifdef CLIENT
 #include <avahi-client/publish.h>
 #include <avahi-client/lookup.h>
+#else
+#include <avahi-core/core.h>
+#include <avahi-core/lookup.h>
+#include <avahi-core/publish.h>
+#endif
 #include <avahi-common/address.h>
 #include <avahi-common/watch.h>
 #include <avahi-common/strlst.h>

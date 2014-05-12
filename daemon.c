@@ -33,6 +33,7 @@
 #include <avahi-common/error.h>
 #include <avahi-common/malloc.h>
 #include <avahi-common/simple-watch.h>
+#include <avahi-common/alternative.h>
 
 #include <commotion/debug.h>
 #include <commotion/cmd.h>
@@ -49,6 +50,9 @@
 #include "service_list.h"
 #include "browse.h"
 #include "publish.h"
+#if USE_UCI
+#include "uci-utils.h"
+#endif
 #include "commotion-service-manager.h"
 
 #define REQUEST_MAX 1024
@@ -881,6 +885,11 @@ int main(int argc, char*argv[]) {
 									  AVAHI_WATCH_IN | AVAHI_WATCH_HUP, 
 									  request_handler, 
 									  &ctx);
+    
+#if USE_UCI
+    CHECK(csm_services_register_commit_hook(ctx.service_list, uci_service_updater),
+	  "Failed to add UCI commit handler");
+#endif
     
     /* Run the main loop */
     avahi_simple_poll_loop(simple_poll);

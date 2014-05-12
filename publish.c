@@ -127,13 +127,18 @@ int
 csm_unpublish_service(csm_service *s, csm_ctx *ctx)
 {
   if (!s->address && s->group) { // only remote services have address set
-    CHECK(ENTRY_GROUP_RESET(s->group) == AVAHI_OK, "Failed to reset entry group");
+#ifdef CLIENT
+    if (avahi_entry_group_reset(s->group) != AVAHI_OK) {
+      ERROR("Failed to reset entry group");
+      return 0;
+    }
+#else
+    avahi_s_entry_group_reset(s->group);
+#endif
     ENTRY_GROUP_FREE(s->group);
     s->uptodate = 0;
   }
   return 1;
-error:
-  return 0;
 }
 
 int

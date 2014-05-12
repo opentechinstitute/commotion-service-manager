@@ -32,6 +32,8 @@
 #include <uci.h>
 
 #include <commotion/debug.h>
+#include <commotion/obj.h>
+#include <commotion/list.h>
 
 #include "defs.h"
 #include "uci-utils.h"
@@ -49,9 +51,59 @@
     int uci_ret = F(C, &sec_ptr); \
     UCI_CHECK(uci_ret == 0,"Failed to set UCI field " #FLD); \
   } while (0)
-#define UCI_SET(C,SRV,FLD,VAL) _UCI_SET(uci_set,SRV,FLD,VAL)
-#define UCI_SET_STR(C,SRV,FLD) UCI_SET(C,SRV,FLD,csm_service_get_##FLD##(SRV))
-#define UCI_SET_CAT(C,SRV,CAT) _UCI_SET(uci_add_list,SRV,type,CAT)
+#define UCI_SET(C,SRV,FLD,VAL) _UCI_SET(uci_set,C,SRV,FLD,VAL)
+#define UCI_SET_STR(C,SRV,FLD) UCI_SET(C,SRV,FLD,csm_service_get_##FLD(SRV))
+#define UCI_SET_CAT(C,SRV,CAT) _UCI_SET(uci_add_list,C,SRV,type,CAT)
+
+static co_obj_t *
+_uci_write_service(co_obj_t *list, co_obj_t *current, void *context)
+{
+  if (IS_LIST(current)) return NULL;
+  assert(IS_SERVICE(current));
+  co_service_t *s = (co_service_t*)current;
+  CHECK(uci_write(s->service), "Failed to write service %s", s->service->uuid);
+  return NULL;
+error:
+  return current;
+}
+
+/**
+ * data and output not used
+ */
+int
+uci_service_updater(co_obj_t *data, co_obj_t **output, co_obj_t *service_list)
+{
+  assert(IS_LIST(service_list));
+  int ret = 0;
+  struct uci_package *pkg = NULL;
+  struct uci_context *c = uci_alloc_context();
+  CHECK_MEM(c);
+  
+  // delete current services in UCI
+  uci_load(c, "applications", &pkg);
+  CHECK(pkg, "Failed to load applications");
+  struct uci_element *e = NULL, *tmp = NULL;
+  struct uci_list *section_list = &pkg->sections;
+  uci_foreach_element_safe(section_list, tmp, e) {
+    struct uci_section *section = uci_to_section(e);
+    if (strcmp(section->type,"application") == 0) {
+      struct uci_ptr ptr = {
+	.p = pkg,
+	.s = section,
+      };
+      CHECK(uci_delete(c, &ptr) == 0, "Failed to delete application");
+    }
+  }
+  
+  // write out all services using uci_write
+  CHECK(co_list_parse(service_list, _uci_write_service, NULL) == NULL,
+	"Failed to write service list to UCI");
+  
+  ret =  1;
+error:
+  if (c) uci_free_context(c);
+  return ret;
+}
 
 /** 
  * Lookup a UCI section or option
@@ -159,15 +211,15 @@ int uci_write(csm_service *s) {
   UCI_SET_STR(c,s,description);
   UCI_SET_STR(c,s,icon);
   UCI_SET_STR(c,s,signature);
-  UCI_SET_STR(c,s,fingerprint);
+  UCI_SET(c,s,fingerprint,csm_service_get_key(s));
   UCI_SET_STR(c,s,version);
   UCI_SET(c,s,uuid,s->uuid);
   
   char *ttl_str = NULL, *lifetime_str = NULL;
   CHECK_MEM(asprintf(&ttl_str, "%d", csm_service_get_ttl(s)) != -1);
   CHECK_MEM(asprintf(&lifetime_str, "%ld", csm_service_get_lifetime(s)) != -1);
-  UCI_SET(c,i,ttl,ttl_str);
-  UCI_SET(c,i,lifetime,lifetime_str);
+  UCI_SET(c,s,ttl,ttl_str);
+  UCI_SET(c,s,lifetime,lifetime_str);
   
   /* set type_ptr to lookup the 'type' list */
   co_obj_t *cat_obj = csm_service_get_categories(s);
@@ -179,14 +231,14 @@ int uci_write(csm_service *s) {
       type_state = NO_TYPE_MATCHES;
       if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
 	uci_foreach_element(&(type_ptr.o->v.list), e) {
-	  if (!strcmp(e->name, co_list_element(cat_obj, j))) {
+	  if (!strcmp(e->name, _LIST_ELEMENT(cat_obj, j))) {
 	    type_state = TYPE_MATCH_FOUND;
 	    break;
 	  }
 	}
       }
       if (type_state != TYPE_MATCH_FOUND)
-	UCI_SET_CAT(c, s, co_list_element(cat_obj, j));
+	UCI_SET_CAT(c, s, _LIST_ELEMENT(cat_obj, j));
     }
   }
   

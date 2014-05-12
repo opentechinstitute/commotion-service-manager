@@ -25,11 +25,16 @@
 #ifndef UCI_UTILS_H
 #define UCI_UTILS_H
 
+#include <uci.h>
+
 #include "defs.h"
+#include "service.h"
 
 #ifndef UCIPATH
 #define UCIPATH "/etc/config"
 #endif
+
+int uci_service_updater(co_obj_t *data, co_obj_t **output, co_obj_t *service_list);
 
 /**
  * Remove a service from UCI

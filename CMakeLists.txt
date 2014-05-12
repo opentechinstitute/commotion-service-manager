@@ -16,7 +16,7 @@ SET(CSM_PROTO_VERSION \"1.1\")
 
 CONFIGURE_FILE( "${CMAKE_SOURCE_DIR}/config.h.in" "${PROJECT_SOURCE_DIR}/config.h" )
 
-ADD_DEFINITIONS(-Os -Wall --std=gnu99 -fms-extensions -Wmissing-declarations -D_GNU_SOURCE -DUSESYSLOG -DCLIENT -DNDEBUG -DHAVE_STDINT_H)
+ADD_DEFINITIONS(-Os -Wall --std=gnu99 -Wmissing-declarations -DUSESYSLOG -DCLIENT -DNDEBUG -DHAVE_STDINT_H)
 
 IF(DEBUG)
   ADD_DEFINITIONS(-g3)
@@ -34,29 +34,32 @@ SET(DAEMONSRC defs.h service.h service.c service_list.h service_list.c commotion
 SET(LIBSRC defs.h commotion-service-manager.h commotion-service-manager.c)
 # SET(CLIENTSRC client.c ${LIBSRC})
 
-ADD_EXECUTABLE(daemon ${DAEMONSRC})
-ADD_LIBRARY(library SHARED ${LIBSRC})
-# ADD_EXECUTABLE(client ${CLIENTSRC})
-
-TARGET_LINK_LIBRARIES(daemon commotion commotion_serval-sas avahi-core avahi-common m)
-TARGET_LINK_LIBRARIES(library commotion)
-# TARGET_LINK_LIBRARIES(client commotion-service-manager)
+SET(DAEMONLIBS commotion commotion_serval-sas avahi-core avahi-common m)
+SET(LIBLIBS commotion)
 
 IF(OPENWRT OR LUCI)
   ADD_DEFINITIONS(-DUSE_UCI)
   SET(DAEMONSRC ${DAEMONSRC} uci-utils.h uci-utils.c)
-  TARGET_LINK_LIBRARIES(daemon uci)
+  SET(DAEMONLIBS ${DAEMONLIBS} uci)
 ENDIF()
 
 IF(OPENWRT)
   ADD_DEFINITIONS(-DOPENWRT)
   REMOVE_DEFINITIONS(-DCLIENT)
 ELSE()
-  TARGET_LINK_LIBRARIES(daemon avahi-client)
+  SET(DAEMONLIBS ${DAEMONLIBS} avahi-client)
   IF(LUCI)
     ADD_DEFINITIONS(-DUCIPATH="\"/opt/luci-commotion/etc/config\"")
   ENDIF()
 ENDIF()
+
+ADD_EXECUTABLE(daemon ${DAEMONSRC})
+ADD_LIBRARY(library SHARED ${LIBSRC})
+# ADD_EXECUTABLE(client ${CLIENTSRC})
+
+TARGET_LINK_LIBRARIES(daemon ${DAEMONLIBS})
+TARGET_LINK_LIBRARIES(library ${LIBLIBS})
+# TARGET_LINK_LIBRARIES(client commotion-service-manager)
 
 SET_TARGET_PROPERTIES(daemon PROPERTIES OUTPUT_NAME commotion-service-manager)
 # SET_TARGET_PROPERTIES(client PROPERTIES OUTPUT_NAME csm-client)

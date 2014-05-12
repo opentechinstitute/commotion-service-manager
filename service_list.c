@@ -60,8 +60,8 @@ extern AvahiServer *server;
 extern struct csm_config csm_config;
 #endif
 
-
 extern AvahiSimplePoll *simple_poll;
+extern struct csm_config csm_config;
 
 /* Private */
 
@@ -109,6 +109,7 @@ static co_obj_t *
 _csm_service_list_find_service(co_obj_t *list, co_obj_t *current, void *context)
 {
   if (IS_LIST(current)) return NULL;
+  assert(IS_SERVICE(current));
   csm_service *srv_ptr = (csm_service*)context;
   if (((co_service_t*)current)->service == srv_ptr)
     return current;
@@ -165,7 +166,7 @@ csm_services_length(csm_service_list *services)
 int
 csm_services_commit(csm_service_list *services)
 {
-  CHECK(co_list_parse(services->services, _csm_services_commit_i, services->services) == NULL,
+  CHECK(co_list_parse(services->update_handlers, _csm_services_commit_i, services->services) == NULL,
 	"Error committing service");
   return 1;
 error:
@@ -276,11 +277,6 @@ csm_update_service(csm_service_list *services, csm_service *service)
   
   // TODO move this to service_list_commit()
   // TODO or better yet, register a uci_write function with commit_hook_register()
-#ifdef USE_UCI
-  /* Write out service to UCI */
-  if (csm_config.uci && uci_write(i) == 0)
-    ERROR("(Resolver) Could not write to UCI");
-#endif
   
   // finalize service by running update handlers
   csm_services_commit(services);
