@@ -34,6 +34,18 @@
 
 struct csm_service_list;
 
+struct csm_service_local {
+  ENTRY_GROUP *group;
+  int uptodate;
+};
+
+struct csm_service_remote {
+  char *host_name;
+  char address[AVAHI_ADDRESS_STR_MAX];
+  AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
+  RESOLVER *resolver;
+};
+
 typedef struct csm_service {
   /** Common members for all services */
   co_obj_t *fields; // co_tree16_t map of user-defined service fields
@@ -47,7 +59,19 @@ typedef struct csm_service {
   uint16_t port;
   char *expiration;
   AvahiTimeout *timeout; /** Timer set for the service's expiration date */
+  int local;
   
+  // the following members point to data contained in the .fields list;
+  char *key;
+  char *signature;
+  int *ttl;
+  long *lifetime;
+  
+  union {
+    struct csm_service_local l;
+    struct csm_service_remote r;
+  };
+#if 0
   /** Local services only */
   ENTRY_GROUP *group;
   int uptodate;
@@ -57,6 +81,7 @@ typedef struct csm_service {
   char address[AVAHI_ADDRESS_STR_MAX];
   AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
   RESOLVER *resolver;
+#endif
 } csm_service;
 
 csm_service *csm_service_new(AvahiIfIndex interface,
@@ -65,6 +90,23 @@ csm_service *csm_service_new(AvahiIfIndex interface,
 			     const char *type,
 			     const char *domain);
 void csm_service_destroy(csm_service *s);
+
+// TODO do we want this type safety, or just use void * or co_obj_t *?
+// TODO can we get rid of int/long distinction, and specify bit length?
+char *csm_service_get_str(const csm_service *s, const char *field);
+co_obj_t *csm_service_get_list(const csm_service *s, const char *field);
+int csm_service_get_int(const csm_service *s, const char *field);
+long csm_service_get_long(const csm_service *s, const char *field);
+
+int csm_service_set_str(csm_service *s, const char *field, const char *str);
+int csm_service_set_list(csm_service *s, const char *field, co_obj_t *list);
+int csm_service_set_int(csm_service *s, const char *field, int n);
+int csm_service_set_long(csm_service *s, const char *field, long n);
+
+
+
+
+
 
 char *csm_service_get_name(csm_service *s);
 char *csm_service_get_description(csm_service *s);

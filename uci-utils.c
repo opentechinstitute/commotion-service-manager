@@ -34,10 +34,13 @@
 #include <commotion/debug.h>
 #include <commotion/obj.h>
 #include <commotion/list.h>
+#include <commotion/tree.h>
+#include <commotion.h>
 
 #include "defs.h"
-#include "uci-utils.h"
 #include "util.h"
+#include "cmd.h"
+#include "uci-utils.h"
 
 #define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
 #define UCI_WARN(M, ...) char *err = NULL; uci_get_errorstr(c,&err,NULL); WARN(M ": %s", ##__VA_ARGS__, err); free(err);
@@ -53,7 +56,7 @@
   } while (0)
 #define UCI_SET(C,SRV,FLD,VAL) _UCI_SET(uci_set,C,SRV,FLD,VAL)
 #define UCI_SET_STR(C,SRV,FLD) UCI_SET(C,SRV,FLD,csm_service_get_##FLD(SRV))
-#define UCI_SET_CAT(C,SRV,CAT) _UCI_SET(uci_add_list,C,SRV,type,CAT)
+#define UCI_SET_CAT(C,SRV,CAT) _UCI_SET(uci_add_list,C,SRV,categories,CAT)
 
 static co_obj_t *
 _uci_write_service(co_obj_t *list, co_obj_t *current, void *context)
@@ -78,6 +81,8 @@ uci_service_updater(co_obj_t *data, co_obj_t **output, co_obj_t *service_list)
   struct uci_package *pkg = NULL;
   struct uci_context *c = uci_alloc_context();
   CHECK_MEM(c);
+  
+  uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
   
   // delete current services in UCI
   uci_load(c, "applications", &pkg);
@@ -153,6 +158,107 @@ error:
   return ret;
 }
 
+void
+uci_read(AvahiTimeout *t, void *userdata)
+{
+  csm_ctx *ctx = (csm_ctx*)userdata;
+//   int ret = 0;
+  CHECK(ctx && ctx->service_list, "Uninitialized context");
+  struct uci_context *c = NULL;
+  struct uci_package *pkg = NULL;
+  co_obj_t *fields = NULL, *params = NULL, *verdict = NULL;
+  
+  c = uci_alloc_context();
+  CHECK_MEM(c);
+  
+  uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
+  
+  uci_load(c, "applications", &pkg);
+  CHECK(pkg, "Failed to load applications");
+  struct uci_element *e = NULL;
+  struct uci_list *section_list = &pkg->sections;
+  uci_foreach_element(section_list, e) {
+    struct uci_section *section = uci_to_section(e);
+    if (strcmp(section->type,"application") == 0) {
+      fields = co_tree16_create();
+      CHECK_MEM(fields);
+      struct uci_list *option_list = &section->options;
+      struct uci_element *o = NULL;
+      uci_foreach_element(option_list, o) {
+	struct uci_option *option = uci_to_option(o);
+	if (option->type == UCI_TYPE_STRING) {
+	  CHECK(strlen(option->v.string) + strlen(o->name) < 256, "Service option length too long");
+	  co_obj_t *val = NULL;
+	  if (strcmp(o->name, "lifetime") == 0) {
+	    val = co_uint32_create(atol(option->v.string),0);
+	  } else if (strcmp(o->name, "ttl") == 0) {
+	    val = co_uint8_create(atoi(option->v.string),0);
+	  } else {
+	    val = co_str8_create(option->v.string, strlen(option->v.string) + 1, 0);
+	  }
+	  CHECK_MEM(val);
+	  if (strcmp(o->name, "fingerprint") == 0)
+	    CHECK(co_tree_insert(fields, "key", sizeof("key"), val), "Failed to add fingeprint to new service");
+	  else
+	    CHECK(co_tree_insert(fields, o->name, strlen(o->name) + 1, val), "Failed to add field to new service");
+	  DEBUG("Read service field %s : %s", o->name, option->v.string);
+	} else { // option->type == UCI_TYPE_LIST
+	  struct uci_element *l = NULL;
+	  co_obj_t *list = co_tree_find(fields, o->name, strlen(o->name) + 1);
+	  if (!list) {
+	    list = co_list16_create();
+	    CHECK_MEM(list);
+	  }
+	  uci_foreach_element(&option->v.list, l) {
+	    struct uci_option *list_option = uci_to_option(l);
+	    CHECK(list_option->type == UCI_TYPE_STRING, "Invalid list option type");
+	    CHECK(strlen(l->name) + strlen(o->name) < 256, "Service list option length too long");
+	    co_obj_t *list_val = co_str8_create(l->name, strlen(l->name) + 1, 0);
+	    CHECK_MEM(list_val);
+	    CHECK(co_list_append(list, list_val), "Failed to add list field to new service");
+	    DEBUG("Read service list field %s : %s", o->name, l->name);
+	  }
+	  if (strcmp(o->name, "type") == 0)
+	    CHECK(co_tree_insert(fields, "categories", sizeof("categories"), list), "Failed to add categories to new service");
+	  else
+	    CHECK(co_tree_insert(fields, o->name, strlen(o->name) + 1, list), "Failed to add list field to new service");
+	}
+      }
+      // if service has local=1, create co_list = [ctx, service_fields] and call cmd_commit_service() (which will do service validation)
+      co_obj_t *local = co_tree_find(fields,"local",sizeof("local"));
+      if (local && strcmp(co_obj_data_ptr(local), "1") == 0) {
+	verdict = NULL;
+	params = co_list16_create();
+	CHECK_MEM(params);
+	co_obj_t *ctx_obj = co_ctx_create(ctx);
+	CHECK_MEM(ctx_obj);
+	CHECK(co_list_append(params, ctx_obj), "Failed to append ctx to command params");
+	CHECK(co_list_append(params, fields), "Failed to append service fields to command params");
+	fields = NULL;
+	CHECK(cmd_commit_service(NULL, &verdict, params), "Failed to commit service from UCI");
+	bool result;
+	CHECK(co_response_get_bool(verdict, &result, "success", sizeof("success")), "Failed to fetch result from command");
+	CHECK(result, "Error committing service from UCI");
+	char *key = NULL;
+	CHECK(co_response_get_str(verdict, &key, "key", sizeof("key")), "Failed to fetch key from response");
+	INFO("Successfully added local service with key %s", key);
+      }
+    }
+  }
+  
+//   ret = 1;
+error:
+  if (c)
+    uci_free_context(c);
+  if (fields)
+    co_obj_free(fields);
+  if (params)
+    co_obj_free(params);
+  if (verdict)
+    co_obj_free(verdict);
+//   return ret;
+}
+
 int uci_write(csm_service *s) {
   struct uci_context *c = NULL;
   struct uci_ptr sec_ptr,sig_ptr,type_ptr;
@@ -214,6 +320,8 @@ int uci_write(csm_service *s) {
   UCI_SET(c,s,fingerprint,csm_service_get_key(s));
   UCI_SET_STR(c,s,version);
   UCI_SET(c,s,uuid,s->uuid);
+  if (s->local)
+    UCI_SET(c,s,local,"1");
   
   char *ttl_str = NULL, *lifetime_str = NULL;
   CHECK_MEM(asprintf(&ttl_str, "%d", csm_service_get_ttl(s)) != -1);
@@ -271,7 +379,7 @@ int uci_write(csm_service *s) {
   UCI_CHECK(uci_commit(c,&pak,false) == UCI_OK,"(UCI) Failed to commit");
   INFO("(UCI) Commit succeeded");
 
-  ret = 0;
+  ret = 1;
   
 error:
   if (c) uci_free_context(c);
@@ -281,138 +389,6 @@ error:
     free(lifetime_str);
   return ret;
 }
-
-#if 0
-/**
- * Write a service to UCI
- * @param i ServiceInfo object of the service
- * @return 0=success, -1=fail
- */
-int uci_write(ServiceInfo *i) {
-  struct uci_context *c = NULL;
-  struct uci_ptr sec_ptr,sig_ptr,type_ptr;
-#ifdef OPENWRT
-  struct uci_ptr approved_ptr;
-#endif
-  int ret = 0;
-  struct uci_package *pak = NULL;
-  struct uci_element *e = NULL;
-  enum {
-    NO_TYPE_SECTION,
-    NO_TYPE_MATCHES,
-    TYPE_MATCH_FOUND,
-  };
-  int type_state = NO_TYPE_SECTION;
-  
-  assert(i);
-  
-  c = uci_alloc_context();
-  CHECK_MEM(c);
-  
-  uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
-
-  /* Lookup application by name (concatenation of URI + port) */
-  CHECK(get_uci_section(c,&sec_ptr,"applications",12,i->uuid,strlen(i->uuid),NULL,0) > 0, "Failed application lookup");
-  if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
-    INFO("(UCI) Found application: %s",i->uuid);
-    // check for service == fingerprint. if sig different, update it
-    CHECK(get_uci_section(c,&sig_ptr,"applications",12,i->uuid,strlen(i->uuid),"signature",9) > 0,"Failed signature lookup");
-    if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && i->signature && !strcmp(i->signature,sig_ptr.o->v.string)) {
-      // signatures equal: do nothing
-      INFO("(UCI) Signature the same, not updating");
-      ret = 1;
-      goto error;
-    }
-    // signatures differ: delete existing app
-    INFO("(UCI) Signature differs, updating");
-  } else {
-    INFO("(UCI) Application not found, creating");
-  }
-  
-  pak = sec_ptr.p;
-  memset(&sec_ptr, 0, sizeof(struct uci_ptr));
-  
-  // uci_add_section
-  sec_ptr.package = "applications";
-  sec_ptr.section = i->uuid;
-  sec_ptr.value = "application";
-  UCI_CHECK(!uci_set(c, &sec_ptr),"(UCI) Failed to set section");
-  INFO("(UCI) Section set succeeded");
-  
-  // uci set options/values
-  UCI_SET_STR(c,i,name);
-  UCI_SET_STR(c,i,uri);
-  UCI_SET_STR(c,i,description);
-  UCI_SET_STR(c,i,icon);
-  UCI_SET_STR(c,i,signature);
-  UCI_SET_STR(c,i,fingerprint);
-  UCI_SET_STR(c,i,version);
-  UCI_SET_STR(c,i,uuid);
-  
-  char *ttl_str = NULL, *lifetime_str = NULL;
-  CHECK_MEM(asprintf(&ttl_str, "%d", i->ttl) != -1);
-  CHECK_MEM(asprintf(&lifetime_str, "%ld", i->lifetime) != -1);
-  UCI_SET(c,i,ttl,ttl_str);
-  UCI_SET(c,i,lifetime,lifetime_str);
-  
-  /* set type_ptr to lookup the 'type' list */
-  CHECK(get_uci_section(c,&type_ptr,"applications",12,i->uuid,strlen(i->uuid),"type",4) > 0,"Failed type lookup");
-  for (int j = 0; j < i->cat_len; j++) {
-    // NOTE: the version of UCI packaged with LuCI doesn't have uci_del_list, so here's a workaround
-    //uci_ret = uci_del_list(c, &sec_ptr);
-    type_state = NO_TYPE_MATCHES;
-    if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
-      uci_foreach_element(&(type_ptr.o->v.list), e) {
-	if (!strcmp(e->name, i->categories[j])) {
-	  type_state = TYPE_MATCH_FOUND;
-	  break;
-	}
-      }
-    }
-    if (type_state != TYPE_MATCH_FOUND)
-      UCI_SET_CAT(c, i, i->categories[j]);
-  }
-  
-#ifdef OPENWRT
-  // For OpenWRT: check known_applications list, approved or blacklisted
-  if (get_uci_section(c,&approved_ptr,"applications",12,"known_apps",10,i->uuid,strlen(i->uuid)) == -1) {
-    WARN("(UCI) Failed known_apps lookup");
-  } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
-    if (!strcmp(approved_ptr.o->v.string,"approved")) {
-      UCI_SET(c, i, approved, "1");
-    } else if (!strcmp(approved_ptr.o->v.string,"blacklisted")) {
-      UCI_SET(c, i, approved, "0");
-    }
-  }
-#else
-  UCI_SET(c, i, approved, "1");
-#endif
-  
-  // if no type fields in new announcement, remove section from UCI (part of workaround)
-  if (type_state == NO_TYPE_SECTION) {
-    if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
-      UCI_CHECK(uci_delete(c, &type_ptr) == UCI_OK,"(UCI) Failed to delete type section");
-    }
-  }
-  
-  // uci_save
-  UCI_CHECK(uci_save(c, pak) == UCI_OK,"(UCI) Failed to save");
-  INFO("(UCI) Save succeeded");
-  
-  UCI_CHECK(uci_commit(c,&pak,false) == UCI_OK,"(UCI) Failed to commit");
-  INFO("(UCI) Commit succeeded");
-
-  ret = 0;
-  
-error:
-  if (c) uci_free_context(c);
-  if (ttl_str)
-    free(ttl_str);
-  if (lifetime_str)
-    free(lifetime_str);
-  return ret;
-}
-#endif
 
 /**
  * Remove a service from UCI
@@ -456,71 +432,6 @@ error:
   if (c) uci_free_context(c);
   return ret;
 }
-
-#if 0
-int uci_remove(ServiceInfo *i) {
-  int ret = -1;
-  struct uci_context *c = NULL;
-  struct uci_ptr sec_ptr;
-  struct uci_package *pak = NULL;
-  
-  c = uci_alloc_context();
-  uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
-  assert(c);
-  assert(i);
-  
-  /* Lookup application by UUID */
-  CHECK(get_uci_section(c,&sec_ptr,"applications",12,i->uuid,strlen(i->uuid),NULL,0) > 0, "(UCI_Remove) Failed application lookup");
-  
-  CHECK(sec_ptr.flags & UCI_LOOKUP_COMPLETE,"(UCI_Remove) Application not found: %s",i->uuid);
-  INFO("(UCI_Remove) Found application: %s",i->uuid);
-  
-  UCI_CHECK(uci_delete(c, &sec_ptr) == UCI_OK,"(UCI_Remove) Failed to delete application");
-  INFO("(UCI_Remove) Successfully deleted application");
-  
-  pak = sec_ptr.p;
-  
-  // uci_save
-  UCI_CHECK(uci_save(c, pak) == UCI_OK,"(UCI_Remove) Failed to save");
-  INFO("(UCI_Remove) Save succeeded");
-  
-  UCI_CHECK(uci_commit(c,&pak,false) == UCI_OK,"(UCI_Remove) Failed to commit");
-  INFO("(UCI_Remove) Commit succeeded");
-  
-  ret = 0;
-  
-error:
-  if (c) uci_free_context(c);
-  return ret;
-}
-#endif
-
-/** Determine if a service is local to this node
- * @param i ServiceInfo object of the service
- * @return 1=it's local, 0=it's not local, -1=error
- */
-#if 0
-int is_local(ServiceInfo *i) {
-  struct uci_ptr local_ptr;
-  int ret = -1;
-  
-  struct uci_context *c = uci_alloc_context();
-  
-  /* Make sure application isn't local to this node */
-  CHECK(get_uci_section(c,&local_ptr,"applications",12,i->uuid,strlen(i->uuid),"localapp",8) > 0, "Failed application lookup");
-  if (!(local_ptr.flags & UCI_LOOKUP_COMPLETE) || strcmp(local_ptr.o->v.string,"1") != 0) {
-    INFO("Application NOT local");
-    ret = 0;
-  } else {
-    INFO("Application is local");
-    ret = 1;
-  } 
-  
-error:
-  if (c) uci_free_context(c);
-  return ret;
-}
-#endif
 
 /** Fetch default lifetime from UCI
  * @return if applications.settings.allowpermanent==0, returns default lifetime

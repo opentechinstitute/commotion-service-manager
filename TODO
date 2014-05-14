@@ -1,12 +1,25 @@
+get required fields
+create signing template
+get/set fields according to list/non-list
+validate fields
+replace fields object with another list object
+would be nice to allow additional non-spec fields to be included
+
+maybe separate key/signature fields from rest of user-created fields, due to their functional properties?
+	- as well as ttl and lifetime?
+
+
+	
 TODO
+put input validation in service setter functions, instead of in update_service()
 don't hardcode service protocol, instead make runtime protocol configuration using config file
 create error/return code enum and use that for all return code checking
   (and create same for libcommotion return/error codes)
-hook on service commit/change to write out to UCI
 service updates registration/subscription and notifications for clients
 UCI-defaults script
 	delete /etc/avahi/services
 	read all local==1 apps in UCI to lua tables, remove all UCI apps, import lua tables into CSM (which will write out to UCI)
+	need to convert UUID
 unit tests
 pull in gtest via makefile, don't include in repo
 pare down header includes
@@ -14,6 +27,7 @@ code cleanup
 update README
 
 DONE
+hook on service commit/change to write out to UCI
 convert services and service lists into commotion objects
 update UCI functions to not use txt_lst
 actually multicast added apps

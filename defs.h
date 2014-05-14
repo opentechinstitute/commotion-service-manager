@@ -38,6 +38,8 @@
 #include <avahi-common/strlst.h>
 #include <avahi-common/llist.h>
 
+#include <commotion/obj.h>
+
 #include "extern/halloc.h"
 
 #include "config.h"
@@ -50,17 +52,6 @@
 #define UUID_LEN 52
 
 #define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
-
-#if 0
-#define CSM_SET(I,M,S) \
-  do { \
-    I->M = halloc(I->M, strlen(S) + 1); \
-    CHECK_MEM(I->M); \
-    memset(I->M, 0, strlen(S) + 1); \
-    hattach(I->M, I); \
-    strcpy(I->M, S); \
-  } while (0)
-#endif
   
 #ifdef CLIENT
 
@@ -114,7 +105,7 @@ struct csm_config {
   int nodaemon;
   char *output_file;
   char *pid_file;
-  char *sid;
+  char *proto_file;
 };
 
 struct csm_service;
@@ -131,50 +122,31 @@ typedef struct {
   struct csm_service *service;
 } csm_ctx;
 
-#if 0
-typedef struct ServiceTXTFields {
-  char *name;
-  char *description;
-  char *uri;
-  char *icon;
-  char **categories;
-  int cat_len;
-  int ttl;
-  long lifetime;
-  char *key;
-  char *signature;
-  char *version;
-} ServiceTXTFields;
+/** 
+ * libcommotion object extended type for CSM contexts
+ * (used for storing in lists) 
+ */
+typedef struct {
+  co_obj_t _header;
+  uint8_t _exttype;
+  uint8_t _len;
+  csm_ctx *ctx;
+} co_ctx_t;
 
-typedef struct ServiceInfo {
-  /** Common members for all services */
-  AvahiIfIndex interface;
-  AvahiProtocol protocol;
-  char *uuid;
-  char *type;
-  char *domain;
-  uint16_t port;
-  union {
-    ServiceTXTFields fields;
-    ServiceTXTFields;
-  };
-  char *expiration;
-  AvahiTimeout *timeout; /** Timer set for the service's expiration date */
-  int resolved; /**< Flag indicating whether all the fields have been resolved */
+#define _ctx 253
 
-  /** Local services */
-  ENTRY_GROUP *group;
-  int uptodate;
+#define IS_CTX(J) (IS_EXT(J) && ((co_ctx_t *)J)->_exttype == _ctx)
 
-  /** Remote services */
-  char *host_name;
-  char address[AVAHI_ADDRESS_STR_MAX];
-  AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
-  RESOLVER *resolver;
-
-  /** Linked list */
-  AVAHI_LLIST_FIELDS(struct ServiceInfo, info);
-} ServiceInfo;
-#endif
+static inline co_obj_t *co_ctx_create(csm_ctx *ctx) {
+  co_ctx_t *output = h_calloc(1,sizeof(co_ctx_t));
+  CHECK_MEM(output);
+  output->_header._type = _ext8;
+  output->_exttype = _ctx;
+  output->_len = (sizeof(co_ctx_t));
+  output->ctx = ctx;
+  return (co_obj_t*)output;
+error:
+  return NULL;
+}
 
 #endif

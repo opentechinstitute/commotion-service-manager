@@ -97,7 +97,7 @@ _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt)
   co_obj_t *categories = NULL;
   do {
     avahi_string_list_get_pair(txt,&key,&val,NULL);
-    if (!strcmp(key,"type")) {
+    if (!strcmp(key,"categories")) {
       /* Add 'type' fields to a list to be sorted alphabetically later */
       co_obj_t *type = co_str8_create(val, strlen(val) + 1, 0);
       CHECK_MEM(type);
@@ -162,19 +162,19 @@ void resolve_callback(
             break;
 
         case AVAHI_RESOLVER_FOUND: {
-            avahi_address_snprint(s->address, 
-                sizeof(s->address),
+            avahi_address_snprint(s->r.address, 
+                sizeof(s->r.address),
                 address);
-	    s->host_name = h_strdup(host_name);
+	    s->r.host_name = h_strdup(host_name);
 	    
-	    CHECK_MEM(s->host_name);
-	    hattach(s->host_name, s);
+	    CHECK_MEM(s->r.host_name);
+	    hattach(s->r.host_name, s);
 
 	    CHECK(port >= 0 && port <= 65535, "Invalid port: %s",uuid);
 	    s->port = port;
 
-	    s->txt_lst = avahi_string_list_copy(txt);
-	    CHECK_MEM(s->txt_lst);
+	    s->r.txt_lst = avahi_string_list_copy(txt);
+	    CHECK_MEM(s->r.txt_lst);
 	    
 	    CHECK(_csm_extract_from_txt_list(s,txt), "Failed to extract TXT fields");
 	    
@@ -184,8 +184,8 @@ void resolve_callback(
         }
     }
 error:
-    RESOLVER_FREE(s->resolver);
-    s->resolver = NULL;
+    RESOLVER_FREE(s->r.resolver);
+    s->r.resolver = NULL;
     // if no signature is present, indicates service resolution failed
     if (event == AVAHI_RESOLVER_FOUND && !csm_service_get_signature(s)) {
       csm_remove_service(ctx->service_list, s);
@@ -236,8 +236,8 @@ void browse_service_callback(
 		}
 		
 		ctx->service = s;
-		s->resolver = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, ctx);
-		if (!s->resolver) {
+		s->r.resolver = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, ctx);
+		if (!s->r.resolver) {
 		  csm_service_destroy(s);
 		  INFO("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
 		  return;

@@ -42,6 +42,7 @@
 #include <commotion/tree.h>
 #include <commotion/socket.h>
 #include <commotion/util.h>
+#include <commotion/profile.h>
 #include <commotion.h>
 
 #include "defs.h"
@@ -50,6 +51,8 @@
 #include "service_list.h"
 #include "browse.h"
 #include "publish.h"
+#include "schema.h"
+#include "cmd.h"
 #if USE_UCI
 #include "uci-utils.h"
 #endif
@@ -59,390 +62,26 @@
 #define RESPONSE_MAX 1024
 
 extern co_socket_t unix_socket_proto;
-#if 0
-extern ServiceInfo *services;
-#endif
 
 struct csm_config csm_config;
 static int pid_filehandle;
 static co_socket_t *csm_socket = NULL;
 
 AvahiSimplePoll *simple_poll = NULL;
-#if 0
-TYPE_BROWSER *stb = NULL;
-#ifdef CLIENT
-AvahiClient *client = NULL;
-#else
-AvahiServer *server = NULL;
-#endif
-#endif
+co_obj_t *service_proto = NULL;
 
-/** 
- * libcommotion object extended type for CSM contexts
- * (used for storing in lists) 
- */
-typedef struct {
-  co_obj_t _header;
-  uint8_t _exttype;
-  uint8_t _len;
-  csm_ctx *ctx;
-} co_ctx_t;
+#define SCHEMA_ADD(K, V) co_tree_insert(self, K, sizeof(K), co_str8_create(V, sizeof(V), 0))
 
-#define _ctx 253
-
-#define IS_CTX(J) (IS_EXT(J) && ((co_ctx_t *)J)->_exttype == _ctx)
-
-static co_obj_t *co_ctx_create(csm_ctx *ctx) {
-  co_ctx_t *output = h_calloc(1,sizeof(co_ctx_t));
-  CHECK_MEM(output);
-  output->_header._type = _ext8;
-  output->_exttype = _ctx;
-  output->_len = (sizeof(co_ctx_t));
-  output->ctx = ctx;
-  return (co_obj_t*)output;
-error:
-  return NULL;
-}
-
-static co_obj_t *
-_cmd_help_i(co_obj_t *data, co_obj_t *current, void *context) 
+SCHEMA(service_proto)
 {
-  char *cmd_name = NULL;
-  size_t cmd_len = 0;
-  CHECK((cmd_len = co_obj_data(&cmd_name, ((co_cmd_t *)current)->name)) > 0, "Failed to read command name.");
-  DEBUG("Command: %s, Length: %d", cmd_name, (int)cmd_len);
-  co_tree_insert((co_obj_t *)context, cmd_name, cmd_len, ((co_cmd_t *)current)->usage);
-  return NULL;
-  error:
-  return NULL;
-}
-
-CMD(help)
-{
-  CHECK(IS_LIST(params),"Received invalid params");
-//   co_obj_t *ctx_obj = co_list_element(params,0);
-//   CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
-//   csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
-  
-  *output = co_tree16_create();
-  if (co_list_length(params) > 1)
-  {
-    co_obj_t *cmd = co_list_element(params, 1);
-    if (cmd != NULL && IS_STR(cmd))
-    {
-      char *cstr = NULL;
-      size_t clen = co_obj_data(&cstr, cmd);
-      if (clen > 0)
-      {
-	co_tree_insert(*output, cstr, clen, co_cmd_desc(cmd));
-	return 1;
-      }
-    }
-    else return 0;
-  }
-  return co_cmd_process(_cmd_help_i, (void *)*output);
-error:
-  return 0;
-}
-
-/** Add OR update a service */
-CMD(commit_service) {
-  CHECK(IS_LIST(params),"Received invalid params");
-  co_obj_t *ctx_obj = co_list_element(params,0);
-  CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
-  csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
-  
-  co_obj_t *service = co_list_element(params,1);
-  CHECK(IS_TREE(service),"Received invalid service");
-
-  co_obj_t *name_obj = co_tree_find(service,"name",sizeof("name"));
-  co_obj_t *description_obj = co_tree_find(service,"description",sizeof("description"));
-  co_obj_t *uri_obj = co_tree_find(service,"uri",sizeof("uri"));
-  co_obj_t *icon_obj = co_tree_find(service,"icon",sizeof("icon"));
-  co_obj_t *key_obj = co_tree_find(service,"key",sizeof("key"));
-  
-  /* Check required fields */
-  CHECK(name_obj && description_obj && uri_obj && icon_obj,
-	"Service missing required fields");
-  
-  csm_service *s = NULL;
-  
-  if (key_obj) {
-    // find existing service
-    char *key = NULL;
-    size_t key_len = co_obj_data(&key, key_obj);
-    CHECK(isValidFingerprint(key,key_len),"Invalid key");
-    char uuid[UUID_LEN + 1] = {0};
-    CHECK(get_uuid(key,key_len,uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
-    s = csm_find_service(ctx->service_list, uuid);
-    CHECK(s, "Failed to find service");
-  } else {
-    // create new service
-    s = csm_service_new(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, NULL, "_commotion._tcp", "mesh.local");
-    CHECK_MEM(s);
-  }
-  
-  ctx->service = s;
-  
-  // we can now replace the found service's fields with the new passed fields
-  co_obj_free(s->fields);
-  hattach(service, NULL);
-  s->fields = service;
-  hattach(s->fields, s);
-  
-  // delete signature so a new one is created upon submission
-  if (csm_service_get_signature(s))
-    csm_service_set_signature(s, NULL);
-  
-  CHECK(csm_service_set_version(s, CSM_PROTO_VERSION), "Failed to set version");
-  
-  if (csm_add_service(ctx->service_list, s)) {
-    s->uptodate = 0; // flag used to indicate need to re-register w/ avahi server if it's an already existing service (otherwise ignored)
-    
-    // send back success, key, signature
-    char *key = csm_service_get_key(s);
-    char *signature = csm_service_get_signature(s);
-    CHECK(key && signature && s->uuid, "Failed to get key and signature");
-    CMD_OUTPUT("success",co_bool_create(true,0));
-    CMD_OUTPUT("key",co_str8_create(key,strlen(key)+1,0));
-    CMD_OUTPUT("signature",co_str8_create(signature,strlen(signature)+1,0));
-    
-    CHECK(csm_publish_service(s, ctx), "Failed to publish service");
-  } else {
-    // remove service, send back failure
-    csm_service_destroy(s);
-    CMD_OUTPUT("success",co_bool_create(false,0));
-  }
-  
+  co_obj_t *first = co_tree16_create();
+  co_tree_insert(first, "second", sizeof("second"), co_str8_create("foo",sizeof("foo"),0));
+  CHECK_MEM(first);
+  co_tree_insert(self, "first", sizeof("first"), first);
   return 1;
 error:
   return 0;
 }
-
-CMD(remove_service) {
-  // TODO add check to make sure we're removing a local servie and not a remote one
-  CHECK(IS_LIST(params),"Received invalid params");
-  co_obj_t *ctx_obj = co_list_element(params,0);
-  CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
-  csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
-  
-  co_obj_t *key_obj = co_list_element(params,1);
-  CHECK(IS_STR(key_obj),"Received invalid key");
-  
-  char *key = NULL;
-  size_t key_len = co_obj_data(&key,key_obj);
-  CHECK(isValidFingerprint(key,key_len),"Received invalid key");
-  
-  char uuid[UUID_LEN + 1] = {0};
-  CHECK(get_uuid(key,key_len,uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
-  
-  csm_service *s = csm_find_service(ctx->service_list, uuid);
-  
-  if (s && csm_unpublish_service(s, ctx)) {
-    csm_remove_service(ctx->service_list, s);
-    csm_service_destroy(s);
-    CMD_OUTPUT("success",co_bool_create(true,0));
-  } else {
-    CMD_OUTPUT("success",co_bool_create(false,0));
-  }
-  
-  return 1;
-error:
-  return 0;
-}
-
-CMD(list_services) {
-  CHECK(IS_LIST(params),"Received invalid params");
-  co_obj_t *ctx_obj = co_list_element(params,0);
-  CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
-  csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
-  
-  if (csm_services_length(ctx->service_list) == 0) {
-    CMD_OUTPUT("success",co_bool_create(false,0));
-    return 1;
-  }
-  
-  CMD_OUTPUT("services",ctx->service_list->service_fields);
-  CMD_OUTPUT("success",co_bool_create(true,0));
-  
-  return 1;
-error:
-  return 0;
-}
-
-#if 0
-/** Add OR update a service */
-CMD(commit_service) {
-  CHECK(IS_LIST(params),"Received invalid params");
-  co_obj_t *ctx_obj = co_list_element(params,0);
-  CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
-  csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
-  
-  co_obj_t *service = co_list_element(params,1);
-  CHECK(IS_TREE(service),"Received invalid service");
-
-  co_obj_t *name_obj = co_tree_find(service,"name",sizeof("name"));
-  co_obj_t *description_obj = co_tree_find(service,"description",sizeof("description"));
-  co_obj_t *uri_obj = co_tree_find(service,"uri",sizeof("uri"));
-  co_obj_t *icon_obj = co_tree_find(service,"icon",sizeof("icon"));
-  co_obj_t *ttl_obj = co_tree_find(service,"ttl",sizeof("ttl"));
-  co_obj_t *lifetime_obj = co_tree_find(service,"lifetime",sizeof("lifetime"));
-  co_obj_t *categories_obj = co_tree_find(service,"categories",sizeof("categories"));
-  co_obj_t *key_obj = co_tree_find(service,"key",sizeof("key"));
-  
-  /* Check required fields */
-  CHECK(name_obj && description_obj && uri_obj && icon_obj,
-	"Service missing required fields");
-  
-  ServiceInfo *i = NULL;
-  
-  if (key_obj) {
-    char *key = NULL;
-    size_t key_len = co_obj_data(&key, key_obj);
-    CHECK(key_len == FINGERPRINT_LEN, "Invalid key");
-    char uuid[UUID_LEN + 1] = {0};
-    CHECK(get_uuid(key,key_len,uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
-    i = find_service(uuid);
-    CHECK(i, "Failed to find service");
-    CHECK(i->key && isValidFingerprint(i->key,strlen(i->key)),"Found service missing or invalid key");
-    if (i->signature)
-      h_free(i->signature); // free signature so a new one is created in process_service
-  } else {
-    // create ServiceInfo
-    i = add_service(NULL, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, NULL, "_commotion._tcp", "mesh.local");
-  }
-  
-  /* NOTE: hostname might change during life of program, so don't add it to local services */
-//   char hostname[HOST_NAME_MAX] = {0};
-//   CHECK(gethostname(hostname,HOST_NAME_MAX) == 0, "Failed to get hostname");
-  
-  // set fields
-  CSM_SET(i, version, "1.1");
-//   CSM_SET(i, host_name, hostname);
-  CSM_SET(i, name, co_obj_data_ptr(name_obj));
-  CSM_SET(i, description, co_obj_data_ptr(description_obj));
-  CSM_SET(i, uri, co_obj_data_ptr(uri_obj));
-  CSM_SET(i, icon, co_obj_data_ptr(icon_obj));
-  if (ttl_obj && IS_INT(ttl_obj))
-    i->ttl = (int)(*co_obj_data_ptr(ttl_obj));
-  if (lifetime_obj && IS_INT(lifetime_obj))
-    i->lifetime = (long)(*co_obj_data_ptr(lifetime_obj));
-  if (categories_obj
-      && IS_LIST(categories_obj)
-      && co_list_length(categories_obj) > 0) {
-    i->cat_len = co_list_length(categories_obj);
-    i->categories = h_realloc(i->categories,(i->cat_len)*sizeof(char*));
-    CHECK_MEM(i->categories);
-    hattach(i->categories, i);
-    for (int j = 0; j < i->cat_len; j++)
-      CSM_SET(i, categories[j], _LIST_ELEMENT(categories_obj,j));
-  }
-  
-  if (process_service(i)) {
-    i->uptodate = 0; // flag used to indicate need to re-register w/ avahi server if it's an already existing service (otherwise ignored)
-    // TODO call register_service
-    // send back success, key, signature
-    CHECK(i->key && i->signature && i->uuid, "Failed to get key and signature");
-    CMD_OUTPUT("success",co_bool_create(true,0));
-    CMD_OUTPUT("key",co_str8_create(i->key,strlen(i->key)+1,0));
-    CMD_OUTPUT("signature",co_str8_create(i->signature,strlen(i->signature)+1,0));
-  } else {
-    // remove service, send back failure
-    remove_service(NULL, i);
-    CMD_OUTPUT("success",co_bool_create(false,0));
-  }
-  
-  return 1;
-error:
-  return 0;
-}
-
-CMD(remove_service) {
-  CHECK(IS_LIST(params),"Received invalid params");
-  co_obj_t *ctx_obj = co_list_element(params,0);
-  CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
-  csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
-  
-  co_obj_t *key_obj = co_list_element(params,1);
-  CHECK(IS_STR(key_obj),"Received invalid key");
-  
-  char *key = NULL;
-  size_t key_len = co_obj_data(&key,key_obj);
-  
-  CHECK(isValidFingerprint(key,key_len),"Received invalid key");
-  
-  ServiceInfo *i = services;
-  
-  for (; i; i = i->info_next) {
-    if (strcasecmp(key,i->key) == 0)
-      break;
-  }
-  
-  if (i) {
-    // TODO call unregister_service
-    remove_service(NULL, i);
-    CMD_OUTPUT("success",co_bool_create(true,0));
-  } else {
-    CMD_OUTPUT("success",co_bool_create(false,0));
-  }
-  
-  return 1;
-error:
-  return 0;
-}
-
-CMD(list_services) {
-  CHECK(IS_LIST(params),"Received invalid params");
-  co_obj_t *ctx_obj = co_list_element(params,0);
-  CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
-  csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
-  
-  // if we have more than UINT16_MAX services, we have more important problems
-  co_obj_t *service_list = co_list16_create();
-  CHECK_MEM(service_list);
-  
-  ServiceInfo *i = services;
-  if (!i) {
-    CMD_OUTPUT("success",co_bool_create(false,0));
-    return 1;
-  }
-  
-  for (; i; i = i->info_next) {
-    // make sure service is resolved before inserting
-    // TODO instead of using ->resolved, check if signature is present (indicates fully resolved)
-    // or better yet, there shouldn't be any services in the service_list that aren't fully resolved or incomplete. so no need for this check.
-    if (i->resolved) {
-      co_obj_t *service = co_tree16_create();
-      CHECK_MEM(service);
-      
-      SERVICE_SET_STR(service,"name",i->name);
-      SERVICE_SET_STR(service,"description",i->description);
-      SERVICE_SET_STR(service,"uri",i->uri);
-      SERVICE_SET_STR(service,"icon",i->icon);
-      SERVICE_SET(service,"ttl",co_uint8_create(i->ttl,0));
-      SERVICE_SET(service,"lifetime",co_uint32_create(i->lifetime,0));
-      SERVICE_SET_STR(service,"key",i->key);
-      SERVICE_SET_STR(service,"signature",i->signature);
-      SERVICE_SET_STR(service,"version",i->version);
-      co_obj_t *category_list = co_list16_create();
-      CHECK_MEM(category_list);
-      for (int j = 0; j < i->cat_len; j++) {
-	CHECK(co_list_append(category_list,co_str8_create(i->categories[j],strlen(i->categories[j])+1,0)),"Failed to insert category");
-      }
-      SERVICE_SET(service,"categories",category_list);
-      
-      CHECK(co_list_append(service_list,service),"Failed to append service");
-    }
-  }
-  
-  CMD_OUTPUT("services",service_list);
-  CMD_OUTPUT("success",co_bool_create(true,0));
-  
-  return 1;
-error:
-  return 0;
-}
-#endif
 
 static void socket_send(int fd, char const *str, size_t len) {
   unsigned int sent = 0;
@@ -645,10 +284,12 @@ static void client_callback(AvahiClient *c, AvahiClientState state, void *userda
     assert(userdata);
     csm_ctx *ctx = (csm_ctx*)userdata;
     assert(c);
+    ctx->client = c;
 
     /* Called whenever the client or server state changes */
     switch (state) {
       case AVAHI_CLIENT_S_RUNNING:
+	INFO("CSM client started successfully, publishing services");
 	/* The server has startup successfully and registered its host
 	 * name on the network, so it's time to create our services */
 	if (!ctx->stb) {
@@ -715,6 +356,7 @@ static void server_callback(AvahiServer *s, AvahiServerState state, AVAHI_GCC_UN
   /* Called whenever the server state changes */
   switch (state) {
     case AVAHI_SERVER_RUNNING:
+      INFO("CSM server started successfully, publishing services");
       /* The serve has startup successfully and registered its host
        * name on the network, so it's time to create our services */
       csm_publish_all(ctx);
@@ -770,7 +412,8 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
       csm_config.pid_file = arg;
       break;
     case 's':
-      csm_config.sid = arg;
+      csm_config.proto_file = arg;
+      break;
     default:
       return ARGP_ERR_UNKNOWN;
   }
@@ -791,12 +434,12 @@ int main(int argc, char*argv[]) {
     static struct argp_option options[] = {
       {"bind", 'b', "URI", 0, "commotiond management socket"},
       {"nodaemon", 'n', 0, 0, "Do not fork into the background" },
+      {"service-protocol", 's', "FILE", 0, "File specifying the schema for service announcements" },
       {"out", 'o', "FILE", 0, "Output file to write services to when USR1 signal is received" },
       {"pid", 'p', "FILE", 0, "Specify PID file"},
 #ifdef USE_UCI
       {"uci", 'u', 0, 0, "Store service cache in UCI" },
 #endif
-//       {"sid", 's', "SID", 0, "SID to use to sign service announcements"},
       { 0 }
     };
     static struct argp argp = { options, parse_opt, NULL, doc };
@@ -809,9 +452,10 @@ int main(int argc, char*argv[]) {
     csm_config.nodaemon = 0;
     csm_config.output_file = CSM_DUMPFILE;
     csm_config.pid_file = CSM_PIDFILE;
-//     csm_config.sid = NULL;
+    csm_config.proto_file = CSM_PROTO_FILE;
     
     /* Set Avahi allocator to use halloc */
+#if 0
     static AvahiAllocator hallocator = {
       .malloc = h_malloc,
       .free = h_free,
@@ -819,9 +463,9 @@ int main(int argc, char*argv[]) {
       .calloc = h_calloc
     };
     avahi_set_allocator(&hallocator);
+#endif
     
     argp_parse (&argp, argc, argv, 0, 0, &csm_config);
-    //fprintf(stdout,"uci: %d, out: %s\n",csm_config.uci,csm_config.output_file);
     
     if (!csm_config.nodaemon)
       daemon_start(csm_config.pid_file);
@@ -829,22 +473,35 @@ int main(int argc, char*argv[]) {
     /* Initialize socket pool for connecting to commotiond */
     CHECK(co_init(),"Failed to initialize Commotion client");
     
+    // TODO parse service announcement schema
+    
     /* Register signal handlers */
     // TODO re-create print_services signal handler
-#if 0
     struct sigaction sa = {{0}};
-    sa.sa_handler = print_services;
-    CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
+//     sa.sa_handler = print_services;
+//     CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
     sa.sa_handler = csm_shutdown;
     CHECK(sigaction(SIGINT,&sa,NULL) == 0, "Failed to set signal handler");
     CHECK(sigaction(SIGTERM,&sa,NULL) == 0, "Failed to set signal handler");
-#endif
 
     /* Initialize the psuedo-RNG */
     srand(time(NULL));
 
     /* Allocate main loop object */
     CHECK((simple_poll = avahi_simple_poll_new()),"Failed to create simple poll object.");
+    
+#ifdef USE_UCI
+    // TODO make this a one-off timer for after the server starts
+    // read in list of local services from UCI
+    if (csm_config.uci) {
+      struct timeval tv = {};
+      avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll),
+						      &tv,
+						      uci_read,
+						      &ctx);
+//       CHECK(uci_read(&ctx), "Failed to read in local services from UCI");
+    }
+#endif
 
 #ifdef CLIENT
     /* Allocate a new client */
@@ -853,7 +510,7 @@ int main(int argc, char*argv[]) {
 #else
     /* Do not publish any local records */
     avahi_server_config_init(&avahi_config);
-    CHECK_MEM((avahi_config.host_name = h_calloc(HOST_NAME_MAX,sizeof(char))));
+    CHECK_MEM((avahi_config.host_name = calloc(HOST_NAME_MAX,sizeof(char))));
     CHECK(gethostname(avahi_config.host_name,HOST_NAME_MAX) == 0, "Failed to fetch hostname");
     avahi_config.publish_workstation = 0;
 
@@ -887,8 +544,9 @@ int main(int argc, char*argv[]) {
 									  &ctx);
     
 #if USE_UCI
-    CHECK(csm_services_register_commit_hook(ctx.service_list, uci_service_updater),
-	  "Failed to add UCI commit handler");
+    if (csm_config.uci)
+      CHECK(csm_services_register_commit_hook(ctx.service_list, uci_service_updater),
+	    "Failed to add UCI commit handler");
 #endif
     
     /* Run the main loop */
@@ -900,7 +558,11 @@ error:
 
     /* Close commotiond socket connection */
     co_shutdown();
-
+    
+    csm_socket->destroy((co_obj_t*)csm_socket);
+    
+    co_cmds_shutdown();
+    
     /* Cleanup things */
     if (ctx.stb)
         TYPE_BROWSER_FREE(ctx.stb);

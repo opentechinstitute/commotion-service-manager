@@ -158,7 +158,7 @@ csm_service_new(AvahiIfIndex interface,
   // set current CSM protocol version
   co_obj_t *version = co_str8_create(CSM_PROTO_VERSION, strlen(CSM_PROTO_VERSION) + 1, 0);
   CHECK_MEM(version);
-  CHECK(co_list_append(fields, version), "Failed to append version to service fields");
+  CHECK(co_tree_insert(fields, "version", sizeof("version"), version), "Failed to insert version into service fields");
   
   s->fields = fields;
   hattach(s->fields, s);
@@ -172,11 +172,11 @@ csm_service_destroy(csm_service *s)
 {
   assert(s);
   
-  if (s->resolver)
-    RESOLVER_FREE(s->resolver);
+  if (s->r.resolver)
+    RESOLVER_FREE(s->r.resolver);
   
-  if (s->txt_lst)
-    avahi_string_list_free(s->txt_lst);
+  if (s->r.txt_lst)
+    avahi_string_list_free(s->r.txt_lst);
   
   h_free(s);
 }
@@ -366,7 +366,7 @@ print_service(FILE *f, csm_service *s)
 	  s->uuid,
 	  s->type,
 	  s->domain,
-	  s->host_name,
+	  s->local ? "" : s->r.host_name,
 	  s->port,
 	  txt);
   
@@ -466,7 +466,7 @@ create_signature(csm_service *s)
   char *signature = NULL, *sid = NULL;
   CHECK(co_response_get_str(co_resp,&signature,"signature",sizeof("signature")),
 	"Failed to fetch signature from response");
-  CHECK(co_response_get_str(co_resp,&sid,"sid",sizeof("sid")),
+  CHECK(co_response_get_str(co_resp,&sid,"SID",sizeof("SID")),
 	"Failed to fetch SID from response");
   CHECK(csm_service_set_signature(s, signature), "Failed to set signature");
   if (!key) {

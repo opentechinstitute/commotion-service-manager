@@ -30,10 +30,6 @@
 #include "defs.h"
 #include "service.h"
 
-#ifndef UCIPATH
-#define UCIPATH "/etc/config"
-#endif
-
 int uci_service_updater(co_obj_t *data, co_obj_t **output, co_obj_t *service_list);
 
 /**
@@ -49,6 +45,11 @@ int uci_remove(csm_service *s);
  * @return 0=success, -1=fail
  */
 int uci_write(csm_service *s);
+
+/**
+ * Read services in from UCI
+ */
+void uci_read(AvahiTimeout *t, void *ctx);
 
 /**
  * Lookup a UCI section or option
@@ -70,13 +71,6 @@ int get_uci_section(struct uci_context *c,
 		    const size_t sec_len,
 		    const char *op,
 		    const size_t op_len);
-
-/** 
- * Determine if a service is local to this node
- * @param i ServiceInfo object of the service
- * @return 1=it's local, 0=it's not local
- */
-// int is_local(ServiceInfo *i);
 
 /** 
  * Fetch default lifetime from UCI

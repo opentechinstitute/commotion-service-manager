@@ -1,0 +1,62 @@
+{
+  "version": "2.0",
+  "fields" :
+    [
+      {
+	"field": "name",
+	"required": true
+	"type": "string"
+      },
+      {
+	"field": "description",
+	"required": true,
+	"type": "string"
+      },
+      {
+	"field": "uri",
+	"required": true,
+	"type": "string"
+      },
+      {
+	"field": "icon",
+	"required": true,
+	"type": "string"
+      },
+      {
+	"field": "type",
+	"required": false,
+	"type": "list",
+	"subtype": "string"
+      },
+      {
+	"field": "ttl",
+	"required": true,
+	"type": "int",
+	"min": 0,
+	"max": 255
+      },
+      {
+	"field", "lifetime",
+	"required": true,
+	"type": "long",
+	"min": 0
+      },
+      {
+	"field": "fingerprint",
+	"required": true,
+	"type": "hex",
+	"length": "64"
+      },
+      {
+	"field": "signature",
+	"required": true,
+	"type": "hex",
+	"length": "128"
+      },
+      {
+	"field": "version",
+	"required": true,
+	"type": "string"
+      }
+    ]
+}

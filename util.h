@@ -43,6 +43,12 @@ int isValidLifetime(long lifetime);
 int isValidFingerprint(const char *sid, size_t sid_len);
 int isValidSignature(const char *sig, size_t sig_len);
 
+// TODO implement these
+int validate_int(int n, uint32_t min, uint32_t max);
+int validate_long(long n, uint32_t min, uint32_t max);
+int validate_str(const char *str, size_t len);
+int validate_hex(const char *str, size_t len);
+
 /**
  * Compare strings alphabetically, used in qsort
  */

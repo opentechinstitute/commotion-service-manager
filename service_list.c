@@ -41,7 +41,6 @@
 #include <commotion/list.h>
 
 #ifdef USE_UCI
-#include <uci.h>
 #include "uci-utils.h"
 #endif
 
@@ -50,15 +49,6 @@
 #include "util.h"
 #include "service.h"
 #include "service_list.h"
-
-#if 0
-extern AvahiSimplePoll *simple_poll;
-#ifndef CLIENT
-extern AvahiServer *server;
-#endif
-
-extern struct csm_config csm_config;
-#endif
 
 extern AvahiSimplePoll *simple_poll;
 extern struct csm_config csm_config;
@@ -73,8 +63,8 @@ _csm_services_commit_i(co_obj_t *list, co_obj_t *current, void *context)
   co_obj_t *service_list = (co_obj_t*)context;
   assert(IS_LIST(service_list));
   
-  co_cb_t handler = (co_cb_t)current;
-  handler(service_list, NULL, service_list);
+  co_cbptr_t *handler = (co_cbptr_t*)current;
+  handler->cb(service_list, NULL, service_list);
   return NULL;
 }
 
@@ -127,7 +117,7 @@ csm_services_init(void)
   co_obj_t *csm_services = co_list16_create();
   CHECK_MEM(csm_services);
   services->services = csm_services;
-  hattach(services->services, csm_services);
+  hattach(services->services, services);
   
   co_obj_t *service_fields = co_list16_create();
   CHECK_MEM(service_fields);
@@ -199,7 +189,7 @@ error:
 int
 csm_add_service(csm_service_list *services, csm_service *s)
 {
-  // attach service and service list
+  // attach service to service list
   s->parent = services;
   co_obj_t *service_obj = co_service_create(s);
   CHECK_MEM(service_obj);
@@ -221,13 +211,16 @@ csm_add_service(csm_service_list *services, csm_service *s)
 error:
 // TODO better memory cleanup on errors
   csm_remove_service(services, s);
-  csm_service_destroy(s);
+//   csm_service_destroy(s);
   return 0;
 }
 
 int
 csm_update_service(csm_service_list *services, csm_service *service)
 {
+  // TODO check if service is attached to service_list
+  // TODO detach service->fields from service and attach to services->service_fields
+  
   /* Input validation */
   CHECK(isValidTtl(csm_service_get_ttl(service)),"Invalid TTL value: %s -> %d",service->uuid,csm_service_get_ttl(service));
   long lifetime = csm_service_get_lifetime(service);
@@ -274,9 +267,6 @@ csm_update_service(csm_service_list *services, csm_service *service)
       }
     }
   }
-  
-  // TODO move this to service_list_commit()
-  // TODO or better yet, register a uci_write function with commit_hook_register()
   
   // finalize service by running update handlers
   csm_services_commit(services);
@@ -332,186 +322,3 @@ csm_print_services(csm_service_list *services)
 {
   // TODO iterate call of csm_print_service()
 }
-
-/**
- * Check if a service uuid is in the current list of local services
- */
-#if 0
-ServiceInfo *
-find_service(const char *uuid)
-{
-  for (ServiceInfo *i = services; i; i = i->info_next) {
-    if (strcasecmp(i->uuid, uuid) == 0)
-      return i;
-  }
-    
-  return NULL;
-}
-#endif
-
-#if 0
-/**
- * Add a remote service to the list of services
- * @param interface
- * @param protocol
- * @param name service name
- * @param type service type (e.g. _commotion._tcp)
- * @param domain domain service is advertised on (e.g. mesh.local)
- * @return ServiceInfo struct representing the service that was added
- */
-ServiceInfo *
-add_service(BROWSER *b,
-	    AvahiIfIndex interface,
-	    AvahiProtocol protocol,
-	    const char *uuid,
-	    const char *type,
-	    const char *domain)
-{
-  ServiceInfo *i;
-  
-  i = h_calloc(1, sizeof(ServiceInfo));
-  
-  i->interface = interface;
-  i->protocol = protocol;
-  if (uuid)
-    CSM_SET(i, uuid, uuid);
-  CSM_SET(i, type, type);
-  CSM_SET(i, domain, domain);
-  
-  if (b) {
-#ifdef CLIENT
-    AvahiClient *client = avahi_service_browser_get_client(b);
-#endif
-    if (!(i->resolver = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, i))) {
-      h_free(i);
-      INFO("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
-      return NULL;
-    }
-    i->resolved = 0;
-  }
-
-  AVAHI_LLIST_PREPEND(ServiceInfo, info, services, i);
-
-  return i;
-error:
-  remove_service(NULL, i);
-  return NULL;
-}
-
-int
-process_service(ServiceInfo *i)
-{
-  /* Input validation */
-  CHECK(isValidTtl(i->ttl),"Invalid TTL value: %s -> %d",i->uuid,i->ttl);
-  CHECK(isValidLifetime(i->lifetime),"Invalid lifetime value: %s -> %ld",i->uuid,i->lifetime);
-  if (i->key)
-    CHECK(isValidFingerprint(i->key,strlen(i->key)),"Invalid fingerprint: %s -> %s",i->uuid,i->key);
-  if (i->signature)
-    CHECK(isValidSignature(i->signature,strlen(i->signature)),"Invalid signature: %s -> %s",i->uuid,i->signature);
-  
-  /* Create or verify signature */
-  if (i->signature)
-    CHECK(verify_signature(i),"Invalid signature");
-  else
-    CHECK(create_signature(i),"Failed to create signature");
-  
-  /* Set expiration timer on the service */
-#ifdef USE_UCI
-  long def_lifetime = default_lifetime();
-  if (i->lifetime == 0 || (def_lifetime < i->lifetime && def_lifetime > 0))
-    i->lifetime = def_lifetime;
-#endif
-  if (i->lifetime > 0) {
-    struct timeval tv;
-    avahi_elapse_time(&tv, 1000*i->lifetime, 0);
-    time_t current_time = time(NULL);
-    // create expiration event for service
-    i->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll),
-								 &tv,
-								 remove_service,
-								 i);
-    /* Convert lifetime period into timestamp */
-    if (current_time != ((time_t)-1)) {
-      struct tm *timestr = localtime(&current_time);
-      timestr->tm_sec += i->lifetime;
-      current_time = mktime(timestr);
-      char *c_time_string = ctime(&current_time);
-      if (c_time_string) {
-	c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
-	CSM_SET(i, expiration, c_time_string);
-      }
-    }
-  }
-  
-#ifdef USE_UCI
-  /* Write out service to UCI */
-  if (csm_config.uci && uci_write(i) == 0)
-    ERROR("(Resolver) Could not write to UCI");
-#endif
-  
-  i->resolved = 1;
-  return 1;
-error:
-  return 0;
-}
-
-/**
- * Remove service from list of local services
- * @param t timer set to service's expiration data. This param is only passed 
- *          when the service is being expired, otherwise it is NULL.
- * @param userdata should be cast as the ServiceInfo object of the service to remove
- * @note If compiled for OpenWRT, the Avahi service file for the local service is removed
- * @note If compiled with UCI support, service is also removed from UCI list
- */
-void
-remove_service(AvahiTimeout *t, void *userdata)
-{
-  assert(userdata);
-  ServiceInfo *i = (ServiceInfo*)userdata;
-
-  INFO("Removing service announcement: %s",i->uuid);
-  
-  /* Cancel expiration event */
-  if (!t && i->timeout)
-    avahi_simple_poll_get(simple_poll)->timeout_update(i->timeout,NULL);
-  
-#ifdef USE_UCI
-  if (i->resolved) {
-    // Delete UCI entry
-    if (csm_config.uci && uci_remove(i) < 0)
-      ERROR("(Remove_Service) Could not remove from UCI");
-  }
-#endif
-  
-  AVAHI_LLIST_REMOVE(ServiceInfo, info, services, i);
-
-  if (i->resolver)
-    RESOLVER_FREE(i->resolver);
-
-  if (i->txt_lst)
-    avahi_string_list_free(i->txt_lst);
-  h_free(i);
-}
-
-/**
- * Upon resceiving the USR1 signal, print local services
- */
-// TODO add global csm_service_list to daemon.c, and move this function to daemon.c, which should call csm_print_services()
-void print_services(int signal) {
-  ServiceInfo *i;
-  FILE *f = NULL;
-
-  if (!(f = fopen(csm_config.output_file, "w+"))) {
-    WARN("Could not open %s. Using stdout instead.", csm_config.output_file);
-    f = stdout;
-  }
-
-  for (i = services; i; i = i->info_next) {
-    if (i->resolved)
-      print_service(f, i);
-  }
-
-  if (f != stdout)
-    fclose(f);
-}
-#endif

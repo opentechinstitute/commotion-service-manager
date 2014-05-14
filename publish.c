@@ -126,17 +126,17 @@ error:
 int
 csm_unpublish_service(csm_service *s, csm_ctx *ctx)
 {
-  if (!s->address && s->group) { // only remote services have address set
+  if (s->local && s->l.group) {
 #ifdef CLIENT
-    if (avahi_entry_group_reset(s->group) != AVAHI_OK) {
+    if (avahi_entry_group_reset(s->l.group) != AVAHI_OK) {
       ERROR("Failed to reset entry group");
       return 0;
     }
 #else
-    avahi_s_entry_group_reset(s->group);
+    avahi_s_entry_group_reset(s->l.group);
 #endif
-    ENTRY_GROUP_FREE(s->group);
-    s->uptodate = 0;
+    ENTRY_GROUP_FREE(s->l.group);
+    s->l.uptodate = 0;
   }
   return 1;
 }
@@ -180,16 +180,16 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
   CHECK(state == AVAHI_SERVER_RUNNING, "Avahi server in bad state");
 #endif
 
-  // TODO should we exit if i->address?
-  if (!s->address) { // only remote services have address set
-    if (!s->group) {
+  // TODO should we exit if !i->local?
+  if (s->local) { // only remote services have address set
+    if (!s->l.group) {
 #ifdef CLIENT
-      s->group = ENTRY_GROUP_NEW(client_entry_group_callback, NULL);
+      s->l.group = ENTRY_GROUP_NEW(client_entry_group_callback, NULL);
 #else
-      s->group = ENTRY_GROUP_NEW(server_entry_group_callback, NULL);
+      s->l.group = ENTRY_GROUP_NEW(server_entry_group_callback, NULL);
 #endif
-      CHECK(s->group,"ENTRY_GROUP_NEW failed: %s", AVAHI_ERROR);
-      hattach(s->group, s);
+      CHECK(s->l.group,"ENTRY_GROUP_NEW failed: %s", AVAHI_ERROR);
+      hattach(s->l.group, s);
     }
     
     t = avahi_string_list_add_printf(t, "%s=%s", "name", name);
@@ -201,15 +201,15 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
     t = avahi_string_list_add_printf(t, "%s=%d", "ttl", ttl);
     t = avahi_string_list_add_printf(t, "%s=%ld", "lifetime", lifetime);
     for (int j = 0; j < cat_len; j++) {
-      t = avahi_string_list_add_printf(t, "%s=%s", "type", categories[j]);
+      t = avahi_string_list_add_printf(t, "%s=%s", "categories", categories[j]);
     }
     
     /* If the group is empty (either because it was just created, or
     * because it was reset previously, add our entries.  */
-    if (ENTRY_GROUP_EMPTY(s->group)) {
+    if (ENTRY_GROUP_EMPTY(s->l.group)) {
       char hostname[HOST_NAME_MAX] = {0};
       CHECK(gethostname(hostname,HOST_NAME_MAX) == 0, "Failed to get hostname");
-      int avahi_ret = ENTRY_GROUP_ADD_SERVICE(s->group,
+      int avahi_ret = ENTRY_GROUP_ADD_SERVICE(s->l.group,
 					      s->interface,
 					      s->protocol,
 					      0,
@@ -220,8 +220,8 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
 					      s->port,
 					      t);
       CHECK(avahi_ret == AVAHI_OK, "Failed to add entry group");
-    } else if (!s->uptodate) {
-      int avahi_ret = ENTRY_GROUP_UPDATE_SERVICE(s->group,
+    } else if (!s->l.uptodate) {
+      int avahi_ret = ENTRY_GROUP_UPDATE_SERVICE(s->l.group,
 						 s->interface,
 						 s->protocol,
 						 0,
@@ -231,8 +231,8 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
 						 t);
       CHECK(avahi_ret == AVAHI_OK, "Failed to update entry group");
     }
-    CHECK(ENTRY_GROUP_COMMIT(s->group) == AVAHI_OK, "Failed to commit entry group");
-    s->uptodate = 1;
+    CHECK(ENTRY_GROUP_COMMIT(s->l.group) == AVAHI_OK, "Failed to commit entry group");
+    s->l.uptodate = 1;
   }
   
   ret = 1;

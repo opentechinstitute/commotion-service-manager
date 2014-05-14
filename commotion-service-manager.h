@@ -60,6 +60,4 @@ int service_get_categories(CSMService *service, CategoryList **categories);
 char *categories_get(CategoryList *categories, int index);
 char *service_get_signature(CSMService *service);
 
-// TODO register socket w/ CSM daemon for "push" notifications of service changes? (using DBus?)
-
 #endif
