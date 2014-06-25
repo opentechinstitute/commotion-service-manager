@@ -1,3 +1,4 @@
+[![alt tag](http://img.shields.io/badge/maintainer-dismantl-green.svg)](https://github.com/dismantl)
 Commotion Service Manager
 =========================
 
