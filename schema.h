@@ -30,8 +30,7 @@
 typedef enum {
   CSM_FIELD_STRING = 1,
   CSM_FIELD_LIST,
-  CSM_FIELD_INT,
-  CSM_FIELD_LONG,
+  CSM_FIELD_INT,  /** int32_t */
   CSM_FIELD_HEX,
 } csm_field_type;
 

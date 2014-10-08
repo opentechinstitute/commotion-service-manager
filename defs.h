@@ -41,7 +41,7 @@
 #include <commotion/obj.h>
 
 #include "extern/halloc.h"
-
+#include "schema.h"
 #include "config.h"
 
 /** Length (in hex chars) of Serval IDs */
@@ -105,7 +105,7 @@ struct csm_config {
   int nodaemon;
   char *output_file;
   char *pid_file;
-  char *proto_file;
+  char *schema_file;
 };
 
 struct csm_service;
@@ -120,6 +120,7 @@ typedef struct {
   TYPE_BROWSER *stb;
   struct csm_service_list *service_list;
   struct csm_service *service;
+  csm_schema_t *schema;
 } csm_ctx;
 
 /** 

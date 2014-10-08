@@ -38,7 +38,7 @@
       {
 	"field", "lifetime",
 	"required": true,
-	"type": "long",
+	"type": "int",
 	"min": 0
       },
       {

@@ -10,7 +10,7 @@ SET(CMAKE_VERBOSE_MAKEFILE OFF)
 
 SET(CSM_DUMPFILE \"/tmp/local-services.out\") # Name of file to output list of services when daemon receives USR1 signal
 SET(CSM_PIDFILE \"/var/run/commotion/commotion-service-manager.pid\")
-SET(CSM_PROTO_FILE \"/etc/commotion/service.proto\")
+SET(CSM_SCHEMA_FILE \"/etc/commotion/service.schema\")
 SET(COMMOTION_MANAGESOCK \"/var/run/commotiond.sock\")
 SET(CSM_MANAGESOCK \"/var/run/commotion-service-manager.sock\")
 SET(CSM_PROTO_VERSION \"1.1\")

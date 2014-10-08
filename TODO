@@ -5,14 +5,12 @@ validate fields
 replace fields object with another list object
 would be nice to allow additional non-spec fields to be included
 
-maybe separate key/signature fields from rest of user-created fields, due to their functional properties?
-	- as well as ttl and lifetime?
-
-
-	
 TODO
 put input validation in service setter functions, instead of in update_service()
 don't hardcode service protocol, instead make runtime protocol configuration using config file
+  convert functions to use schema: _csm_extract_from_txt_list, cmd_commit_service, csm_publish_service, _csm_create_signing_template, uci_read, uci_write
+  redo commotion-service-manager.h/c to use schema
+  write generic setters/getters in service.h/c
 create error/return code enum and use that for all return code checking
   (and create same for libcommotion return/error codes)
 service updates registration/subscription and notifications for clients

@@ -59,12 +59,14 @@ typedef struct csm_schema_field_t {
   char field[256];
   bool required;
   csm_field_type type;
+  
+  // lists only
   csm_field_type subtype;
   
   // strings only
   size_t length;
   
-  // int/long only
+  // ints only
   uint8_t limits_flag;
   long min;
   long max;
@@ -148,8 +150,6 @@ _csm_type_str(char *key)
     return CSM_FIELD_LIST;
   else if (0 == strcmp(key, "int"))
     return CSM_FIELD_INT;
-  else if (0 == strcmp(key, "long"))
-    return CSM_FIELD_LONG;
   else if (0 == strcmp(key, "hex"))
     return CSM_FIELD_HEX;
   return -1;
@@ -200,9 +200,8 @@ _csm_validate_field(csm_schema_field_t *schema_field, csm_field_type type, co_ob
       }
       break;
     case CSM_FIELD_INT:
-    case CSM_FIELD_LONG: // TODO can we get rid of LONG type altogether? what about the new getter/setters in service.h?
       if (!_csm_validate_int(schema_field, entry)) {
-	ERROR("Invalid service int/long");
+	ERROR("Invalid service int");
 	return 0;
       }
       break;
@@ -250,6 +249,12 @@ csm_schema_new(void)
 void
 csm_schema_destroy(csm_schema_t *schema)
 {
+  csm_schema_field_t *tmp = NULL;
+  while (schema->fields) {
+    tmp = schema->fields;
+    schema->fields = tmp->_next;
+    h_free(tmp);
+  }
   h_free(schema);
 }
 
@@ -260,6 +265,8 @@ csm_import_service_schema(csm_schema_t *schema, const char *path)
   char *buffer = NULL;
   FILE *schema_file = NULL;
   schema_file = fopen(path, "rb");
+  csm_schema_field_t *field = NULL;
+  jsmntok_t *tokens = NULL;
   CHECK(schema_file != NULL, "File %s could not be opened", path);
   fseek(schema_file, 0, SEEK_END);
   long fsize = ftell(schema_file);
@@ -270,14 +277,13 @@ csm_import_service_schema(csm_schema_t *schema, const char *path)
   schema_file = NULL;
   
   buffer[fsize] = '\0';
-  jsmntok_t *tokens = _co_json_string_tokenize(buffer);
+  tokens = _co_json_string_tokenize(buffer);
   
   typedef enum { START, FIELD, KEY, VALUE, STOP } parse_state;
   parse_state state = START;
   size_t object_tokens = 0;
   char *key = NULL;
   size_t klen = 0;
-  csm_schema_field_t *field = NULL;
   
   for (size_t i = 0, j = 1; j > 0; i++, j--)
   {
@@ -397,9 +403,10 @@ csm_import_service_schema(csm_schema_t *schema, const char *path)
 	  CHECK(strlen(field->field) > 0 && field->type, "Invalid field");
 	  if (field->type == CSM_FIELD_LIST)
 	    CHECK(field->subtype, "Invalid field subtype");
-	  // TODO if field->type==int, check min/max, if any, in range
 	  
-	  // TODO append field to schema
+	  // append field to schema
+	  field->_next = schema->fields;
+	  schema->fields = field;
 	  
 	  field = NULL;
           state = STOP;
@@ -417,7 +424,6 @@ csm_import_service_schema(csm_schema_t *schema, const char *path)
   }
   
   ret = 1;
-  // TODO better memory cleanup
 error:
   if (buffer)
     h_free(buffer);
