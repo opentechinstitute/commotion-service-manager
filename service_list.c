@@ -95,6 +95,7 @@ _csm_expire_service(AvahiTimeout *t, void *userdata)
   csm_service_destroy(s);
 }
 
+#if 0
 static co_obj_t *
 _csm_service_list_find_service(co_obj_t *list, co_obj_t *current, void *context)
 {
@@ -105,6 +106,7 @@ _csm_service_list_find_service(co_obj_t *list, co_obj_t *current, void *context)
     return current;
   return NULL;
 }
+#endif
 
 /* Public */
 
@@ -187,12 +189,17 @@ error:
 }
 
 int
-csm_add_service(csm_service_list *services, csm_service *s)
+csm_add_service(csm_service_list *services, csm_service *s, csm_ctx *ctx)
 {
+  // TODO use correct version of schema, or reject
+  // validate service fields against schema
+  CHECK(csm_validate_fields(ctx->schema, s->fields), "Service doesn't validate");
+  
   // attach service to service list
   s->parent = services;
-  co_obj_t *service_obj = co_service_create(s);
-  CHECK_MEM(service_obj);
+//   co_obj_t *service_obj = co_service_create(s);
+//   CHECK_MEM(service_obj);
+  co_service_t *service_obj = container_of(s, co_service_t, service);
   CHECK(co_list_append(services->services, service_obj),
 	"Failed to add service to service list");
   
@@ -216,27 +223,31 @@ error:
 }
 
 int
-csm_update_service(csm_service_list *services, csm_service *service)
+csm_update_service(csm_service_list *services, csm_service *s, csm_ctx *ctx)
 {
-  // TODO check if service is attached to service_list
-  // TODO detach service->fields from service and attach to services->service_fields
+  // TODO use correct version of schema, or reject
+  CHECK(csm_validate_fields(ctx->schema, s->fields), "Service doesn't validate");
+  assert(s->lifetime);
+  long lifetime = *s->lifetime;
   
-  /* Input validation */
-  CHECK(isValidTtl(csm_service_get_ttl(service)),"Invalid TTL value: %s -> %d",service->uuid,csm_service_get_ttl(service));
-  long lifetime = csm_service_get_lifetime(service);
-  CHECK(isValidLifetime(lifetime),"Invalid lifetime value: %s -> %ld",service->uuid,lifetime);
-  char *key = csm_service_get_key(service);
-  if (key)
-    CHECK(isValidFingerprint(key,strlen(key)),"Invalid fingerprint: %s -> %s",service->uuid,key);
-  char *signature = csm_service_get_signature(service);
-  if (signature)
-    CHECK(isValidSignature(signature,strlen(signature)),"Invalid signature: %s -> %s",service->uuid,signature);
+  // check if service is attached to service_list
+  CHECK(co_list_contains(services->services, (co_obj_t*)container_of(s, co_service_t, service)),
+	"Cannot update service not in service list");
+  
+  // detach s->fields from s and attach to services->service_fields
+  if (!co_list_contains(services->service_fields, s->fields)) {
+    co_obj_t *fields = s->fields;
+    hattach(fields, NULL);
+    CHECK(co_list_append(services->service_fields, fields),
+	  "Failed to add service fields to service list");
+  }
   
   /* Create or verify signature */
+  // TODO extract signature
   if (signature)
-    CHECK(verify_signature(service),"Invalid signature");
+    CHECK(_csm_verify_signature(s),"Invalid signature");
   else
-    CHECK(create_signature(service),"Failed to create signature");
+    CHECK(_csm_create_signature(s),"Failed to create signature");
   
   /* Set expiration timer on the service */
 #ifdef USE_UCI
@@ -249,10 +260,10 @@ csm_update_service(csm_service_list *services, csm_service *service)
     avahi_elapse_time(&tv, 1000*lifetime, 0);
     time_t current_time = time(NULL);
     // create expiration event for service
-    service->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll),
+    s->timeout = avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll),
 								       &tv,
 								       _csm_expire_service,
-								       service);
+								       s);
     /* Convert lifetime period into timestamp */
     if (current_time != ((time_t)-1)) {
       struct tm *timestr = localtime(&current_time);
@@ -261,9 +272,9 @@ csm_update_service(csm_service_list *services, csm_service *service)
       char *c_time_string = ctime(&current_time);
       if (c_time_string) {
 	c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
-	service->expiration = h_strdup(c_time_string);
-	CHECK_MEM(service->expiration);
-	hattach(service->expiration, service);
+	s->expiration = h_strdup(c_time_string);
+	CHECK_MEM(s->expiration);
+	hattach(s->expiration, s);
       }
     }
   }
@@ -303,10 +314,10 @@ csm_remove_service(csm_service_list *services, csm_service *s)
   }
   
   // remove service from service list
-  
   if (services) {
-    co_obj_t *service_obj = co_list_parse(services->services, _csm_service_list_find_service, s);
-    if (service_obj)
+//     co_obj_t *service_obj = co_list_parse(services->services, _csm_service_list_find_service, s);
+    co_obj_t *service_obj = (co_obj_t*)container_of(s, co_service_t, service);
+    if (co_list_contains(services->services, service_obj))
       co_list_delete(services->services, service_obj);
   }
   
@@ -321,4 +332,178 @@ void
 csm_print_services(csm_service_list *services)
 {
   // TODO iterate call of csm_print_service()
+}
+
+static co_obj_t *
+_csm_sort_service_fields(co_obj_t *data, co_obj_t *current, void *context)
+{
+  
+}
+
+/*
+ * sort fields alphabetcally, or should the schema keep them in alpha order?
+ * probably should base signing template on schema, not the fields the
+ * service happens to have
+ * ^^ actually, since this will be called for remote services that might have
+ * 	a different schema, should probably base on fields
+ */
+static size_t
+_csm_create_signing_template(csm_service *s, char **template)
+{
+  int ret = 0;
+  
+  /* Sort fields into alphabetical order */
+  //qsort(*cat_array,cat_len,sizeof(char*),cmpstringp);
+  
+  
+  
+  
+  
+  const char *type_template = "<txt-record>type=%s</txt-record>";
+  const char *str_template = "<type>%s</type>\n"
+  "<domain-name>%s</domain-name>\n"
+  "<port>%d</port>\n"
+  "<txt-record>name=%s</txt-record>\n"
+  "<txt-record>ttl=%d</txt-record>\n"
+  "<txt-record>uri=%s</txt-record>\n"
+  "%s\n"
+  "<txt-record>icon=%s</txt-record>\n"
+  "<txt-record>description=%s</txt-record>\n"
+  "<txt-record>lifetime=%ld</txt-record>";
+  
+  char **categories = NULL, *type_str = NULL, *app_type = NULL;
+  size_t cat_len = csm_service_categories_to_array(s, &categories);
+  if (cat_len) {
+    /* Concat the types into a single string to add to template */
+    int prev_len = 0;
+    for (int j = 0; j < cat_len; j++) {
+      if (app_type) {
+	free(app_type);
+	app_type = NULL;
+      }
+      prev_len = type_str ? strlen(type_str) : 0;
+      CHECK_MEM(asprintf(&app_type, type_template, categories[j]) != -1);
+      type_str = h_realloc(type_str, prev_len + strlen(app_type) + 1);
+      CHECK_MEM(type_str);
+      type_str[prev_len] = '\0';
+      strcat(type_str, app_type);
+    }
+  }
+  
+  /* Add the fields into the template */
+  CHECK_MEM(asprintf(template,
+		     str_template,
+		     s->type,
+		     s->domain,
+		     s->port,
+		     csm_service_get_name(s),
+		     csm_service_get_ttl(s),
+		     csm_service_get_uri(s),
+		     cat_len ? type_str : "",
+		     csm_service_get_icon(s),
+		     csm_service_get_description(s),
+		     csm_service_get_lifetime(s)) != -1);
+  
+  ret = strlen(*template);
+  error:
+  if (categories)
+    h_free(categories);
+  if (app_type)
+    free(app_type); // alloc'd using asprintf
+    if (type_str)
+      h_free(type_str);
+    return ret;
+}
+
+static int
+_csm_verify_signature(csm_service *s)
+{
+  int verdict = 0;
+  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
+  char *to_verify = NULL;
+  CHECK(_csm_create_signing_template(s,&to_verify) > 0, "Failed to create signing template");
+  CHECK_MEM(to_verify);
+  
+  char sas_buf[2*SAS_SIZE+1] = {0};
+  
+  char *key = csm_service_get_key(s);
+  CHECK(keyring_send_sas_request_client(key,strlen(key),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
+  
+  bool output;
+  CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),
+	"Failed to connect to Commotion socket");
+  CHECK_MEM((co_req = co_request_create()));
+  CO_APPEND_STR(co_req,"verify");
+  CO_APPEND_STR(co_req,sas_buf);
+  CO_APPEND_STR(co_req,csm_service_get_signature(s));
+  CO_APPEND_STR(co_req,to_verify);
+  CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req)
+	&& co_response_get_bool(co_resp,&output,"result",sizeof("result")),
+	"Failed to verify signature");
+  
+  /* Is the signature valid? 1=yes, 0=no */
+  if (output == true)
+    verdict = 1;
+  
+error:
+  if (co_req)
+    co_free(co_req);
+  if (co_resp)
+    co_free(co_resp);
+  if (co_conn)
+    co_disconnect(co_conn);
+  if (to_verify)
+    free(to_verify); // alloc'd using asprint from _csm_create_signing_template()
+  return verdict;
+}
+
+static int
+_csm_create_signature(csm_service *s)
+{
+  int ret = 0;
+  char *to_sign = NULL;
+  CHECK(_csm_create_signing_template(s,&to_sign) > 0, "Failed to create signing template");
+  CHECK_MEM(to_sign);
+  
+  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
+  CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),
+	"Failed to connect to Commotion socket");
+  CHECK_MEM((co_req = co_request_create()));
+  CO_APPEND_STR(co_req,"sign");
+  char *key = csm_service_get_key(s);
+  if (key) {
+    CO_APPEND_STR(co_req,key);
+  }
+  CO_APPEND_STR(co_req,to_sign);
+  
+  CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req),
+	"Failed to sign service announcement");
+  
+  char *signature = NULL, *sid = NULL;
+  CHECK(co_response_get_str(co_resp,&signature,"signature",sizeof("signature")),
+	"Failed to fetch signature from response");
+  CHECK(co_response_get_str(co_resp,&sid,"SID",sizeof("SID")),
+	"Failed to fetch SID from response");
+  CHECK(csm_service_set_signature(s, signature), "Failed to set signature");
+  if (!key) {
+    csm_service_set_key(s, sid);
+    // set UUID
+    char uuid[UUID_LEN + 1] = {0};
+    CHECK(get_uuid(sid,strlen(sid),uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
+    s->uuid = h_strdup(uuid);
+    CHECK_MEM(s->uuid);
+    hattach(s->uuid, s);
+  }
+  
+  ret = 1;
+error:
+  if (co_req)
+    co_free(co_req);
+  if (co_resp)
+    co_free(co_resp);
+  if (co_conn)
+    co_disconnect(co_conn);
+  if (to_sign)
+    free(to_sign); // alloc'd using asprint from _csm_create_signing_template()
+  return ret;
 }

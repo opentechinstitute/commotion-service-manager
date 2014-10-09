@@ -64,8 +64,10 @@ typedef struct csm_service {
   // the following members point to data contained in the .fields list;
   char *key;
   char *signature;
-  int *ttl;
   long *lifetime;
+  
+  // schema version
+  struct csm_schema_version version;
   
   union {
     struct csm_service_local l;
@@ -92,22 +94,15 @@ csm_service *csm_service_new(AvahiIfIndex interface,
 void csm_service_destroy(csm_service *s);
 
 // TODO do we want this type safety, or just use void * or co_obj_t *?
-// TODO can we get rid of int/long distinction, and specify bit length?
 char *csm_service_get_str(const csm_service *s, const char *field);
 co_obj_t *csm_service_get_list(const csm_service *s, const char *field);
-int csm_service_get_int(const csm_service *s, const char *field);
-long csm_service_get_long(const csm_service *s, const char *field);
+int32_t csm_service_get_int(const csm_service *s, const char *field);
 
 int csm_service_set_str(csm_service *s, const char *field, const char *str);
 int csm_service_set_list(csm_service *s, const char *field, co_obj_t *list);
-int csm_service_set_int(csm_service *s, const char *field, int n);
-int csm_service_set_long(csm_service *s, const char *field, long n);
+int csm_service_set_int(csm_service *s, const char *field, int32_t n);
 
-
-
-
-
-
+#if 0
 char *csm_service_get_name(csm_service *s);
 char *csm_service_get_description(csm_service *s);
 char *csm_service_get_uri(csm_service *s);
@@ -129,12 +124,15 @@ int csm_service_set_lifetime(csm_service *s, long lifetime);
 int csm_service_set_key(csm_service *s, const char *str);
 int csm_service_set_signature(csm_service *s, const char *str);
 int csm_service_set_version(csm_service *s, const char *str);
+#endif
 
 void print_service(FILE *f, csm_service *s);
-size_t csm_service_categories_to_array(csm_service *s, char ***cat_array);
+// TODO do we need a list to array function?
+// size_t csm_service_categories_to_array(csm_service *s, char ***cat_array);
 
-int verify_signature(csm_service *service);
-int create_signature(csm_service *service);
+// MOVED TO SERVICE_LIST:
+// int verify_signature(csm_service *service);
+// int create_signature(csm_service *service);
 
 /** 
  * libcommotion object extended type for CSM services 
@@ -144,13 +142,13 @@ typedef struct {
   co_obj_t _header;
   uint8_t _exttype;
   uint8_t _len;
-  csm_service *service;
+  csm_service service;
 } co_service_t;
 
 #define _service 254
 
 #define IS_SERVICE(J) (IS_EXT(J) && ((co_service_t *)J)->_exttype == _service)
 
-co_obj_t *co_service_create(csm_service *service);
+// co_obj_t *co_service_create(csm_service *service);
 
 #endif

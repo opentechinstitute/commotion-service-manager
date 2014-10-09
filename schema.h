@@ -34,12 +34,25 @@ typedef enum {
   CSM_FIELD_HEX,
 } csm_field_type;
 
-typedef struct csm_schema_t csm_schema_t;
+struct csm_schema_version {
+  int major;
+  double minor;
+};
+
+typedef struct csm_schema_t {
+  struct csm_schema_field_t *fields;
+  //   char version[8];
+  struct csm_schema_version version;
+  struct csm_schema_t *_next;
+  struct csm_schema_t *_prev;
+} csm_schema_t;
 
 csm_schema_t *csm_schema_new(void);
-void csm_schema_destroy(csm_schema_t *schema);
-int csm_import_service_schema(csm_schema_t *schema, const char *path);
+// void csm_schema_destroy(csm_schema_t *schema);
+void csm_destroy_schemas(csm_ctx *ctx);
+// int csm_import_service_schema(csm_schema_t *schema, const char *path);
+int csm_import_schemas(csm_ctx *ctx, const char *dir);
 int csm_validate_fields(csm_schema_t *schema, co_obj_t *entries);
-int csm_validate_field(csm_schema_t *schema, const char *field_name, csm_field_type type, co_obj_t *entry);
+// int csm_validate_field(csm_schema_t *schema, const char *field_name, csm_field_type type, co_obj_t *entry);
 
 #endif

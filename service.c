@@ -53,6 +53,7 @@ extern int keyring_send_sas_request_client(const char *sid_str,
 
 /* Private */
 
+#if 0
 static size_t
 _csm_create_signing_template(csm_service *s, char **template)
 {
@@ -112,16 +113,18 @@ error:
     h_free(type_str);
   return ret;
 }
+#endif
 
 /* Public */
 
-co_obj_t *co_service_create(csm_service *service) {
+static co_obj_t *
+co_service_create(void) {
   co_service_t *output = h_calloc(1,sizeof(co_service_t));
   CHECK_MEM(output);
   output->_header._type = _ext8;
   output->_exttype = _service;
   output->_len = (sizeof(co_service_t));
-  output->service = service;
+//   output->service = service;
   return (co_obj_t*)output;
 error:
   return NULL;
@@ -134,8 +137,12 @@ csm_service_new(AvahiIfIndex interface,
 		const char *type,
 		const char *domain)
 {
-  csm_service *s = h_calloc(1, sizeof(csm_service));
-  CHECK_MEM(s);
+  // allocate a full co_service_t that contains the csm_service
+  co_service_t s_obj = (co_service_t*)co_service_create();
+//   csm_service *s = h_calloc(1, sizeof(csm_service));
+  
+  CHECK_MEM(s_obj);
+  csm_service *s = &s_obj->service;
   
   s->interface = interface;
   s->protocol = protocol;
@@ -164,6 +171,8 @@ csm_service_new(AvahiIfIndex interface,
   hattach(s->fields, s);
   return s;
 error:
+  if (s)
+    h_free(s);
   return NULL;
 }
 
@@ -172,15 +181,104 @@ csm_service_destroy(csm_service *s)
 {
   assert(s);
   
+  // get the co_service_t container and free that
+  co_service_t *s_obj = container_of(s, co_service_t, service);
+  
   if (s->r.resolver)
     RESOLVER_FREE(s->r.resolver);
   
   if (s->r.txt_lst)
     avahi_string_list_free(s->r.txt_lst);
   
-  h_free(s);
+  // free co_service_t container
+  h_free(s_obj);
 }
 
+char *
+csm_service_get_str(const csm_service *s, const char *field)
+{
+  assert(IS_TREE(s->fields));
+  co_obj_t *field_obj = co_tree_find(s->fields, field, strlen(field) + 1);
+  CHECK(field_obj, "String field %s not found", field);
+  return ((co_str8_t*)field_obj)->data;
+error:
+  return NULL;
+}
+
+co_obj_t *
+csm_service_get_list(const csm_service *s, const char *field)
+{
+  assert(IS_TREE(s->fields));
+  return co_tree_find(service,"name",sizeof("name"));
+}
+
+int32_t
+csm_service_get_int(const csm_service *s, const char *field)
+{
+  assert(IS_TREE(s->fields));
+  co_obj_t *field_obj = co_tree_find(s->fields, field, strlen(field) + 1);
+  CHECK(field_obj, "Integer field %s not found", field);
+  return ((co_int32_t*)field_obj)->data;
+error:
+  return NULL;
+}
+
+int
+csm_service_set_str(csm_service *s, const char *field, const char *str)
+{
+  assert(IS_TREE(s->fields));
+  if (str) {
+    co_obj_t *str_obj = co_str8_create(str, strlen(str) + 1, 0);
+    CHECK_MEM(str_obj);
+    CHECK(co_tree_insert_force(s->fields, field, strlen(field) + 1, str_obj),
+	  "Failed to insert %s into service", field);
+  } else {
+    co_obj_t *old_str = co_tree_delete(s->fields, field, strlen(field) + 1);
+    if (old_str)
+      co_obj_free(old_str);
+  }
+  return 1;
+error:
+  return 0;
+}
+
+int
+csm_service_set_list(csm_service *s, const char *field, co_obj_t *list)
+{
+  assert(IS_TREE(s->fields));
+  if (list) {
+    CHECK(co_tree_insert_force(s->fields, field, strlen(field) + 1, list),
+	  "Failed to insert %s into service", field);
+  } else {
+    co_obj_t *old_list = co_tree_delete(s->fields, field, strlen(field) + 1);
+    if (old_list)
+      co_obj_free(old_list);
+  }
+  return 1;
+error:
+  return 0;
+}
+
+int
+csm_service_set_int(csm_service *s, const char *field, int32_t n)
+{
+  assert(IS_TREE(s->fields));
+  if (n) {
+    co_obj_t *int_obj = co_int32_create(n, 0);
+    CHECK_MEM(int_obj);
+    CHECK(co_tree_insert_force(s->fields, field, strlen(field) + 1, int_obj),
+	  "Failed to insert %s into service", field);
+  } else {
+    co_obj_t *old_int = co_tree_delete(s->fields, field, strlen(field) + 1);
+    if (old_int)
+      co_obj_free(old_int);
+  }
+  return 1;
+error:
+  return 0;
+}
+
+#if 0
 /**
  * most getters and setters are wrappers around calls to 
  * functions in commotion-service-manager.h/c
@@ -314,6 +412,7 @@ csm_service_set_version(csm_service *s, const char *version)
 error:
   return 0;
 }
+#endif
 
 /**
  * Output service fields to a file
@@ -377,6 +476,7 @@ error:
     free(txt); // alloc'd with realloc from csm_txt_list_to_string()
 }
 
+#if 0
 /**
  * caller is responsible for freeing category array
  */
@@ -399,95 +499,4 @@ csm_service_categories_to_array(csm_service *s, char ***cat_array)
 error:
   return 0;
 }
-
-int
-verify_signature(csm_service *s)
-{
-  int verdict = 0;
-  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
-  char *to_verify = NULL;
-  CHECK(_csm_create_signing_template(s,&to_verify) > 0, "Failed to create signing template");
-  CHECK_MEM(to_verify);
-  
-  char sas_buf[2*SAS_SIZE+1] = {0};
-  
-  char *key = csm_service_get_key(s);
-  CHECK(keyring_send_sas_request_client(key,strlen(key),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
-  
-  bool output;
-  CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),
-	"Failed to connect to Commotion socket");
-  CHECK_MEM((co_req = co_request_create()));
-  CO_APPEND_STR(co_req,"verify");
-  CO_APPEND_STR(co_req,sas_buf);
-  CO_APPEND_STR(co_req,csm_service_get_signature(s));
-  CO_APPEND_STR(co_req,to_verify);
-  CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req)
-	&& co_response_get_bool(co_resp,&output,"result",sizeof("result")),
-	"Failed to verify signature");
-  
-  /* Is the signature valid? 1=yes, 0=no */
-  if (output == true)
-    verdict = 1;
-  
-error:
-  if (co_req)
-    co_free(co_req);
-  if (co_resp)
-    co_free(co_resp);
-  if (co_conn)
-    co_disconnect(co_conn);
-  if (to_verify)
-    free(to_verify); // alloc'd using asprint from _csm_create_signing_template()
-  return verdict;
-}
-
-int
-create_signature(csm_service *s)
-{
-  char *to_sign = NULL;
-  CHECK(_csm_create_signing_template(s,&to_sign) > 0, "Failed to create signing template");
-  CHECK_MEM(to_sign);
-  
-  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
-  CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),
-	"Failed to connect to Commotion socket");
-  CHECK_MEM((co_req = co_request_create()));
-  CO_APPEND_STR(co_req,"sign");
-  char *key = csm_service_get_key(s);
-  if (key) {
-    CO_APPEND_STR(co_req,key);
-  }
-  CO_APPEND_STR(co_req,to_sign);
-  
-  CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req),
-	"Failed to sign service announcement");
-  
-  char *signature = NULL, *sid = NULL;
-  CHECK(co_response_get_str(co_resp,&signature,"signature",sizeof("signature")),
-	"Failed to fetch signature from response");
-  CHECK(co_response_get_str(co_resp,&sid,"SID",sizeof("SID")),
-	"Failed to fetch SID from response");
-  CHECK(csm_service_set_signature(s, signature), "Failed to set signature");
-  if (!key) {
-    csm_service_set_key(s, sid);
-    // set UUID
-    char uuid[UUID_LEN + 1] = {0};
-    CHECK(get_uuid(sid,strlen(sid),uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
-    s->uuid = h_strdup(uuid);
-    CHECK_MEM(s->uuid);
-    hattach(s->uuid, s);
-  }
-  
-  return 1;
-error:
-  if (co_req)
-    co_free(co_req);
-  if (co_resp)
-    co_free(co_resp);
-  if (co_conn)
-    co_disconnect(co_conn);
-  if (to_sign)
-    free(to_sign); // alloc'd using asprint from _csm_create_signing_template()
-  return 0;
-}
+#endif

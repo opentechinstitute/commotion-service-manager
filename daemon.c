@@ -414,7 +414,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
       csm_config.pid_file = arg;
       break;
     case 's':
-      csm_config.schema_file = arg;
+      csm_config.schema_dir = arg;
       break;
     default:
       return ARGP_ERR_UNKNOWN;
@@ -425,7 +425,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 int main(int argc, char*argv[]) {
     csm_ctx ctx = {0};
     ctx.service_list = csm_services_init();
-    ctx.schema = csm_schema_new();
+//     ctx.schema = csm_schema_new();
 #ifndef CLIENT
     AvahiServerConfig avahi_config;
 #endif
@@ -437,7 +437,7 @@ int main(int argc, char*argv[]) {
     static struct argp_option options[] = {
       {"bind", 'b', "URI", 0, "commotiond management socket"},
       {"nodaemon", 'n', 0, 0, "Do not fork into the background" },
-      {"schema", 's', "FILE", 0, "File specifying the schema for service announcements" },
+      {"schema", 's', "DIR", 0, "Directory including schema files for service announcements" },
       {"out", 'o', "FILE", 0, "Output file to write services to when USR1 signal is received" },
       {"pid", 'p', "FILE", 0, "Specify PID file"},
 #ifdef USE_UCI
@@ -455,7 +455,7 @@ int main(int argc, char*argv[]) {
     csm_config.nodaemon = 0;
     csm_config.output_file = CSM_DUMPFILE;
     csm_config.pid_file = CSM_PIDFILE;
-    csm_config.schema_file = CSM_SCHEMA_FILE;
+    csm_config.schema_dir = CSM_SCHEMA_DIR;
     
     /* Set Avahi allocator to use halloc */
 #if 0
@@ -477,7 +477,7 @@ int main(int argc, char*argv[]) {
     CHECK(co_init(),"Failed to initialize Commotion client");
     
     // TODO parse service announcement schema
-    CHECK(csm_import_service_schema(ctx.schema, csm_config.schema_file), "Failed to import service schema");
+    CHECK(csm_import_schemas(&ctx, csm_config.schema_dir), "Failed to import service schema");
     
     /* Register signal handlers */
     // TODO re-create print_services signal handler
@@ -581,7 +581,7 @@ error:
     /* Destroy services */
     csm_services_destroy(ctx.service_list);
     
-    csm_schema_destroy(ctx.schema);
+    csm_destroy_schemas(&ctx);
 
     /* Free event loop */
     if (simple_poll)

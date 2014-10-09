@@ -42,8 +42,8 @@ typedef struct csm_service_list {
    * is thus what gets passed over the wire in messages 
    * and updates.
    * 
-   * Although these service fields correspond to the
-   * csm_services in the services list above, there is no
+   * Although these service fields are contained in the
+   * csm_services in the services member above, there is no
    * guarantee they will be in the same order.
    */
   co_obj_t *service_fields;
@@ -64,8 +64,8 @@ size_t csm_services_length(csm_service_list *services);
 int csm_services_commit(csm_service_list *services);
 int csm_services_register_commit_hook(csm_service_list *services, co_cb_t handler);
 
-int csm_add_service(csm_service_list *services, csm_service *service);
-int csm_update_service(csm_service_list *services, csm_service *service);
+int csm_add_service(csm_service_list *services, csm_service *service, csm_ctx *ctx);
+int csm_update_service(csm_service_list *services, csm_service *service, csm_ctx *ctx);
 csm_service *csm_find_service(csm_service_list *services, const char *uuid);
 csm_service *csm_remove_service(csm_service_list *services, csm_service *s);
 void csm_print_services(csm_service_list *services);

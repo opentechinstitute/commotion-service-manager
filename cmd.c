@@ -56,6 +56,7 @@ error:
 int
 cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
 {
+  // TODO insert major/minor version of schema into newly created services
   CHECK(IS_LIST(params),"Received invalid params");
   co_obj_t *ctx_obj = co_list_element(params,0);
   CHECK(IS_CTX(ctx_obj),"Received invalid ctx");

@@ -51,6 +51,12 @@
 /** Length of UUID (which is base32 encoding of Serval ID) */
 #define UUID_LEN 52
 
+#ifndef container_of
+#define container_of(ptr, type, member) ({ \
+  const typeof( ((type *)0)->member ) *__mptr = (ptr); \
+  (type *)( (char *)__mptr - offsetof(type,member) );})
+#endif
+
 #define CO_APPEND_STR(R,S) CHECK(co_request_append_str(co_req,S,strlen(S)+1),"Failed to append to request")
   
 #ifdef CLIENT
@@ -105,7 +111,7 @@ struct csm_config {
   int nodaemon;
   char *output_file;
   char *pid_file;
-  char *schema_file;
+  char *schema_dir;
 };
 
 struct csm_service;

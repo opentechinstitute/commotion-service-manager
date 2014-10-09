@@ -80,11 +80,6 @@ typedef struct csm_schema_field_t {
   struct csm_schema_field_t *_next;
 } csm_schema_field_t;
 
-struct csm_schema_t {
-  struct csm_schema_field_t *fields;
-  char version[8];
-};
-
 /* Private */
 
 static jsmntok_t *_co_json_string_tokenize(const char *js)
@@ -239,15 +234,15 @@ _csm_validate_list(co_obj_t *list, co_obj_t *current, void *context)
 
 /* Public */
 
-csm_schema_t *
-csm_schema_new(void)
+static csm_schema_t *
+_csm_schema_new(void)
 {
   csm_schema_t *schema = h_calloc(1, sizeof(csm_schema_t));
   return schema;
 }
 
-void
-csm_schema_destroy(csm_schema_t *schema)
+static void
+_csm_schema_destroy(csm_schema_t *schema)
 {
   csm_schema_field_t *tmp = NULL;
   while (schema->fields) {
@@ -258,8 +253,75 @@ csm_schema_destroy(csm_schema_t *schema)
   h_free(schema);
 }
 
+void
+csm_destroy_schemas(csm_ctx *ctx)
+{
+  csm_schema_t *schema = ctx->schema, *tmp = NULL;
+  while (schema) {
+    tmp = schema;
+    schema = schema->_next;
+    _csm_schema_destroy(tmp);
+  }
+  ctx->schema = NULL;
+}
+
 int
-csm_import_service_schema(csm_schema_t *schema, const char *path)
+csm_import_schemas(csm_ctx *ctx, const char *dir)
+{
+  int ret = 0;
+  size_t path_size = strlen(dir);
+  csm_schema_t *schema = NULL, *tmp = NULL;
+  DIR *dir_iter = NULL;
+  CHECK((path_size > 0) && (path_size <= PATH_MAX), "Invalid path length!");
+  CHECK((dir_iter = opendir(dir)), "Could not read directory!");
+  struct dirent *dir_entry = NULL;
+  DEBUG("Processing files in directory %s", dir);
+  
+  while((dir_entry = readdir(dir_iter)) != NULL) {
+    DEBUG("Checking file %s", dir_entry->d_name);
+    if(!strcmp(dir_entry->d_name, ".")) continue;
+    if(!strcmp(dir_entry->d_name, "..")) continue;
+    
+    schema = _csm_schema_new();
+    CHECK_MEM(schema);
+    CHECK(_csm_import_schema(schema, dir_entry->d_name), "Failed to import schemas");
+    
+    // insert into linked list, order by version
+    if (!ctx->schema) {
+      ctx->schema = schema;
+    } else {
+      tmp = ctx->schema;
+      do {
+	if (schema->version.major >= tmp->version.major && schema->version.minor > tmp->version.minor) {
+	  if (tmp->_prev)
+	    tmp->_prev->_next = schema;
+	  else
+	    ctx->schema = schema;
+	  schema->_prev = tmp->_prev;
+	  schema->_next = tmp;
+	  tmp->prev = schema;
+	  schema = NULL;
+	  break;
+	}
+	if (tmp->_next) {
+	  tmp = tmp->_next;
+	} else {
+	  schema->_prev = tmp;
+	  tmp->_next = schema;
+	  break;
+	}
+      } while(1);
+    }
+  }
+  
+  ret = 1;
+error:
+  if(dir_iter) closedir(dir_iter);
+  return ret;
+}
+
+static int
+_csm_import_schema(csm_schema_t *schema, const char *path)
 {
   int ret = 0;
   char *buffer = NULL;
@@ -334,8 +396,12 @@ csm_import_service_schema(csm_schema_t *schema, const char *path)
 	
 	if (strcmp(key, "version") == 0) {
 	  CHECK(t->type == JSMN_STRING, "Version must be a string");
-	  strcpy(schema->version, val);
-	  INFO("Registering schema with version %s", schema->version);
+	  INFO("Registering schema with version %s", val);
+	  char *dot = strchr(val, '.');
+	  CHECK(dot, "Invalid version string; please use semantic versioning");
+	  dot = '\0';
+	  schema->version.major = atoi(val);
+	  schema->version.minor = atof(dot + 1);
 	} else if (strcmp(key, "fields") == 0) {
 	  // pass
 	} else { // field attributes
@@ -437,9 +503,25 @@ error:
 }
 
 int
-csm_validate_fields(csm_schema_t *schema, co_obj_t *entries)
+// csm_validate_fields(csm_schema_t *schema, co_obj_t *entries)
+csm_validate_fields(csm_ctx *ctx, csm_service_t *s)
 {
+  co_obj_t *entries = s->fields;
   assert(IS_TREE(entries));
+  
+  if (s->version.major != ctx->schema->version.major) {
+    WARN("Rejecting service with different schema major version");
+    return 0;
+  }
+  
+  // find schema with same minor version as service, otherwise use newest schema
+  csm_schema_t *schema = ctx->schema;
+  for (; schema; schema = schema->_next) {
+    if (schema->version.minor == s->version.minor)
+      break;
+  }
+  if (!schema) schema = ctx->schema;
+  
   // iterate through schema fields
   csm_schema_field_t *schema_field = schema->fields;
   for (; schema_field; schema_field = schema_field->_next) {
@@ -455,6 +537,7 @@ csm_validate_fields(csm_schema_t *schema, co_obj_t *entries)
   return 1;
 }
 
+#if 0
 int
 csm_validate_field(csm_schema_t *schema, const char *field_name, csm_field_type type, co_obj_t *entry)
 {
@@ -469,3 +552,4 @@ csm_validate_field(csm_schema_t *schema, const char *field_name, csm_field_type 
   }
   return _csm_validate_field(schema_field, type, entry);
 }
+#endif

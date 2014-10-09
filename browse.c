@@ -54,6 +54,7 @@ extern AvahiSimplePoll *simple_poll;
 static int
 _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt)
 {
+  // TODO insert major/minor version from txt field into service
   int ret = 0;
   char *key = NULL, *val = NULL;
   
