@@ -56,7 +56,6 @@ error:
 int
 cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
 {
-  // TODO insert major/minor version of schema into newly created services
   CHECK(IS_LIST(params),"Received invalid params");
   co_obj_t *ctx_obj = co_list_element(params,0);
   CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
@@ -113,6 +112,8 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   if (csm_service_get_signature(s))
     csm_service_set_signature(s, NULL);
   
+  s->version = ctx->schema->version;
+  // TODO redo this with version string constructed from ctx->schema->version
   CHECK(csm_service_set_version(s, CSM_PROTO_VERSION), "Failed to set version");
   
   if (csm_add_service(ctx->service_list, s)) {

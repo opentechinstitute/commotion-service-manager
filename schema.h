@@ -52,7 +52,8 @@ csm_schema_t *csm_schema_new(void);
 void csm_destroy_schemas(csm_ctx *ctx);
 // int csm_import_service_schema(csm_schema_t *schema, const char *path);
 int csm_import_schemas(csm_ctx *ctx, const char *dir);
-int csm_validate_fields(csm_schema_t *schema, co_obj_t *entries);
+int csm_validate_fields(csm_ctx *ctx, csm_service_t *s);
+// int csm_validate_fields(csm_schema_t *schema, co_obj_t *entries);
 // int csm_validate_field(csm_schema_t *schema, const char *field_name, csm_field_type type, co_obj_t *entry);
 
 #endif

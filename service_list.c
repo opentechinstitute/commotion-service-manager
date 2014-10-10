@@ -191,9 +191,8 @@ error:
 int
 csm_add_service(csm_service_list *services, csm_service *s, csm_ctx *ctx)
 {
-  // TODO use correct version of schema, or reject
   // validate service fields against schema
-  CHECK(csm_validate_fields(ctx->schema, s->fields), "Service doesn't validate");
+  CHECK(csm_validate_fields(ctx, s), "Service doesn't validate");
   
   // attach service to service list
   s->parent = services;
@@ -225,8 +224,7 @@ error:
 int
 csm_update_service(csm_service_list *services, csm_service *s, csm_ctx *ctx)
 {
-  // TODO use correct version of schema, or reject
-  CHECK(csm_validate_fields(ctx->schema, s->fields), "Service doesn't validate");
+  CHECK(csm_validate_fields(ctx, s), "Service doesn't validate");
   assert(s->lifetime);
   long lifetime = *s->lifetime;
   
@@ -334,10 +332,73 @@ csm_print_services(csm_service_list *services)
   // TODO iterate call of csm_print_service()
 }
 
-static co_obj_t *
-_csm_sort_service_fields(co_obj_t *data, co_obj_t *current, void *context)
+struct _csm_fields_array {
+  ssize_t num_fields;
+  ssize_t current_field;
+  char **fields;
+};
+
+typedef void (*_csm_iter_t)(co_obj_t *data, co_obj_t *key, co_obj_t *val, void *context);
+
+static void
+_csm_list_parse(co_obj_t *list, co_obj_t *key, _csm_iter_t iter, void *context)
 {
-  
+  CHECK(IS_LIST(list), "Not a list object.");
+  _listnode_t *next = _co_list_get_first_node(list);
+  while(next != NULL)
+  {
+    iter(list, key, next->value, context);
+    next = _LIST_NEXT(next);
+  }
+  return;
+error:
+  return;
+}
+
+static inline void
+_csm_tree_process_r(co_obj_t *tree, _treenode_t *current, const _csm_iter_t iter, void *context)
+{
+  CHECK(IS_TREE(tree), "Recursion target is not a tree.");
+  if(current != NULL)
+  {
+    if(current->value != NULL) iter(tree, current->key current->value, context);
+    _csm_tree_process_r(tree, current->low, iter, context); 
+    _csm_tree_process_r(tree, current->equal, iter, context); 
+    _csm_tree_process_r(tree, current->high, iter, context); 
+  }
+  return;
+error:
+  return;
+}
+
+static void
+_csm_sort_service_fields(co_obj_t *data, co_obj_t *key, co_obj_t *field, void *context)
+{
+  struct _csm_fields_array *fields = (struct _csm_fields_array*)context;
+  /* max length of TXT record is 256 char, so the max length of our
+     template string is 256 + sizeof('<txt-record></txt-record>\0') = 282 */
+  fields->fields[fields->current] = h_calloc(282, sizeof(char));
+  if (IS_STR(field)) {
+    snprintf(fields->fields[fields->current], 
+	     282, 
+	     "<txt-record>%s=%s</txt-record>",
+	     co_obj_data_ptr(key),
+	     co_obj_data_ptr(field));
+  } else if (IS_INT(field)) {
+    snprintf(fields->fields[fields->current], 
+	     282, 
+	     "<txt-record>%s=%ld</txt-record>",
+	     co_obj_data_ptr(key),
+	     (int32_t)*co_obj_data_ptr(field));
+  } else if (IS_LIST(field)) {
+    _csm_list_parse(field, key, _csm_sort_service_fields, context);
+  } else {
+    ERROR("Invalid service field");
+    h_free(fields->fields[fields->current]);
+    return;
+  }
+  hattach(fields->fields[fields->current], fields->fields);
+  fields->current++;
 }
 
 /*
@@ -346,73 +407,52 @@ _csm_sort_service_fields(co_obj_t *data, co_obj_t *current, void *context)
  * service happens to have
  * ^^ actually, since this will be called for remote services that might have
  * 	a different schema, should probably base on fields
+ * conclusion: keep signing template separate from schema. sort fields and
+ * 	elements of list fields alphabetically
  */
 static size_t
 _csm_create_signing_template(csm_service *s, char **template)
 {
   int ret = 0;
+  char *txt_fields = NULL;
   
   /* Sort fields into alphabetical order */
-  //qsort(*cat_array,cat_len,sizeof(char*),cmpstringp);
+  ssize_t num_fields = co_tree_length(s->fields);
+  struct _csm_fields_array fields = {
+    .num_fields = num_fields,
+    .current_field = 0,
+    .fields = h_calloc(num_fields, sizeof(char*))
+  };
+  CHECK_MEM(fields.fields);
+  _csm_tree_process_r(s->fields, ((co_tree16_t *)s->fields)->root, _csm_sort_service_fields, &fields);
+  assert(fields.num_fields == fields.current_field);
   
+  // Alphabetically sort the array of template strings we've built
+  qsort(fields->fields,num_fields,sizeof(char*),cmpstringp);
   
-  
-  
-  
-  const char *type_template = "<txt-record>type=%s</txt-record>";
-  const char *str_template = "<type>%s</type>\n"
-  "<domain-name>%s</domain-name>\n"
-  "<port>%d</port>\n"
-  "<txt-record>name=%s</txt-record>\n"
-  "<txt-record>ttl=%d</txt-record>\n"
-  "<txt-record>uri=%s</txt-record>\n"
-  "%s\n"
-  "<txt-record>icon=%s</txt-record>\n"
-  "<txt-record>description=%s</txt-record>\n"
-  "<txt-record>lifetime=%ld</txt-record>";
-  
-  char **categories = NULL, *type_str = NULL, *app_type = NULL;
-  size_t cat_len = csm_service_categories_to_array(s, &categories);
-  if (cat_len) {
-    /* Concat the types into a single string to add to template */
-    int prev_len = 0;
-    for (int j = 0; j < cat_len; j++) {
-      if (app_type) {
-	free(app_type);
-	app_type = NULL;
-      }
-      prev_len = type_str ? strlen(type_str) : 0;
-      CHECK_MEM(asprintf(&app_type, type_template, categories[j]) != -1);
-      type_str = h_realloc(type_str, prev_len + strlen(app_type) + 1);
-      CHECK_MEM(type_str);
-      type_str[prev_len] = '\0';
-      strcat(type_str, app_type);
-    }
+  // build the full txt field template
+  for (int i = 0; i < num_fields, i++) {
+    txt_fields = h_realloc(txt_fields, strlen(txt_fields) + strlen(fields->fields[i]) + 1);
+    strcat(txt_fields, fields->fields[i]);
   }
+  txt_fields[strlen(txt_fields) - 1] = '\0'; // remove last \n
   
-  /* Add the fields into the template */
-  CHECK_MEM(asprintf(template,
-		     str_template,
-		     s->type,
-		     s->domain,
-		     s->port,
-		     csm_service_get_name(s),
-		     csm_service_get_ttl(s),
-		     csm_service_get_uri(s),
-		     cat_len ? type_str : "",
-		     csm_service_get_icon(s),
-		     csm_service_get_description(s),
-		     csm_service_get_lifetime(s)) != -1);
+  // finally create the signing template
+  int bytes = asprintf(template,
+		       "<type>%s</type>\n<domain-name>%s</domain-name>\n<port>%d</port>\n%s",
+		       s->type,
+		       s->domain,
+		       s->port,
+		       txt_fields);
+  CHECK(bytes > 0, "Failed to create signing template");
   
   ret = strlen(*template);
-  error:
-  if (categories)
-    h_free(categories);
-  if (app_type)
-    free(app_type); // alloc'd using asprintf
-    if (type_str)
-      h_free(type_str);
-    return ret;
+error:
+  if (fields.fields)
+    h_free(fields.fields);
+  if (txt_fields)
+    h_free(txt_fields);
+  return ret;
 }
 
 static int

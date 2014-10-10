@@ -13,7 +13,6 @@ SET(CSM_PIDFILE \"/var/run/commotion/commotion-service-manager.pid\")
 SET(CSM_SCHEMA_DIR \"/etc/commotion/csm/schemas.d/\")
 SET(COMMOTION_MANAGESOCK \"/var/run/commotiond.sock\")
 SET(CSM_MANAGESOCK \"/var/run/commotion-service-manager.sock\")
-SET(CSM_PROTO_VERSION \"1.1\")
 SET(UCIPATH \"/var/run/uci\")
 
 CONFIGURE_FILE( "${CMAKE_SOURCE_DIR}/config.h.in" "${PROJECT_SOURCE_DIR}/config.h" )

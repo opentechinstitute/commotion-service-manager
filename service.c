@@ -162,10 +162,12 @@ csm_service_new(AvahiIfIndex interface,
   co_obj_t *fields = co_tree16_create();
   CHECK_MEM(fields);
   
+#if 0
   // set current CSM protocol version
   co_obj_t *version = co_str8_create(CSM_PROTO_VERSION, strlen(CSM_PROTO_VERSION) + 1, 0);
   CHECK_MEM(version);
   CHECK(co_tree_insert(fields, "version", sizeof("version"), version), "Failed to insert version into service fields");
+#endif
   
   s->fields = fields;
   hattach(s->fields, s);
