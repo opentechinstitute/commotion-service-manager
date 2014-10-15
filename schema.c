@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <ctype.h>
+#include <dirent.h>
 
 #include <commotion/obj.h>
 #include <commotion/list.h>
@@ -35,8 +36,14 @@
 
 #include "util.h"
 #include "schema.h"
+#include "service.h"
 
 #define DEFAULT_TOKENS 128
+
+enum {
+  CSM_LIMIT_MIN = (1 << 0),
+  CSM_LIMIT_MAX = (1 << 1)
+};
 
 typedef enum {
   CSM_ATTR_FIELD = 1,
@@ -47,38 +54,6 @@ typedef enum {
   CSM_ATTR_MIN,
   CSM_ATTR_MAX
 } csm_field_attr;
-
-enum {
-  CSM_LIMIT_MIN = (1 << 0),
-  CSM_LIMIT_MAX = (1 << 1)
-};
-
-// typedef int (*csm_field_validator_t)(co_obj_t *data, csm_field_validator_t *schema);
-
-typedef struct csm_schema_field_t {
-  char field[256];
-  bool required;
-  csm_field_type type;
-  
-  // lists only
-  csm_field_type subtype;
-  
-  // strings only
-  size_t length;
-  
-  // ints only
-  uint8_t limits_flag;
-  long min;
-  long max;
-  
-  /** 
-   * In the future, we may want to add a validation callback pointer
-   * for custom validators
-   */
-//   csm_field_validator_t validate; 
-  
-  struct csm_schema_field_t *_next;
-} csm_schema_field_t;
 
 /* Private */
 
@@ -232,8 +207,6 @@ _csm_validate_list(co_obj_t *list, co_obj_t *current, void *context)
   return NULL;
 }
 
-/* Public */
-
 static csm_schema_t *
 _csm_schema_new(void)
 {
@@ -251,73 +224,6 @@ _csm_schema_destroy(csm_schema_t *schema)
     h_free(tmp);
   }
   h_free(schema);
-}
-
-void
-csm_destroy_schemas(csm_ctx *ctx)
-{
-  csm_schema_t *schema = ctx->schema, *tmp = NULL;
-  while (schema) {
-    tmp = schema;
-    schema = schema->_next;
-    _csm_schema_destroy(tmp);
-  }
-  ctx->schema = NULL;
-}
-
-int
-csm_import_schemas(csm_ctx *ctx, const char *dir)
-{
-  int ret = 0;
-  size_t path_size = strlen(dir);
-  csm_schema_t *schema = NULL, *tmp = NULL;
-  DIR *dir_iter = NULL;
-  CHECK((path_size > 0) && (path_size <= PATH_MAX), "Invalid path length!");
-  CHECK((dir_iter = opendir(dir)), "Could not read directory!");
-  struct dirent *dir_entry = NULL;
-  DEBUG("Processing files in directory %s", dir);
-  
-  while((dir_entry = readdir(dir_iter)) != NULL) {
-    DEBUG("Checking file %s", dir_entry->d_name);
-    if(!strcmp(dir_entry->d_name, ".")) continue;
-    if(!strcmp(dir_entry->d_name, "..")) continue;
-    
-    schema = _csm_schema_new();
-    CHECK_MEM(schema);
-    CHECK(_csm_import_schema(schema, dir_entry->d_name), "Failed to import schemas");
-    
-    // insert into linked list, order by version
-    if (!ctx->schema) {
-      ctx->schema = schema;
-    } else {
-      tmp = ctx->schema;
-      do {
-	if (schema->version.major >= tmp->version.major && schema->version.minor > tmp->version.minor) {
-	  if (tmp->_prev)
-	    tmp->_prev->_next = schema;
-	  else
-	    ctx->schema = schema;
-	  schema->_prev = tmp->_prev;
-	  schema->_next = tmp;
-	  tmp->prev = schema;
-	  schema = NULL;
-	  break;
-	}
-	if (tmp->_next) {
-	  tmp = tmp->_next;
-	} else {
-	  schema->_prev = tmp;
-	  tmp->_next = schema;
-	  break;
-	}
-      } while(1);
-    }
-  }
-  
-  ret = 1;
-error:
-  if(dir_iter) closedir(dir_iter);
-  return ret;
 }
 
 static int
@@ -419,7 +325,7 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	  switch (attr)
 	  {
 	    case CSM_ATTR_FIELD:
-	      strcpy(field->field, val);
+	      strcpy(field->name, val);
 	      break;
 	    case CSM_ATTR_REQUIRED:
 	      if (strncmp(val, "t", 1) == 0)
@@ -466,7 +372,7 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
         state = KEY;
 
         if (object_tokens == 0) {
-	  CHECK(strlen(field->field) > 0 && field->type, "Invalid field");
+	  CHECK(strlen(field->name) > 0 && field->type, "Invalid field");
 	  if (field->type == CSM_FIELD_LIST)
 	    CHECK(field->subtype, "Invalid field subtype");
 	  
@@ -502,9 +408,80 @@ error:
   return ret;
 }
 
+/* Public */
+
+void
+csm_destroy_schemas(csm_ctx *ctx)
+{
+  csm_schema_t *schema = ctx->schema, *tmp = NULL;
+  while (schema) {
+    tmp = schema;
+    schema = schema->_next;
+    _csm_schema_destroy(tmp);
+  }
+  ctx->schema = NULL;
+}
+
+int
+csm_import_schemas(csm_ctx *ctx, const char *dir)
+{
+  int ret = 0;
+  size_t path_size = strlen(dir);
+  csm_schema_t *schema = NULL, *tmp = NULL;
+  DIR *dir_iter = NULL;
+  CHECK((path_size > 0) && (path_size <= PATH_MAX), "Invalid path length!");
+  CHECK((dir_iter = opendir(dir)), "Could not read directory!");
+  struct dirent *dir_entry = NULL;
+  DEBUG("Processing files in directory %s", dir);
+  
+  while((dir_entry = readdir(dir_iter)) != NULL) {
+    DEBUG("Checking file %s", dir_entry->d_name);
+    if(!strcmp(dir_entry->d_name, ".")) continue;
+    if(!strcmp(dir_entry->d_name, "..")) continue;
+    
+    schema = _csm_schema_new();
+    CHECK_MEM(schema);
+    CHECK(_csm_import_schema(schema, dir_entry->d_name), "Failed to import schemas");
+    
+    // insert into linked list, order by version
+    if (!ctx->schema) {
+      ctx->schema = schema;
+    } else {
+      tmp = ctx->schema;
+      do {
+	if (schema->version.major >= tmp->version.major && schema->version.minor > tmp->version.minor) {
+	  if (tmp->_prev)
+	    tmp->_prev->_next = schema;
+	  else
+	    ctx->schema = schema;
+	  schema->_prev = tmp->_prev;
+	  schema->_next = tmp;
+	  tmp->_prev = schema;
+	  schema = NULL;
+	  break;
+	}
+	if (tmp->_next) {
+	  tmp = tmp->_next;
+	} else {
+	  schema->_prev = tmp;
+	  tmp->_next = schema;
+	  break;
+	}
+      } while(1);
+    }
+  }
+  
+  ret = 1;
+error:
+  if(dir_iter) closedir(dir_iter);
+  return ret;
+}
+
+
+
 int
 // csm_validate_fields(csm_schema_t *schema, co_obj_t *entries)
-csm_validate_fields(csm_ctx *ctx, csm_service_t *s)
+csm_validate_fields(csm_ctx *ctx, csm_service *s)
 {
   co_obj_t *entries = s->fields;
   assert(IS_TREE(entries));
@@ -525,9 +502,9 @@ csm_validate_fields(csm_ctx *ctx, csm_service_t *s)
   // iterate through schema fields
   csm_schema_field_t *schema_field = schema->fields;
   for (; schema_field; schema_field = schema_field->_next) {
-    co_obj_t *service_field = co_tree_find(entries, schema_field->field, strlen(schema_field->field) + 1);
+    co_obj_t *service_field = co_tree_find(entries, schema_field->name, strlen(schema_field->name) + 1);
     if (schema_field->required && !service_field) {
-      ERROR("Missing required field %s", schema_field->field);
+      ERROR("Missing required field %s", schema_field->name);
       return 0;
     }
     if (service_field
@@ -543,7 +520,7 @@ csm_validate_field(csm_schema_t *schema, const char *field_name, csm_field_type 
 {
   csm_schema_field_t *schema_field = schema->fields;
   for (; schema_field; schema_field = schema_field->_next) {
-    if (strcmp(schema_field->field, field_name) == 0)
+    if (strcmp(schema_field->name, field_name) == 0)
       break;
   }
   if (!schema_field) {
@@ -553,3 +530,23 @@ csm_validate_field(csm_schema_t *schema, const char *field_name, csm_field_type 
   return _csm_validate_field(schema_field, type, entry);
 }
 #endif
+
+csm_schema_t *
+csm_find_schema(csm_schema_t *list, int major_version, double minor_version)
+{
+  for (csm_schema_t *schema = list; schema; schema = schema->_next) {
+    if (schema->version.major == major_version && schema->version.minor == minor_version)
+      return schema;
+  }
+  return NULL;
+}
+
+csm_schema_field_t *
+csm_schema_get_field(csm_schema_t *schema, char *name) {
+  csm_schema_field_t *field = schema->fields;
+  for (; field; field = field->_next) {
+    if (strcmp(field->name,name) == 0)
+      return field;
+  }
+  return NULL;
+}

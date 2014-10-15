@@ -33,6 +33,9 @@
 #include <avahi-core/core.h>
 
 #include <commotion/debug.h>
+#include <commotion/obj.h>
+#include <commotion/tree.h>
+#include <commotion/list.h>
 
 #include "defs.h"
 #include "util.h"
@@ -301,4 +304,75 @@ error:
   if (escaped)
     free(escaped);
   return cur;
+}
+
+static inline void
+_csm_tree_process_r(co_obj_t *tree, _treenode_t *current, const _csm_iter_t iter, void *context)
+{
+  CHECK(IS_TREE(tree), "Recursion target is not a tree.");
+  if(current != NULL)
+  {
+    if(current->value != NULL) iter(tree, current->key, current->value, context);
+    _csm_tree_process_r(tree, current->low, iter, context); 
+    _csm_tree_process_r(tree, current->equal, iter, context); 
+    _csm_tree_process_r(tree, current->high, iter, context); 
+  }
+  return;
+error:
+  return;
+}
+
+int
+csm_tree_process(co_obj_t *tree, const _csm_iter_t iter, void *context)
+{
+  CHECK(IS_TREE(tree), "Recursion target is not a tree.");
+  _csm_tree_process_r(tree, ((co_tree16_t *)tree)->root, iter, context);
+  return 1;
+error:
+  return 0;
+}
+
+#define _LIST_NEXT(J) (((_listnode_t *)J)->next)
+#define _LIST_PREV(J) (((_listnode_t *)J)->prev)
+
+struct _listnode_t
+{
+  _listnode_t *prev;
+  _listnode_t *next;
+  co_obj_t *value;
+} __attribute__((packed));
+
+static _listnode_t *
+_co_list_get_first_node(const co_obj_t *list)
+{
+  CHECK_MEM(list);
+  _listnode_t *n = NULL;
+  if(CO_TYPE(list) == _list16)
+  {
+    n = ((co_list16_t *)list)->_first;
+  } 
+  else if(CO_TYPE(list) == _list32) 
+  {
+    n = ((co_list32_t *)list)->_first;
+  }
+  else SENTINEL("Specified object is not a list.");
+
+  return n;
+error:
+  return NULL;
+}
+
+int
+csm_list_parse(co_obj_t *list, co_obj_t *key, _csm_iter_t iter, void *context)
+{
+  CHECK(IS_LIST(list), "Not a list object.");
+  _listnode_t *next = _co_list_get_first_node(list);
+  while(next != NULL)
+  {
+    iter(list, key, next->value, context);
+    next = _LIST_NEXT(next);
+  }
+  return 1;
+error:
+  return 0;
 }

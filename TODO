@@ -1,14 +1,12 @@
 comparison of new service against schema should happen in service_commit in commotion-service-manager.c and csm_add_service/csm_update_service in service_list.h
-move create/verify signature to service_list.h/c since it will need ctx.schema
-replace fields object with another list object
-would be nice to allow additional non-spec fields to be included
 verifying signatures will be separate from schemas. it will simply order fields (and elements of list fields) alphabetically and create signing template
 schema versions will be semantic versioning. CSMs using schemas with different major version numbers will reject announcements from each other, while same major version numbers will attempt to be forward and backward compatible. For forward compatibility, it will use the current schema version it has (so new minor revisions can only add additional fields). For backward compatibility, it will either find its copy of the schema of that version or use the next closest version it has.
 
 TODO
-put input validation in service setter functions, instead of in update_service()
+Add CSM API method for fetching schema
+make note in README that version, lifetime, fingerprint, and signature are required fields in the schema
 don't hardcode service protocol, instead make runtime protocol configuration using config file
-  convert functions to use schema: _csm_extract_from_txt_list, cmd_commit_service, csm_publish_service, _csm_create_signing_template, uci_read, uci_write, print_service, csm_update_service
+  convert functions to use schema: print_service
   redo commotion-service-manager.h/c to use schema
 create error/return code enum and use that for all return code checking
   (and create same for libcommotion return/error codes)
@@ -42,3 +40,4 @@ use i->host_name in get_uuid, instead of using local box's hostname
 TTL field isn't functional for CSM, so remove it from csm_service_t
 write schema-generic setters/getters in service.h/c
 ctx should have all available versions of schema (maybe linked list with most recent first?)
+convert functions to use schema system: _csm_extract_from_txt_list, _csm_create_signing_template, csm_update_service, csm_publish_service, cmd_commit_service, uci_read, uci_write

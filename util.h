@@ -35,6 +35,8 @@
 })
 #endif
 
+typedef void (*_csm_iter_t)(co_obj_t *data, co_obj_t *key, co_obj_t *val, void *context);
+
 int isHex(const char *str, size_t len);
 int isNumeric (const char *s);
 int isUCIEncoded(const char *s, size_t s_len);
@@ -86,5 +88,8 @@ char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len);
 char *escape(char *to_escape, size_t *escaped_len);
 
 char *csm_txt_list_to_string(char *cur, size_t *cur_len, char *append, size_t append_len);
+
+int csm_tree_process(co_obj_t *tree, const _csm_iter_t iter, void *context);
+int csm_list_parse(co_obj_t *list, co_obj_t *key, _csm_iter_t iter, void *context);
 
 #endif

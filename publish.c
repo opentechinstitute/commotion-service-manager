@@ -38,6 +38,7 @@
 #include "defs.h"
 #include "service.h"
 #include "service_list.h"
+#include "util.h"
 #include "publish.h"
 
 #if 0
@@ -81,7 +82,7 @@ _csm_publish_service_i(co_obj_t *list, co_obj_t *current, void *context)
   if (IS_LIST(current)) return NULL;
   assert(context);
   csm_ctx *ctx = (csm_ctx*)context;
-  CHECK(csm_publish_service(((co_service_t*)current)->service, ctx),
+  CHECK(csm_publish_service(&((co_service_t*)current)->service, ctx),
         "Failed to publish service");
   return NULL;
 error:
@@ -94,7 +95,7 @@ _csm_unpublish_service_i(co_obj_t *list, co_obj_t *current, void *context)
   if (IS_LIST(current)) return NULL;
   assert(context);
   csm_ctx *ctx = (csm_ctx*)context;
-  CHECK(csm_unpublish_service(((co_service_t*)current)->service, ctx),
+  CHECK(csm_unpublish_service(&((co_service_t*)current)->service, ctx),
         "Failed to unpublish service");
   return NULL;
 error:
@@ -141,6 +142,21 @@ csm_unpublish_service(csm_service *s, csm_ctx *ctx)
   return 1;
 }
 
+static void
+_csm_import_into_txt_list(co_obj_t *container, co_obj_t *key, co_obj_t *val, void *context)
+{
+  AvahiStringList **txt_list = (AvahiStringList**)context;
+  if (IS_INT(val)) {
+    *txt_list = avahi_string_list_add_printf(*txt_list, "%s=%ld", co_obj_data_ptr(key), (long)*co_obj_data_ptr(val));
+  } else if (IS_STR(val)) {
+    *txt_list = avahi_string_list_add_printf(*txt_list, "%s=%s", co_obj_data_ptr(key), co_obj_data_ptr(val));
+  } else if (IS_LIST(val)) {
+    csm_list_parse(val, key, _csm_import_into_txt_list, context);
+  } else {
+    ERROR("Invalid service field");
+  }
+}
+
 int
 csm_publish_service(csm_service *s, csm_ctx *ctx)
 {
@@ -148,27 +164,6 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
   
   int ret = 0;
   AvahiStringList *t = NULL;
-  
-  char *name = csm_service_get_name(s);
-  char *description = csm_service_get_description(s);
-  char *uri = csm_service_get_uri(s);
-  char *icon = csm_service_get_icon(s);
-  int ttl = csm_service_get_ttl(s);
-  long lifetime = csm_service_get_lifetime(s);
-  char **categories = NULL;
-  int cat_len = csm_service_categories_to_array(s, &categories);
-  char *key = csm_service_get_key(s);
-  char *signature = csm_service_get_signature(s);
-  
-  CHECK(s &&
-	name &&
-	description &&
-	uri &&
-	icon &&
-	ttl &&
-	lifetime &&
-	cat_len,
-	"Service missing required fields");
   
 #ifdef CLIENT
   AvahiClient *client = ctx->client;
@@ -180,7 +175,6 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
   CHECK(state == AVAHI_SERVER_RUNNING, "Avahi server in bad state");
 #endif
 
-  // TODO should we exit if !i->local?
   if (s->local) { // only remote services have address set
     if (!s->l.group) {
 #ifdef CLIENT
@@ -192,17 +186,8 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
       hattach(s->l.group, s);
     }
     
-    t = avahi_string_list_add_printf(t, "%s=%s", "name", name);
-    t = avahi_string_list_add_printf(t, "%s=%s", "description", description);
-    t = avahi_string_list_add_printf(t, "%s=%s", "uri", uri);
-    t = avahi_string_list_add_printf(t, "%s=%s", "icon", icon);
-    t = avahi_string_list_add_printf(t, "%s=%s", "fingerprint", key);
-    t = avahi_string_list_add_printf(t, "%s=%s", "signature", signature);
-    t = avahi_string_list_add_printf(t, "%s=%d", "ttl", ttl);
-    t = avahi_string_list_add_printf(t, "%s=%ld", "lifetime", lifetime);
-    for (int j = 0; j < cat_len; j++) {
-      t = avahi_string_list_add_printf(t, "%s=%s", "categories", categories[j]);
-    }
+    CHECK(csm_tree_process(s->fields, _csm_import_into_txt_list, &t),
+	  "Failed to import service fields into TXT list");
     
     /* If the group is empty (either because it was just created, or
     * because it was reset previously, add our entries.  */
@@ -237,8 +222,6 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
   
   ret = 1;
 error:
-  if (categories)
-    h_free(categories);
   if (t)
     avahi_string_list_free(t);
   return ret;

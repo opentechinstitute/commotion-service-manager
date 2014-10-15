@@ -31,7 +31,7 @@ SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-SET(DAEMONSRC defs.h schema.h schema.c cmd.h cmd.c service.h service.c service_list.h service_list.c commotion-service-manager.h commotion-service-manager.c browse.h browse.c publish.h publish.c daemon.c service.h service.c util.h util.c extern/base32.h extern/base32.c extern/jsmn.h extern/jsmn.c)
+SET(DAEMONSRC defs.h browse.h browse.c schema.h schema.c cmd.h cmd.c service.h service.c service_list.h service_list.c commotion-service-manager.h commotion-service-manager.c publish.h publish.c daemon.c service.h service.c util.h util.c extern/base32.h extern/base32.c extern/jsmn.h extern/jsmn.c)
 SET(LIBSRC defs.h commotion-service-manager.h commotion-service-manager.c)
 # SET(CLIENTSRC client.c ${LIBSRC})
 

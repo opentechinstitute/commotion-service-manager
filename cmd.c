@@ -56,36 +56,32 @@ error:
 int
 cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
 {
+  csm_service *s = NULL;
+  int found = 0, success = 0, ret = 0;
+  char *version_str = NULL;
+  co_obj_t *bool_obj = NULL, *key_obj = NULL, *sig_obj = NULL;
+  
   CHECK(IS_LIST(params),"Received invalid params");
   co_obj_t *ctx_obj = co_list_element(params,0);
   CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
   csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
   
-  co_obj_t *service = co_list_element(params,1);
-  CHECK(IS_TREE(service),"Received invalid service");
-
-  co_obj_t *name_obj = co_tree_find(service,"name",sizeof("name"));
-  co_obj_t *description_obj = co_tree_find(service,"description",sizeof("description"));
-  co_obj_t *uri_obj = co_tree_find(service,"uri",sizeof("uri"));
-  co_obj_t *icon_obj = co_tree_find(service,"icon",sizeof("icon"));
-  co_obj_t *key_obj = co_tree_find(service,"key",sizeof("key"));
+  co_obj_t *service_fields = co_list_element(params,1);
+  CHECK(IS_TREE(service_fields),"Received invalid service fields");
   
-  /* Check required fields */
-  CHECK(name_obj && description_obj && uri_obj && icon_obj,
-	"Service missing required fields");
+  co_obj_t *found_key = co_tree_find(service_fields, "key", sizeof("key"));
   
-  csm_service *s = NULL;
-  
-  if (key_obj) {
-    // find existing service
+  if (found_key) {
+    // look for existing service in service list
     char *key = NULL;
-    size_t key_len = co_obj_data(&key, key_obj);
-    CHECK(isValidFingerprint(key,strlen(key)),"Invalid key");
+    size_t key_len = co_obj_data(&key, found_key);
     char uuid[UUID_LEN + 1] = {0};
     CHECK(get_uuid(key,key_len,uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
     s = csm_find_service(ctx->service_list, uuid);
     if (!s)
       INFO("Could not find service with provided key, creating new service");
+    else
+      found = 1;
   }
   
   if (!s) {
@@ -93,43 +89,50 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
     s = csm_service_new(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, NULL, "_commotion._tcp", "mesh.local");
     CHECK_MEM(s);
     s->local = 1;
-    // TODO do add_service here
   } else {
-    // TODO use update_service here
+    if (co_list_contains(ctx->service_list->service_fields, s->fields)) {
+      co_obj_t *old_fields = co_list_delete(ctx->service_list->service_fields, s->fields);
+      CHECK(old_fields, "Failed to delete old service fields");
+      co_obj_free(old_fields);
+    }
+    
+    // clear signature so a new one is created upon submission
+    if (s->signature)
+      s->signature = NULL;
   }
   
-  ctx->service = s;
-  
-  // we can now replace/set the service's fields with the new passed fields
-  // TODO THIS IS BAD, redo this (and move to above if block)
-  co_obj_free(s->fields); // TODO this will only work if brand new service that hasn't been added to service_list
-  hattach(service, NULL); // TODO remove from list instead of just detaching
-  s->fields = service;
+  // attach passed list of service fields to our newly created/updated service
+  CHECK(co_list_delete(params, service_fields), "Failed to remove service fields from cmd params list");
+  s->fields = service_fields;
   hattach(s->fields, s);
   
-  // delete signature so a new one is created upon submission
-  // TODO this should be moved to above if block before update_service call
-  if (csm_service_get_signature(s))
-    csm_service_set_signature(s, NULL);
+  co_obj_t *lifetime_obj = co_tree_find(s->fields, "lifetime", strlen("lifetime") + 1);
+  CHECK(lifetime_obj, "Service doesn't contain lifetime field");
+  s->lifetime = atol(co_obj_data_ptr(lifetime_obj));
   
-  s->version = ctx->schema->version;
-  // TODO redo this with version string constructed from ctx->schema->version
-  CHECK(csm_service_set_version(s, CSM_PROTO_VERSION), "Failed to set version");
+  if (!found)
+    success = csm_add_service(ctx->service_list, s, ctx);
+  else
+    success = csm_update_service(ctx->service_list, s, ctx);
   
-  if (csm_add_service(ctx->service_list, s)) {
+  if (success) {
+    ctx->service = s;
+
+    s->version = ctx->schema->version;
+    CHECK(asprintf(&version_str, "%d.%f", s->version.major, s->version.minor) != -1, "Failed to generate version string");
+    CHECK(csm_service_set_str(s, "version", version_str), "Failed to set version");
+
     s->l.uptodate = 0; // flag used to indicate need to re-register w/ avahi server if it's an already existing service (otherwise ignored)
     
     // send back success, key, signature
-    char *key = csm_service_get_key(s);
-    char *signature = csm_service_get_signature(s);
-    CHECK(key && signature && s->uuid, "Failed to get key and signature");
-    co_obj_t *true_obj = co_bool_create(true,0);
-    CHECK_MEM(true_obj);
-    CMD_OUTPUT("success",true_obj);
-    co_obj_t *key_obj = co_str8_create(key,strlen(key)+1,0);
+    CHECK(s->key && s->signature && s->uuid, "Failed to get key and signature");
+    bool_obj = co_bool_create(true,0);
+    CHECK_MEM(bool_obj);
+    CMD_OUTPUT("success",bool_obj);
+    key_obj = co_str8_create(s->key,strlen(s->key)+1,0);
     CHECK_MEM(key_obj);
     CMD_OUTPUT("key",key_obj);
-    co_obj_t *sig_obj = co_str8_create(signature,strlen(signature)+1,0);
+    sig_obj = co_str8_create(s->signature,strlen(s->signature)+1,0);
     CHECK_MEM(sig_obj);
     CMD_OUTPUT("signature",sig_obj);
     
@@ -137,14 +140,22 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   } else {
     // remove service, send back failure
     csm_service_destroy(s);
-    co_obj_t *false_obj = co_bool_create(false,0);
-    CHECK_MEM(false_obj);
-    CMD_OUTPUT("success",false_obj);
+    bool_obj = co_bool_create(false,0);
+    CHECK_MEM(bool_obj);
+    CMD_OUTPUT("success",bool_obj);
   }
   
-  return 1;
+  ret = 1;
 error:
-  return 0;
+  if (version_str)
+    free(version_str);
+  if (bool_obj)
+    co_obj_free(bool_obj);
+  if (key_obj)
+    co_obj_free(key_obj);
+  if (sig_obj)
+    co_obj_free(sig_obj);
+  return ret;
 }
 
 int

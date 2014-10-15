@@ -26,6 +26,11 @@
 #define CSM_SCHEMA_H
 
 #include <commotion/obj.h>
+#include "defs.h"
+
+// typedef int (*csm_field_validator_t)(co_obj_t *data, csm_field_validator_t *schema);
+
+typedef struct csm_service csm_service;
 
 typedef enum {
   CSM_FIELD_STRING = 1,
@@ -33,6 +38,31 @@ typedef enum {
   CSM_FIELD_INT,  /** int32_t */
   CSM_FIELD_HEX,
 } csm_field_type;
+
+typedef struct csm_schema_field_t {
+  char name[256];
+  bool required;
+  csm_field_type type;
+  
+  // lists only
+  csm_field_type subtype;
+  
+  // strings only
+  size_t length;
+  
+  // ints only
+  uint8_t limits_flag;
+  long min;
+  long max;
+  
+  /** 
+   * In the future, we may want to add a validation callback pointer
+   * for custom validators
+   */
+//   csm_field_validator_t validate; 
+  
+  struct csm_schema_field_t *_next;
+} csm_schema_field_t;
 
 struct csm_schema_version {
   int major;
@@ -52,8 +82,10 @@ csm_schema_t *csm_schema_new(void);
 void csm_destroy_schemas(csm_ctx *ctx);
 // int csm_import_service_schema(csm_schema_t *schema, const char *path);
 int csm_import_schemas(csm_ctx *ctx, const char *dir);
-int csm_validate_fields(csm_ctx *ctx, csm_service_t *s);
+int csm_validate_fields(csm_ctx *ctx, csm_service *s);
 // int csm_validate_fields(csm_schema_t *schema, co_obj_t *entries);
 // int csm_validate_field(csm_schema_t *schema, const char *field_name, csm_field_type type, co_obj_t *entry);
+csm_schema_t *csm_find_schema(csm_schema_t *list, int major_version, double minor_version);
+csm_schema_field_t *csm_schema_get_field(csm_schema_t *schema, char *name);
 
 #endif

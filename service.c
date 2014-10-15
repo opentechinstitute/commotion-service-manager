@@ -40,6 +40,7 @@
 #include "defs.h"
 #include "util.h"
 #include "service.h"
+#include "schema.h"
 #include "commotion-service-manager.h"
 
 extern struct csm_config csm_config;
@@ -53,65 +54,111 @@ extern int keyring_send_sas_request_client(const char *sid_str,
 
 /* Private */
 
-#if 0
+struct _csm_fields_array {
+  ssize_t num_fields;
+  ssize_t current_field;
+  char **fields;
+};
+
+static void
+_csm_sort_service_fields_i(co_obj_t *data, co_obj_t *key, co_obj_t *field, void *context)
+{
+  struct _csm_fields_array *fields = (struct _csm_fields_array*)context;
+  /* max length of TXT record is 256 char, so the max length of our
+     template string is 256 + sizeof('<txt-record></txt-record>\0') = 282 */
+  fields->fields[fields->current_field] = h_calloc(282, sizeof(char));
+  if (IS_STR(field)) {
+    snprintf(fields->fields[fields->current_field], 
+	     282, 
+	     "<txt-record>%s=%s</txt-record>",
+	     co_obj_data_ptr(key),
+	     co_obj_data_ptr(field));
+  } else if (IS_INT(field)) {
+    snprintf(fields->fields[fields->current_field], 
+	     282, 
+	     "<txt-record>%s=%ld</txt-record>",
+	     co_obj_data_ptr(key),
+	     (long)*co_obj_data_ptr(field));
+  } else if (IS_LIST(field)) {
+    csm_list_parse(field, key, _csm_sort_service_fields_i, context);
+  } else {
+    ERROR("Invalid service field");
+    h_free(fields->fields[fields->current_field]);
+    return;
+  }
+  hattach(fields->fields[fields->current_field], fields->fields);
+  fields->current_field++;
+}
+
 static size_t
 _csm_create_signing_template(csm_service *s, char **template)
 {
   int ret = 0;
-  const char *type_template = "<txt-record>type=%s</txt-record>";
-  const char *str_template = "<type>%s</type>\n"
-			     "<domain-name>%s</domain-name>\n"
-			     "<port>%d</port>\n"
-			     "<txt-record>name=%s</txt-record>\n"
-			     "<txt-record>ttl=%d</txt-record>\n"
-			     "<txt-record>uri=%s</txt-record>\n"
-			     "%s\n"
-			     "<txt-record>icon=%s</txt-record>\n"
-			     "<txt-record>description=%s</txt-record>\n"
-			     "<txt-record>lifetime=%ld</txt-record>";
-
-  char **categories = NULL, *type_str = NULL, *app_type = NULL;
-  size_t cat_len = csm_service_categories_to_array(s, &categories);
-  if (cat_len) {
-    /* Concat the types into a single string to add to template */
-    int prev_len = 0;
-    for (int j = 0; j < cat_len; j++) {
-      if (app_type) {
-	free(app_type);
-	app_type = NULL;
-      }
-      prev_len = type_str ? strlen(type_str) : 0;
-      CHECK_MEM(asprintf(&app_type, type_template, categories[j]) != -1);
-      type_str = h_realloc(type_str, prev_len + strlen(app_type) + 1);
-      CHECK_MEM(type_str);
-      type_str[prev_len] = '\0';
-      strcat(type_str, app_type);
-    }
-  }
+  char *txt_fields = NULL;
   
-  /* Add the fields into the template */
-  CHECK_MEM(asprintf(template,
-		     str_template,
-		     s->type,
-		     s->domain,
-		     s->port,
-		     csm_service_get_name(s),
-		     csm_service_get_ttl(s),
-		     csm_service_get_uri(s),
-		     cat_len ? type_str : "",
-		     csm_service_get_icon(s),
-		     csm_service_get_description(s),
-		     csm_service_get_lifetime(s)) != -1);
+  /* Sort fields into alphabetical order */
+  ssize_t num_fields = co_tree_length(s->fields);
+  struct _csm_fields_array fields = {
+    .num_fields = num_fields,
+    .current_field = 0,
+    .fields = h_calloc(num_fields, sizeof(char*))
+  };
+  CHECK_MEM(fields.fields);
+  CHECK(csm_tree_process(s->fields, _csm_sort_service_fields_i, &fields), 
+	"Failed to sort service fields");
+  assert(fields.num_fields == fields.current_field);
+  
+  // Alphabetically sort the array of template strings we've built
+  qsort(&fields.fields,num_fields,sizeof(char*),cmpstringp);
+  
+  // build the full txt field template
+  for (int i = 0; i < num_fields; i++) {
+    txt_fields = h_realloc(txt_fields, strlen(txt_fields) + strlen(fields.fields[i]) + 1);
+    strcat(txt_fields, fields.fields[i]);
+    strcat(txt_fields, "\n");
+  }
+  txt_fields[strlen(txt_fields) - 1] = '\0'; // remove last \n
+  
+  // finally create the signing template
+  int bytes = asprintf(template,
+		       "<type>%s</type>\n<domain-name>%s</domain-name>\n<port>%d</port>\n%s",
+		       s->type,
+		       s->domain,
+		       s->port,
+		       txt_fields);
+  CHECK(bytes > 0, "Failed to create signing template");
   
   ret = strlen(*template);
 error:
-  if (categories)
-    h_free(categories);
-  if (app_type)
-    free(app_type); // alloc'd using asprintf
-  if (type_str)
-    h_free(type_str);
+  if (fields.fields)
+    h_free(fields.fields);
+  if (txt_fields)
+    h_free(txt_fields);
   return ret;
+}
+
+// this is redundant by co_tree_find
+#if 0
+inline co_obj_t *
+csm_tree_find_r(co_obj_t *tree, _treenode_t *current, const _csm_iter_t iter, void *context)
+{
+  co_obj_t *ret = NULL;
+  CHECK(IS_TREE(tree), "Recursion target is not a tree.");
+  if(current != NULL)
+  {
+    if(current->value != NULL) {
+      ret = iter(tree, current->key, current->value, context);
+      if (ret) return ret;
+    }
+    ret = csm_tree_process_r(tree, current->low, iter, context);
+    if (ret) return ret;
+    ret = csm_tree_process_r(tree, current->equal, iter, context);
+    if (ret) return ret;
+    ret = csm_tree_process_r(tree, current->high, iter, context);
+  }
+  return ret;
+error:
+  return NULL;
 }
 #endif
 
@@ -138,7 +185,7 @@ csm_service_new(AvahiIfIndex interface,
 		const char *domain)
 {
   // allocate a full co_service_t that contains the csm_service
-  co_service_t s_obj = (co_service_t*)co_service_create();
+  co_service_t *s_obj = (co_service_t*)co_service_create();
 //   csm_service *s = h_calloc(1, sizeof(csm_service));
   
   CHECK_MEM(s_obj);
@@ -211,7 +258,7 @@ co_obj_t *
 csm_service_get_list(const csm_service *s, const char *field)
 {
   assert(IS_TREE(s->fields));
-  return co_tree_find(service,"name",sizeof("name"));
+  return co_tree_find(s->fields,"name",sizeof("name"));
 }
 
 int32_t
@@ -222,7 +269,7 @@ csm_service_get_int(const csm_service *s, const char *field)
   CHECK(field_obj, "Integer field %s not found", field);
   return ((co_int32_t*)field_obj)->data;
 error:
-  return NULL;
+  return 0;
 }
 
 int
@@ -232,29 +279,12 @@ csm_service_set_str(csm_service *s, const char *field, const char *str)
   if (str) {
     co_obj_t *str_obj = co_str8_create(str, strlen(str) + 1, 0);
     CHECK_MEM(str_obj);
-    CHECK(co_tree_insert_force(s->fields, field, strlen(field) + 1, str_obj),
+    CHECK(co_tree_insert(s->fields, field, strlen(field) + 1, str_obj),
 	  "Failed to insert %s into service", field);
   } else {
     co_obj_t *old_str = co_tree_delete(s->fields, field, strlen(field) + 1);
     if (old_str)
       co_obj_free(old_str);
-  }
-  return 1;
-error:
-  return 0;
-}
-
-int
-csm_service_set_list(csm_service *s, const char *field, co_obj_t *list)
-{
-  assert(IS_TREE(s->fields));
-  if (list) {
-    CHECK(co_tree_insert_force(s->fields, field, strlen(field) + 1, list),
-	  "Failed to insert %s into service", field);
-  } else {
-    co_obj_t *old_list = co_tree_delete(s->fields, field, strlen(field) + 1);
-    if (old_list)
-      co_obj_free(old_list);
   }
   return 1;
 error:
@@ -268,13 +298,68 @@ csm_service_set_int(csm_service *s, const char *field, int32_t n)
   if (n) {
     co_obj_t *int_obj = co_int32_create(n, 0);
     CHECK_MEM(int_obj);
-    CHECK(co_tree_insert_force(s->fields, field, strlen(field) + 1, int_obj),
+    CHECK(co_tree_insert(s->fields, field, strlen(field) + 1, int_obj),
 	  "Failed to insert %s into service", field);
   } else {
     co_obj_t *old_int = co_tree_delete(s->fields, field, strlen(field) + 1);
     if (old_int)
       co_obj_free(old_int);
   }
+  return 1;
+error:
+  return 0;
+}
+
+int
+csm_service_set_list(csm_service *s, const char *field, co_obj_t *list)
+{
+  assert(IS_TREE(s->fields));
+  if (list) {
+    CHECK(co_tree_insert(s->fields, field, strlen(field) + 1, list),
+	  "Failed to insert %s into service", field);
+  } else {
+    co_obj_t *old_list = co_tree_delete(s->fields, field, strlen(field) + 1);
+    if (old_list)
+      co_obj_free(old_list);
+  }
+  return 1;
+error:
+  return 0;
+}
+
+int
+csm_service_append_str_to_list(csm_service *s, const char *field, const char *str)
+{
+  assert(IS_TREE(s->fields));
+  co_obj_t *list = co_tree_find(s->fields, field, strlen(field) + 1);
+  if (!list) {
+    list = co_list16_create();
+    CHECK_MEM(list);
+    CHECK(co_tree_insert(s->fields, field, strlen(field) + 1, list),
+	  "Failed to insert %s into service", field);
+  }
+  co_obj_t *str_obj = co_str8_create(str, strlen(str) + 1, 0);
+  CHECK_MEM(str_obj);
+  CHECK(co_list_append(list, str_obj), "Failed to append service field to list");
+  return 1;
+error:
+  return 0;
+}
+
+int
+csm_service_append_int_to_list(csm_service *s, const char *field, int32_t n)
+{
+  assert(IS_TREE(s->fields));
+  co_obj_t *list = co_tree_find(s->fields, field, strlen(field) + 1);
+  if (!list) {
+    list = co_list16_create();
+    CHECK_MEM(list);
+    CHECK(co_tree_insert(s->fields, field, strlen(field) + 1, list),
+	  "Failed to insert %s into service", field);
+  }
+  co_obj_t *int_obj = co_int32_create(n, 0);
+  CHECK_MEM(int_obj);
+  CHECK(co_list_append(list, int_obj), "Failed to append service field to list");
   return 1;
 error:
   return 0;
@@ -421,6 +506,8 @@ error:
  * @param f File to output to
  * @param service the service to print
  */
+// TODO redo this
+#if 0
 void
 print_service(FILE *f, csm_service *s)
 {
@@ -477,6 +564,7 @@ error:
   if (txt)
     free(txt); // alloc'd with realloc from csm_txt_list_to_string()
 }
+#endif
 
 #if 0
 /**
@@ -502,3 +590,98 @@ error:
   return 0;
 }
 #endif
+
+int
+csm_verify_signature(csm_service *s)
+{
+  int verdict = 0;
+  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
+  char *to_verify = NULL;
+  CHECK(s->key && s->signature, "Service missing key or signature");
+  CHECK(_csm_create_signing_template(s,&to_verify) > 0, "Failed to create signing template");
+  CHECK_MEM(to_verify);
+  
+  char sas_buf[2*SAS_SIZE+1] = {0};
+  
+  CHECK(keyring_send_sas_request_client(s->key,strlen(s->key),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
+  
+  bool output;
+  CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),
+	"Failed to connect to Commotion socket");
+  CHECK_MEM((co_req = co_request_create()));
+  CO_APPEND_STR(co_req,"verify");
+  CO_APPEND_STR(co_req,sas_buf);
+  CO_APPEND_STR(co_req,s->signature);
+  CO_APPEND_STR(co_req,to_verify);
+  CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req)
+	&& co_response_get_bool(co_resp,&output,"result",sizeof("result")),
+	"Failed to verify signature");
+  
+  /* Is the signature valid? 1=yes, 0=no */
+  if (output == true)
+    verdict = 1;
+  
+error:
+  if (co_req)
+    co_free(co_req);
+  if (co_resp)
+    co_free(co_resp);
+  if (co_conn)
+    co_disconnect(co_conn);
+  if (to_verify)
+    free(to_verify); // alloc'd using asprint from _csm_create_signing_template()
+  return verdict;
+}
+
+int
+csm_create_signature(csm_service *s)
+{
+  int ret = 0;
+  char *to_sign = NULL;
+  CHECK(_csm_create_signing_template(s,&to_sign) > 0, "Failed to create signing template");
+  CHECK_MEM(to_sign);
+  
+  co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
+  CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),
+	"Failed to connect to Commotion socket");
+  CHECK_MEM((co_req = co_request_create()));
+  CO_APPEND_STR(co_req,"sign");
+  if (s->key) {
+    CO_APPEND_STR(co_req,s->key);
+  }
+  CO_APPEND_STR(co_req,to_sign);
+  
+  CHECK(co_call(co_conn,&co_resp,"serval-crypto",sizeof("serval-crypto"),co_req),
+	"Failed to sign service announcement");
+  
+  char *signature = NULL, *key = NULL;
+  CHECK(co_response_get_str(co_resp,&signature,"signature",sizeof("signature")),
+	"Failed to fetch signature from response");
+  CHECK(co_response_get_str(co_resp,&key,"SID",sizeof("SID")),
+	"Failed to fetch SID from response");
+  CHECK(csm_service_set_str(s, "signature", signature), "Failed to set signature");
+  s->signature = co_obj_data_ptr(co_tree_find(s->fields, "signature", sizeof("signature")));
+  
+  if (!s->key) {
+    CHECK(csm_service_set_str(s, "fingerprint", key), "Failed to set key");
+    s->key = co_obj_data_ptr(co_tree_find(s->fields, "fingerprint", sizeof("key")));
+    // set UUID
+    char uuid[UUID_LEN + 1] = {0};
+    CHECK(get_uuid(key,strlen(key),uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
+    s->uuid = h_strdup(uuid);
+    CHECK_MEM(s->uuid);
+    hattach(s->uuid, s);
+  }
+  
+  ret = 1;
+error:
+  if (co_req)
+    co_free(co_req);
+  if (co_resp)
+    co_free(co_resp);
+  if (co_conn)
+    co_disconnect(co_conn);
+  if (to_sign)
+    free(to_sign); // alloc'd using asprint from _csm_create_signing_template()
+  return ret;
+}

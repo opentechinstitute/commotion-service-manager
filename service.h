@@ -31,8 +31,9 @@
 #include <commotion/obj.h>
 
 #include "defs.h"
+#include "schema.h"
 
-struct csm_service_list;
+typedef struct csm_service_list csm_service_list;
 
 struct csm_service_local {
   ENTRY_GROUP *group;
@@ -49,7 +50,7 @@ struct csm_service_remote {
 typedef struct csm_service {
   /** Common members for all services */
   co_obj_t *fields; // co_tree16_t map of user-defined service fields
-  struct csm_service_list *parent;
+  csm_service_list *parent;
   
   AvahiIfIndex interface;
   AvahiProtocol protocol;
@@ -64,7 +65,7 @@ typedef struct csm_service {
   // the following members point to data contained in the .fields list;
   char *key;
   char *signature;
-  long *lifetime;
+  long lifetime;
   
   // schema version
   struct csm_schema_version version;
@@ -99,8 +100,10 @@ co_obj_t *csm_service_get_list(const csm_service *s, const char *field);
 int32_t csm_service_get_int(const csm_service *s, const char *field);
 
 int csm_service_set_str(csm_service *s, const char *field, const char *str);
-int csm_service_set_list(csm_service *s, const char *field, co_obj_t *list);
 int csm_service_set_int(csm_service *s, const char *field, int32_t n);
+int csm_service_set_list(csm_service *s, const char *field, co_obj_t *list);
+int csm_service_append_str_to_list(csm_service *s, const char *field, const char *str);
+int csm_service_append_int_to_list(csm_service *s, const char *field, int32_t n);
 
 #if 0
 char *csm_service_get_name(csm_service *s);
@@ -130,9 +133,8 @@ void print_service(FILE *f, csm_service *s);
 // TODO do we need a list to array function?
 // size_t csm_service_categories_to_array(csm_service *s, char ***cat_array);
 
-// MOVED TO SERVICE_LIST:
-// int verify_signature(csm_service *service);
-// int create_signature(csm_service *service);
+int csm_verify_signature(csm_service *service);
+int csm_create_signature(csm_service *service);
 
 /** 
  * libcommotion object extended type for CSM services 

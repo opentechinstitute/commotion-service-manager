@@ -41,94 +41,182 @@
 #include <commotion/debug.h>
 #include <commotion/obj.h>
 #include <commotion/list.h>
+#include <commotion/tree.h>
 
 #include "defs.h"
+#include "browse.h"
 #include "service.h"
 #include "service_list.h"
-#include "browse.h"
+#include "util.h"
 
 extern AvahiSimplePoll *simple_poll;
 
 /* Private */
 
-static int
-_csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt)
+static co_obj_t *
+_csm_field_list_find_string_i(co_obj_t *data, co_obj_t *current, void *context)
 {
-  // TODO insert major/minor version from txt field into service (and keep it as a field too)
+  if (IS_LIST(current)) return NULL;
+  char *val = (char*)context;
+  char *field_val = co_obj_data_ptr(current);
+  if (strcmp(val, field_val) == 0)
+    return current;
+  return NULL;
+}
+
+static co_obj_t *
+_csm_field_list_find_int_i(co_obj_t *data, co_obj_t *current, void *context)
+{
+  if (IS_LIST(current)) return NULL;
+  int32_t *val = (int32_t*)context;
+  int32_t *field_val = (int32_t*)co_obj_data_ptr(current);
+  if (*val == *field_val)
+    return current;
+  return NULL;
+}
+
+#if 0
+static co_obj_t *
+_csm_fields_find_by_key(co_obj_t *fields, co_obj_t *key, co_obj_t *val, void *context)
+{
+  char *field_name = co_obj_data_ptr(key);
+  if (strcmp(field_name, (char*)context) == 0)
+    return key;
+  return NULL;
+}
+#endif
+
+static int
+_csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt, csm_ctx *ctx)
+{
   int ret = 0;
+  long int_val;
   char *key = NULL, *val = NULL;
+  co_obj_t *obj = NULL, *field_list = NULL, *val_obj = NULL, *list = NULL;
   
-  AvahiStringList *name = avahi_string_list_find(txt,"name");
-  AvahiStringList *uri = avahi_string_list_find(txt,"uri");
-  AvahiStringList *icon = avahi_string_list_find(txt,"icon");
-  AvahiStringList *description = avahi_string_list_find(txt,"description");
-  AvahiStringList *ttl = avahi_string_list_find(txt,"ttl");
-  AvahiStringList *lifetime = avahi_string_list_find(txt,"lifetime");
-  AvahiStringList *signature = avahi_string_list_find(txt,"signature");
-  AvahiStringList *fingerprint = avahi_string_list_find(txt,"fingerprint");
-  AvahiStringList *version = avahi_string_list_find(txt,"version");
+  // first get version
+  AvahiStringList *version_txt = avahi_string_list_find(txt,"version");
+  CHECK(version_txt, "No version string available in TXT records");
+  CHECK(avahi_string_list_get_pair(version_txt,NULL,&val,NULL) == 0,
+	"Failed to extract version from TXT list");
+  char *dot = strchr(val, '.');
+  CHECK(dot, "Invalid version string; doesn't use semantic versioning");
+  dot = '\0';
+  s->version.major = atoi(val);
+  s->version.minor = atof(dot + 1);
+  val = NULL;
   
-  /* Make sure all the required fields are there */
-  CHECK(name && uri && icon && description && ttl && lifetime && signature && fingerprint && version,
-	"Missing TXT field(s): %s", s->uuid);
+  // reject different major version
+  CHECK(s->version.major == ctx->schema->version.major, "Service has different major version");
   
-#define CSM_EXTRACT_TXT(S,M,T) \
-  do { \
-    char *val = NULL; \
-    CHECK(avahi_string_list_get_pair(T,NULL,&val,NULL) == 0, "Failed to extract " #T " from TXT list"); \
-    CHECK(csm_service_set_##M(S, val), "Failed to set service field %s", "M"); \
-    avahi_free(val); \
-  } while (0)
-  CSM_EXTRACT_TXT(s, name, name);
-  CSM_EXTRACT_TXT(s, uri, uri);
-  CSM_EXTRACT_TXT(s, description, description);
-  CSM_EXTRACT_TXT(s, icon, icon);
-  CSM_EXTRACT_TXT(s, signature, signature);
-  CSM_EXTRACT_TXT(s, key, fingerprint);
-  CSM_EXTRACT_TXT(s, version, version);
-#undef CSM_EXTRACT_TXT
+  // get schema
+  csm_schema_t *schema = csm_find_schema(ctx->schema, s->version.major, s->version.minor);
+  if (!schema) schema = ctx->schema; // if we don't have proper schema, use newest
   
-  char *ttl_str = NULL, *lifetime_str = NULL;
-  CHECK(avahi_string_list_get_pair(ttl,NULL,&ttl_str,NULL) == 0, "Failed to extract TTL from TXT list");
-  CHECK(avahi_string_list_get_pair(lifetime,NULL,&lifetime_str,NULL) == 0, "Failed to extract lifetime from TXT list");
-  CHECK(csm_service_set_ttl(s, atoi(ttl_str)), "Failed to set service field TTL");
-  CHECK(csm_service_set_lifetime(s, atol(lifetime_str)), "Failed to set service field lifetime");
-  
-  /** Add service categories */
-  co_obj_t *categories = NULL;
-  do {
-    avahi_string_list_get_pair(txt,&key,&val,NULL);
-    if (!strcmp(key,"categories")) {
-      /* Add 'type' fields to a list to be sorted alphabetically later */
-      co_obj_t *type = co_str8_create(val, strlen(val) + 1, 0);
-      CHECK_MEM(type);
-      if (!categories) {
-	categories = co_list16_create();
-	CHECK_MEM(categories);
+  // parse txt fields according to schema
+  for (; txt; txt = avahi_string_list_get_next(txt)) {
+    CHECK(avahi_string_list_get_pair(txt,&key,&val,NULL) == 0,
+	  "Failed to extract string from TXT list");
+    csm_schema_field_t *field = csm_schema_get_field(schema, key);
+    if (field) {
+      switch (field->type) {
+	case CSM_FIELD_STRING:
+	case CSM_FIELD_HEX:
+	  if (field->type == CSM_FIELD_HEX && !isHex(val, strlen(val)))
+	    SENTINEL("Invalid hex service field");
+	  CHECK(csm_service_set_str(s, key, val), "Failed to set service string");
+	  break;
+	case CSM_FIELD_INT:
+	  CHECK(csm_service_set_int(s, key, atol(val)), "Failed to set service integer");
+	  break;
+	case CSM_FIELD_LIST:
+	  field_list = co_tree_find(s->fields, key, strlen(key) + 1);
+	  if (!field_list) {
+	    field_list = co_list16_create();
+	    CHECK_MEM(field_list);
+	    CHECK(csm_service_set_list(s, key, field_list), "Failed to insert field list into service");
+	  }
+	  // check if list already contains value
+	  // if not, insert it based on subtype
+	  switch (field->subtype) {
+	    case CSM_FIELD_STRING:
+	    case CSM_FIELD_HEX:
+	      if (!co_list_parse(field_list, _csm_field_list_find_string_i, val)) {
+		if (field->subtype == CSM_FIELD_HEX && !isHex(val, strlen(val)))
+		  SENTINEL("Invalid hex service field");
+		val_obj = co_str8_create(val, strlen(val) + 1, 0);
+		CHECK_MEM(val_obj);
+		CHECK(co_list_append(field_list, val_obj), "Failed to insert list entry into service");
+	      }
+	    case CSM_FIELD_INT:
+	      int_val = atol(val);
+	      if (!co_list_parse(field_list, _csm_field_list_find_int_i, &int_val)) {
+		val_obj = co_int32_create(atol(val), 0);
+		CHECK_MEM(val_obj);
+		CHECK(co_list_append(field_list, val_obj), "Failed to insert list entry into service");
+	      }
+	    default:
+	      SENTINEL("Invalid schema subtype");
+	  }
+	  field_list = val_obj = NULL;
+	  break;
+	default:
+	  SENTINEL("Invalid schema type");
       }
-      if (!co_list_append(categories, type)) {
-	ERROR("Failed to add type to category list");
-	co_obj_free(type);
-	goto error;
+    } else {
+      char *endptr = NULL;
+      int_val = strtol(val, &endptr, 10);
+      co_obj_t *existing = co_tree_find(s->fields, key, strlen(key) + 1);
+      if (existing) {
+	// is existing a list? if so, append to it. it not, turn it into a list and append this
+	if (!IS_LIST(existing)) {
+	  // convert to list
+	  list = co_list16_create();
+	  CHECK_MEM(list);
+	  obj = co_tree_delete(s->fields, key, strlen(key) + 1);
+	  CHECK(obj, "Failed to remove object from service fields");
+	  CHECK(co_list_append(list, obj), "Failed to append object to service fields list");
+	  CHECK(csm_service_set_list(s, key, list), "Failed to append service fields list to service");
+	  list = NULL;
+	}
+	if (!endptr) { // val was a valid long int
+	  CHECK(csm_service_append_int_to_list(s, key, int_val), "Failed to set service integer");
+	} else { // val treated as string or hex
+	  CHECK(csm_service_append_str_to_list(s, key, val), "Failed to set service string");
+	}
+      } else {
+	// insert into s->fields
+	if (!endptr) { // val was a valid long int
+	  CHECK(csm_service_set_int(s, key, int_val), "Failed to set service integer");
+	} else { // val treated as string or hex
+	  CHECK(csm_service_set_str(s, key, val), "Failed to set service string");
+	}
       }
     }
-    avahi_free(val);
-    avahi_free(key);
-    val = key = NULL;
-  } while ((txt = avahi_string_list_get_next(txt)));
-  if (categories)
-    CHECK(csm_service_set_categories(s, categories), "Failed to set service fields categories");
+    key = val = NULL;
+  }
   
-  ret = 1;
+  obj = co_tree_find(s->fields, "fingerprint", strlen("fingerprint") + 1);
+  CHECK(obj, "Service doesn't contain key/fingerprint field");
+  s->key = co_obj_data_ptr(obj);
+  obj = co_tree_find(s->fields, "signature", strlen("signature") + 1);
+  CHECK(obj, "Service doesn't contain signature field");
+  s->signature = co_obj_data_ptr(obj);
+  obj = co_tree_find(s->fields, "lifetime", strlen("lifetime") + 1);
+  CHECK(obj, "Service doesn't contain lifetime field");
+  s->lifetime = atol(co_obj_data_ptr(obj));
+  
 error:
   if (val)
     avahi_free(val);
   if (key)
     avahi_free(key);
-  if (ttl_str)
-    avahi_free(ttl_str);
-  if (lifetime_str)
-    avahi_free(lifetime_str);
+  if (field_list)
+    co_obj_free(field_list);
+  if (val_obj)
+    co_obj_free(val_obj);
+  if (list)
+    co_obj_free(list);
   return ret;
 }
 
@@ -177,9 +265,9 @@ void resolve_callback(
 	    s->r.txt_lst = avahi_string_list_copy(txt);
 	    CHECK_MEM(s->r.txt_lst);
 	    
-	    CHECK(_csm_extract_from_txt_list(s,txt), "Failed to extract TXT fields");
+	    CHECK(_csm_extract_from_txt_list(s,txt,ctx), "Failed to extract TXT fields");
 	    
-	    CHECK(csm_add_service(ctx->service_list, s), "Error processing service");
+	    CHECK(csm_add_service(ctx->service_list, s, ctx), "Error processing service");
 	    
 	    break;
         }
@@ -188,7 +276,7 @@ error:
     RESOLVER_FREE(s->r.resolver);
     s->r.resolver = NULL;
     // if no signature is present, indicates service resolution failed
-    if (event == AVAHI_RESOLVER_FOUND && !csm_service_get_signature(s)) {
+    if (event == AVAHI_RESOLVER_FOUND && !s->signature) {
       csm_remove_service(ctx->service_list, s);
       csm_service_destroy(s);
     }

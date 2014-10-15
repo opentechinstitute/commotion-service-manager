@@ -40,6 +40,7 @@
 #include "defs.h"
 #include "util.h"
 #include "cmd.h"
+#include "schema.h"
 #include "uci-utils.h"
 
 #define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
@@ -55,8 +56,6 @@
     UCI_CHECK(uci_ret == 0,"Failed to set UCI field " #FLD); \
   } while (0)
 #define UCI_SET(C,SRV,FLD,VAL) _UCI_SET(uci_set,C,SRV,FLD,VAL)
-#define UCI_SET_STR(C,SRV,FLD) UCI_SET(C,SRV,FLD,csm_service_get_##FLD(SRV))
-#define UCI_SET_CAT(C,SRV,CAT) _UCI_SET(uci_add_list,C,SRV,categories,CAT)
 
 static co_obj_t *
 _uci_write_service(co_obj_t *list, co_obj_t *current, void *context)
@@ -64,7 +63,7 @@ _uci_write_service(co_obj_t *list, co_obj_t *current, void *context)
   if (IS_LIST(current)) return NULL;
   assert(IS_SERVICE(current));
   co_service_t *s = (co_service_t*)current;
-  CHECK(uci_write(s->service), "Failed to write service %s", s->service->uuid);
+  CHECK(uci_write(&s->service), "Failed to write service %s", s->service.uuid);
   return NULL;
 error:
   return current;
@@ -158,6 +157,50 @@ error:
   return ret;
 }
 
+/**
+ * caller must free returned object
+ */
+static co_obj_t *
+_csm_store_uci_field(char *key, char *val, csm_ctx *ctx)
+{
+  co_obj_t *val_obj = NULL;
+  CHECK(strlen(val) + strlen(key) < 256, "Service option length too long");
+  csm_schema_field_t *field = csm_schema_get_field(ctx->schema, key);
+  if (field) {
+    switch (field->type) {
+      case CSM_FIELD_STRING:
+      case CSM_FIELD_HEX:
+	val_obj = co_str8_create(val, strlen(val) + 1, 0);
+	CHECK_MEM(val_obj);
+	break;
+      case CSM_FIELD_INT:
+	val_obj = co_int32_create(atol(val),0);
+	CHECK_MEM(val_obj);
+	break;
+      default:
+	SENTINEL("Invalid schema type");
+    }
+  } else {
+    char *endptr = NULL;
+    long int_val = strtol(val, &endptr, 10);
+    if (!endptr) { // val was a valid long int
+      val_obj = co_int32_create(int_val,0);
+      CHECK_MEM(val_obj);
+    } else { // val treated as string or hex
+      val_obj = co_str8_create(val, strlen(val) + 1, 0);
+      CHECK_MEM(val_obj);
+    }
+  }
+  return val_obj;
+error:
+  return NULL;
+}
+
+/**
+ * Reads services from UCI to import into service list, once
+ * the mDNS server is ready. Validates each service against the
+ * service schema before accepting.
+ */
 void
 uci_read(AvahiTimeout *t, void *userdata)
 {
@@ -166,7 +209,7 @@ uci_read(AvahiTimeout *t, void *userdata)
   CHECK(ctx && ctx->service_list, "Uninitialized context");
   struct uci_context *c = NULL;
   struct uci_package *pkg = NULL;
-  co_obj_t *fields = NULL, *params = NULL, *verdict = NULL;
+  co_obj_t *fields = NULL, *params = NULL, *verdict = NULL, *val_obj = NULL;
   
   c = uci_alloc_context();
   CHECK_MEM(c);
@@ -186,45 +229,33 @@ uci_read(AvahiTimeout *t, void *userdata)
       struct uci_element *o = NULL;
       uci_foreach_element(option_list, o) {
 	struct uci_option *option = uci_to_option(o);
+	char *key = o->name, *val = NULL;
 	if (option->type == UCI_TYPE_STRING) {
-	  CHECK(strlen(option->v.string) + strlen(o->name) < 256, "Service option length too long");
-	  co_obj_t *val = NULL;
-	  if (strcmp(o->name, "lifetime") == 0) {
-	    val = co_uint32_create(atol(option->v.string),0);
-	  } else if (strcmp(o->name, "ttl") == 0) {
-	    val = co_uint8_create(atoi(option->v.string),0);
-	  } else {
-	    val = co_str8_create(option->v.string, strlen(option->v.string) + 1, 0);
-	  }
-	  CHECK_MEM(val);
-	  if (strcmp(o->name, "fingerprint") == 0)
-	    CHECK(co_tree_insert(fields, "key", sizeof("key"), val), "Failed to add fingeprint to new service");
-	  else
-	    CHECK(co_tree_insert(fields, o->name, strlen(o->name) + 1, val), "Failed to add field to new service");
-	  DEBUG("Read service field %s : %s", o->name, option->v.string);
+	  val = option->v.string;
+	  val_obj = _csm_store_uci_field(key, val, ctx);
+	  CHECK(co_tree_insert(fields, key, strlen(key) + 1, val_obj), "Failed to add field to imported service");
+	  DEBUG("Read service field %s : %s", key, val);
+	  co_obj_free(val_obj);
+	  val_obj = NULL;
 	} else { // option->type == UCI_TYPE_LIST
 	  struct uci_element *l = NULL;
-	  co_obj_t *list = co_tree_find(fields, o->name, strlen(o->name) + 1);
+	  co_obj_t *list = co_tree_find(fields, key, strlen(key) + 1);
 	  if (!list) {
 	    list = co_list16_create();
 	    CHECK_MEM(list);
 	  }
 	  uci_foreach_element(&option->v.list, l) {
-	    struct uci_option *list_option = uci_to_option(l);
-	    CHECK(list_option->type == UCI_TYPE_STRING, "Invalid list option type");
-	    CHECK(strlen(l->name) + strlen(o->name) < 256, "Service list option length too long");
-	    co_obj_t *list_val = co_str8_create(l->name, strlen(l->name) + 1, 0);
-	    CHECK_MEM(list_val);
-	    CHECK(co_list_append(list, list_val), "Failed to add list field to new service");
-	    DEBUG("Read service list field %s : %s", o->name, l->name);
+	    val = l->name;
+	    val_obj = _csm_store_uci_field(key, val, ctx);
+	    CHECK(co_list_append(list, val_obj), "Failed to add list field to new service");
+	    DEBUG("Read service list field %s : %s", key, val);
+	    co_obj_free(val_obj);
+	    val_obj = NULL;
 	  }
-	  if (strcmp(o->name, "type") == 0)
-	    CHECK(co_tree_insert(fields, "categories", sizeof("categories"), list), "Failed to add categories to new service");
-	  else
-	    CHECK(co_tree_insert(fields, o->name, strlen(o->name) + 1, list), "Failed to add list field to new service");
+	  CHECK(co_tree_insert(fields, key, strlen(key) + 1, list), "Failed to add list field to new service");
 	}
       }
-      // if service has local=1, create co_list = [ctx, service_fields] and call cmd_commit_service() (which will do service validation)
+      // if service has local=1, create co_list = [ctx, service_fields] and call cmd_commit_service() (which will do validation against schema)
       co_obj_t *local = co_tree_find(fields,"local",sizeof("local"));
       if (local && strcmp(co_obj_data_ptr(local), "1") == 0) {
 	verdict = NULL;
@@ -238,10 +269,13 @@ uci_read(AvahiTimeout *t, void *userdata)
 	CHECK(cmd_commit_service(NULL, &verdict, params), "Failed to commit service from UCI");
 	bool result;
 	CHECK(co_response_get_bool(verdict, &result, "success", sizeof("success")), "Failed to fetch result from command");
-	CHECK(result, "Error committing service from UCI");
-	char *key = NULL;
-	CHECK(co_response_get_str(verdict, &key, "key", sizeof("key")), "Failed to fetch key from response");
-	INFO("Successfully added local service with key %s", key);
+	if (!result) { // perhaps service didn't validate against schema, don't want to hard error here
+	  WARN("Error committing service %s from UCI", e->name);
+	} else {
+	  char *key = NULL;
+	  CHECK(co_response_get_str(verdict, &key, "key", sizeof("key")), "Failed to fetch key from response");
+	  INFO("Successfully added local service with key %s", key);
+	}
       }
     }
   }
@@ -256,24 +290,65 @@ error:
     co_obj_free(params);
   if (verdict)
     co_obj_free(verdict);
+  if (val_obj)
+    co_obj_free(val_obj);
 //   return ret;
+}
+
+struct uci_write_ctx {
+  char *uuid;
+  struct uci_context *c;
+  int (*uci_setter)(struct uci_context *ctx, struct uci_ptr *ptr);
+};
+
+static void
+_csm_write_uci_field(co_obj_t *container, co_obj_t *key, co_obj_t *val, void *context)
+{
+  char *val_str = NULL;
+  int uci_ret = -1;
+  struct uci_write_ctx *uci_ctx = (struct uci_write_ctx*)context;
+  struct uci_context *c = uci_ctx->c;
+  struct uci_ptr sec_ptr = {0};
+  sec_ptr.package = "applications";
+  sec_ptr.section = uci_ctx->uuid;
+  sec_ptr.option = co_obj_data_ptr(key);
+  if (IS_INT(val)) {
+    CHECK_MEM(asprintf(&val_str, "%ld", (long)*co_obj_data_ptr(val)) != -1);
+    sec_ptr.value = val_str;
+    uci_ret = uci_ctx->uci_setter(uci_ctx->c, &sec_ptr);
+    UCI_CHECK(uci_ret == 0, "Failed to set UCI field %s", val_str);
+  } else if (IS_STR(val)) {
+    sec_ptr.value = co_obj_data_ptr(val);
+    uci_ret = uci_ctx->uci_setter(uci_ctx->c, &sec_ptr);
+    UCI_CHECK(uci_ret == 0, "Failed to set UCI field %s", co_obj_data_ptr(val));
+  } else { // IS_LIST
+    uci_ctx->uci_setter = uci_add_list;
+    csm_list_parse(val, key, _csm_write_uci_field, context);
+    uci_ctx->uci_setter = uci_set;
+  }
+  
+error:
+  if (val_str)
+    free(val_str);
 }
 
 int uci_write(csm_service *s) {
   struct uci_context *c = NULL;
-  struct uci_ptr sec_ptr,sig_ptr,type_ptr;
+  struct uci_ptr sec_ptr,sig_ptr;
 #ifdef OPENWRT
   struct uci_ptr approved_ptr;
 #endif
   int ret = 0;
   struct uci_package *pak = NULL;
-  struct uci_element *e = NULL;
+//   struct uci_element *e = NULL;
+#if 0
   enum {
     NO_TYPE_SECTION,
     NO_TYPE_MATCHES,
     TYPE_MATCH_FOUND,
   };
   int type_state = NO_TYPE_SECTION;
+#endif
   
   assert(s);
   
@@ -287,9 +362,8 @@ int uci_write(csm_service *s) {
   if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
     INFO("(UCI) Found application: %s",s->uuid);
     // check for service == fingerprint. if sig different, update it
-    char *signature = csm_service_get_signature(s);
     CHECK(get_uci_section(c,&sig_ptr,"applications",12,s->uuid,strlen(s->uuid),"signature",9) > 0,"Failed signature lookup");
-    if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && signature && !strcmp(signature,sig_ptr.o->v.string)) {
+    if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && s->signature && !strcmp(s->signature,sig_ptr.o->v.string)) {
       // signatures equal: do nothing
       INFO("(UCI) Signature the same, not updating");
       ret = 1;
@@ -297,6 +371,7 @@ int uci_write(csm_service *s) {
     }
     // signatures differ: delete existing app
     INFO("(UCI) Signature differs, updating");
+    UCI_CHECK(uci_delete(c, &sec_ptr), "Failed to delete out-of-date application from UCI");
   } else {
     INFO("(UCI) Application not found, creating");
   }
@@ -311,6 +386,19 @@ int uci_write(csm_service *s) {
   UCI_CHECK(!uci_set(c, &sec_ptr),"(UCI) Failed to set section");
   INFO("(UCI) Section set succeeded");
   
+  // parse elements of s->field
+  struct uci_write_ctx uci_ctx = {
+    .uuid = s->uuid,
+    .c = c,
+    .uci_setter = uci_set
+  };
+  CHECK(csm_tree_process(s->fields, _csm_write_uci_field, &uci_ctx),
+	"Failed to write service fields into UCI");
+  
+  if (s->local)
+    UCI_SET(c,s,local,"1");
+  
+#if 0
   // uci set options/values
   UCI_SET_STR(c,s,name);
   UCI_SET_STR(c,s,uri);
@@ -349,6 +437,7 @@ int uci_write(csm_service *s) {
 	UCI_SET_CAT(c, s, _LIST_ELEMENT(cat_obj, j));
     }
   }
+#endif
   
 #ifdef OPENWRT
   // For OpenWRT: check known_applications list, approved or blacklisted
@@ -365,12 +454,14 @@ int uci_write(csm_service *s) {
   UCI_SET(c, s, approved, "1");
 #endif
   
+#if 0
   // if no type fields in new announcement, remove section from UCI (part of workaround)
   if (type_state == NO_TYPE_SECTION) {
     if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
       UCI_CHECK(uci_delete(c, &type_ptr) == UCI_OK,"(UCI) Failed to delete type section");
     }
   }
+#endif
   
   // uci_save
   UCI_CHECK(uci_save(c, pak) == UCI_OK,"(UCI) Failed to save");
@@ -383,10 +474,12 @@ int uci_write(csm_service *s) {
   
 error:
   if (c) uci_free_context(c);
+#if 0
   if (ttl_str)
     free(ttl_str);
   if (lifetime_str)
     free(lifetime_str);
+#endif
   return ret;
 }
 

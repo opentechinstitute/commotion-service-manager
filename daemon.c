@@ -498,7 +498,7 @@ int main(int argc, char*argv[]) {
     // TODO make this a one-off timer for after the server starts
     // read in list of local services from UCI
     if (csm_config.uci) {
-      struct timeval tv = {};
+      struct timeval tv = {}; // timeout is zeroed so callback is called as soon as Avahi even loop is started
       avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll),
 						      &tv,
 						      uci_read,

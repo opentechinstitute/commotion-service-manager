@@ -41,7 +41,6 @@
 #include <commotion/obj.h>
 
 #include "extern/halloc.h"
-#include "schema.h"
 #include "config.h"
 
 /** Length (in hex chars) of Serval IDs */
@@ -117,6 +116,8 @@ struct csm_config {
 struct csm_service;
 struct csm_service_list;
 
+struct csm_schema_t;
+
 typedef struct {
 #ifdef CLIENT
   AvahiClient *client;
@@ -126,12 +127,12 @@ typedef struct {
   TYPE_BROWSER *stb;
   struct csm_service_list *service_list;
   struct csm_service *service;
-  csm_schema_t *schema;
+  struct csm_schema_t *schema;
 } csm_ctx;
 
 /** 
  * libcommotion object extended type for CSM contexts
- * (used for storing in lists) 
+ * (used for passing to command handlers in parameter list) 
  */
 typedef struct {
   co_obj_t _header;
