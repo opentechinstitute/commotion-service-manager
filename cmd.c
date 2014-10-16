@@ -161,7 +161,6 @@ error:
 int
 cmd_remove_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
 {
-  // TODO add check to make sure we're removing a local servie and not a remote one
   CHECK(IS_LIST(params),"Received invalid params");
   co_obj_t *ctx_obj = co_list_element(params,0);
   CHECK(IS_CTX(ctx_obj),"Received invalid ctx");

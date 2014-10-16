@@ -476,7 +476,7 @@ int main(int argc, char*argv[]) {
     /* Initialize socket pool for connecting to commotiond */
     CHECK(co_init(),"Failed to initialize Commotion client");
     
-    // TODO parse service announcement schema
+    // parse service announcement schema
     CHECK(csm_import_schemas(&ctx, csm_config.schema_dir), "Failed to import service schema");
     
     /* Register signal handlers */
@@ -495,7 +495,6 @@ int main(int argc, char*argv[]) {
     CHECK((simple_poll = avahi_simple_poll_new()),"Failed to create simple poll object.");
     
 #ifdef USE_UCI
-    // TODO make this a one-off timer for after the server starts
     // read in list of local services from UCI
     if (csm_config.uci) {
       struct timeval tv = {}; // timeout is zeroed so callback is called as soon as Avahi even loop is started
@@ -503,7 +502,6 @@ int main(int argc, char*argv[]) {
 						      &tv,
 						      uci_read,
 						      &ctx);
-//       CHECK(uci_read(&ctx), "Failed to read in local services from UCI");
     }
 #endif
 

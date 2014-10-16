@@ -94,7 +94,6 @@ csm_service *csm_service_new(AvahiIfIndex interface,
 			     const char *domain);
 void csm_service_destroy(csm_service *s);
 
-// TODO do we want this type safety, or just use void * or co_obj_t *?
 char *csm_service_get_str(const csm_service *s, const char *field);
 co_obj_t *csm_service_get_list(const csm_service *s, const char *field);
 int32_t csm_service_get_int(const csm_service *s, const char *field);
@@ -130,7 +129,6 @@ int csm_service_set_version(csm_service *s, const char *str);
 #endif
 
 void print_service(FILE *f, csm_service *s);
-// TODO do we need a list to array function?
 // size_t csm_service_categories_to_array(csm_service *s, char ***cat_array);
 
 int csm_verify_signature(csm_service *service);

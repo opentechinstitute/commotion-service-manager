@@ -163,7 +163,6 @@ int get_uuid(char *key, size_t key_len, char *buf, size_t buf_size) {
   
   CHECK(buf_size >= uuid_len + 1, "Insufficient buffer size");
   
-  // TODO stow SID
   uint8_t bin_key[FINGERPRINT_LEN / 2] = {0};
   CHECK(fromhex(bin_key, key, FINGERPRINT_LEN / 2) == key_len / 2, "Unable to stow key");
   
