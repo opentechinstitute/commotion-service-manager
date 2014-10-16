@@ -128,7 +128,7 @@ int csm_service_set_signature(csm_service *s, const char *str);
 int csm_service_set_version(csm_service *s, const char *str);
 #endif
 
-void print_service(FILE *f, csm_service *s);
+// void print_service(FILE *f, csm_service *s);
 // size_t csm_service_categories_to_array(csm_service *s, char ***cat_array);
 
 int csm_verify_signature(csm_service *service);

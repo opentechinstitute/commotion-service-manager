@@ -323,9 +323,3 @@ csm_remove_service(csm_service_list *services, csm_service *s)
   
   return s;
 }
-
-void
-csm_print_services(csm_service_list *services)
-{
-  // TODO iterate call of csm_print_service()
-}

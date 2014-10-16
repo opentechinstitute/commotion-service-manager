@@ -480,10 +480,7 @@ int main(int argc, char*argv[]) {
     CHECK(csm_import_schemas(&ctx, csm_config.schema_dir), "Failed to import service schema");
     
     /* Register signal handlers */
-    // TODO re-create print_services signal handler
     struct sigaction sa = {{0}};
-//     sa.sa_handler = print_services;
-//     CHECK(sigaction(SIGUSR1,&sa,NULL) == 0, "Failed to set signal handler");
     sa.sa_handler = csm_shutdown;
     CHECK(sigaction(SIGINT,&sa,NULL) == 0, "Failed to set signal handler");
     CHECK(sigaction(SIGTERM,&sa,NULL) == 0, "Failed to set signal handler");

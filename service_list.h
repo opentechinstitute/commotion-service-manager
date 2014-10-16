@@ -68,7 +68,7 @@ int csm_add_service(csm_service_list *services, csm_service *service, csm_ctx *c
 int csm_update_service(csm_service_list *services, csm_service *service, csm_ctx *ctx);
 csm_service *csm_find_service(csm_service_list *services, const char *uuid);
 csm_service *csm_remove_service(csm_service_list *services, csm_service *s);
-void csm_print_services(csm_service_list *services);
+// void csm_print_services(csm_service_list *services);
 
 #if 0
 ServiceInfo *find_service(const char *uuid);
