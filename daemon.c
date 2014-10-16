@@ -399,14 +399,11 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     case 'b':
       csm_config.co_sock = arg;
       break;
-      #ifdef USE_UCI
+#ifdef USE_UCI
     case 'u':
       csm_config.uci = 1;
       break;
-      #endif
-    case 'o':
-      csm_config.output_file = arg;
-      break;
+#endif
     case 'n':
       csm_config.nodaemon = 1;
       break;
@@ -438,7 +435,6 @@ int main(int argc, char*argv[]) {
       {"bind", 'b', "URI", 0, "commotiond management socket"},
       {"nodaemon", 'n', 0, 0, "Do not fork into the background" },
       {"schema", 's', "DIR", 0, "Directory including schema files for service announcements" },
-      {"out", 'o', "FILE", 0, "Output file to write services to when USR1 signal is received" },
       {"pid", 'p', "FILE", 0, "Specify PID file"},
 #ifdef USE_UCI
       {"uci", 'u', 0, 0, "Store service cache in UCI" },
@@ -453,7 +449,6 @@ int main(int argc, char*argv[]) {
     csm_config.uci = 0;
 #endif
     csm_config.nodaemon = 0;
-    csm_config.output_file = CSM_DUMPFILE;
     csm_config.pid_file = CSM_PIDFILE;
     csm_config.schema_dir = CSM_SCHEMA_DIR;
     

@@ -108,7 +108,6 @@ struct csm_config {
   int uci;
 #endif
   int nodaemon;
-  char *output_file;
   char *pid_file;
   char *schema_dir;
 };

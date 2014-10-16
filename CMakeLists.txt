@@ -8,7 +8,6 @@ SET(OPENWRT OFF CACHE BOOL "Disable subsystems that are unnecessary for OpenWRT 
 SET(USE_UCI OFF CACHE BOOL "Disable UCI integration.")
 SET(CMAKE_VERBOSE_MAKEFILE OFF)
 
-SET(CSM_DUMPFILE \"/tmp/local-services.out\") # Name of file to output list of services when daemon receives USR1 signal
 SET(CSM_PIDFILE \"/var/run/commotion/commotion-service-manager.pid\")
 SET(CSM_SCHEMA_DIR \"/etc/commotion/csm/schemas.d/\")
 SET(COMMOTION_MANAGESOCK \"/var/run/commotiond.sock\")
