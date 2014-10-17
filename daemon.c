@@ -507,6 +507,10 @@ int main(int argc, char*argv[]) {
     CHECK_MEM((avahi_config.host_name = calloc(HOST_NAME_MAX,sizeof(char))));
     CHECK(gethostname(avahi_config.host_name,HOST_NAME_MAX) == 0, "Failed to fetch hostname");
     avahi_config.publish_workstation = 0;
+    avahi_config.publish_hinfo = 0;
+    avahi_config.publish_domain = 0;
+    avahi_config.n_wide_area_servers = 0;
+    avahi_config.enable_wide_area = 0;
 
     /* Allocate a new server */
     ctx.server = avahi_server_new(avahi_simple_poll_get(simple_poll), &avahi_config, server_callback, &ctx, &error);

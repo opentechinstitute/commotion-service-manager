@@ -122,6 +122,12 @@ typedef struct csm_pending_service {
   struct csm_pending_service *_next;
 } csm_pending_service;
 
+typedef struct csm_service_browser {
+  char name[256];
+  BROWSER *browser;
+  struct csm_service_browser *_next;
+} csm_service_browser;
+
 typedef struct {
 #ifdef CLIENT
   AvahiClient *client;
@@ -129,6 +135,8 @@ typedef struct {
   AvahiServer *server;
 #endif
   TYPE_BROWSER *stb;
+  csm_service_browser *sb;
+  
   struct csm_pending_service *pending;
   
   struct csm_service_list *service_list;

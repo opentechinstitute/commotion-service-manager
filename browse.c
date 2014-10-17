@@ -273,6 +273,31 @@ _csm_remove_pending_service(csm_ctx *ctx, const char *uuid)
   return 0;
 }
 
+static int
+_csm_find_service_browser(csm_ctx *ctx, const char *type)
+{
+  csm_service_browser *sb = ctx->sb;
+  for (; sb; sb = sb->_next) {
+    if (strcmp(type, sb->name) == 0)
+      return 1;
+  }
+  return 0;
+}
+
+static int
+_csm_add_service_browser(csm_ctx *ctx, BROWSER *b, const char *type)
+{
+  csm_service_browser *new = h_calloc(1, sizeof(csm_service_browser));
+  if (!new) {
+    ERROR("Failed to allocate csm_service_browser %s", type);
+    return 0;
+  }
+  strncpy(new->name, type, 255);
+  new->_next = ctx->sb;
+  ctx->sb = new;
+  return 1;
+}
+
 void resolve_callback(
     RESOLVER *r,
     AVAHI_GCC_UNUSED AvahiIfIndex interface,
@@ -442,13 +467,15 @@ void browse_type_callback(
             avahi_simple_poll_quit(simple_poll);
             return;
         case AVAHI_BROWSER_NEW:
-            if (!BROWSER_NEW(AVAHI_IF_UNSPEC, 
-                             AVAHI_PROTO_UNSPEC, 
-                             type, 
-                             domain, 
-                             0,
-                             browse_service_callback,
-			     ctx)) {
+	    if (_csm_find_service_browser(ctx, type)) break;
+	    BROWSER *b = BROWSER_NEW(AVAHI_IF_UNSPEC, 
+			      AVAHI_PROTO_UNSPEC, 
+			      type, 
+			      domain, 
+			      0,
+			      browse_service_callback,
+			      ctx);
+            if (!b || !_csm_add_service_browser(ctx, b, type)) {
                 ERROR("Failed to create a service " 
                       "browser for type (%s) in domain (%s)", 
                       type, 
