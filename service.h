@@ -33,6 +33,8 @@
 #include "defs.h"
 #include "schema.h"
 
+#define service_attach(B,P) hattach(B,container_of(P, co_service_t, service))
+
 typedef struct csm_service_list csm_service_list;
 
 struct csm_service_local {
@@ -44,7 +46,7 @@ struct csm_service_remote {
   char *host_name;
   char address[AVAHI_ADDRESS_STR_MAX];
   AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
-  RESOLVER *resolver;
+//   RESOLVER *resolver;
 };
 
 typedef struct csm_service {
@@ -100,6 +102,7 @@ int32_t csm_service_get_int(const csm_service *s, const char *field);
 
 int csm_service_set_str(csm_service *s, const char *field, const char *str);
 int csm_service_set_int(csm_service *s, const char *field, int32_t n);
+int csm_service_remove_int(csm_service *s, const char *field);
 int csm_service_set_list(csm_service *s, const char *field, co_obj_t *list);
 int csm_service_append_str_to_list(csm_service *s, const char *field, const char *str);
 int csm_service_append_int_to_list(csm_service *s, const char *field, int32_t n);

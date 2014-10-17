@@ -52,14 +52,18 @@ error:
   return 0;
 }
 
-/** Add OR update a service */
+/** 
+ * Add OR update a service
+ * NOTE: this can be called to create new local services, as well as from uci_read to
+ * import local and non-local services from UCI
+ */
 int
 cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
 {
   csm_service *s = NULL;
   int found = 0, success = 0, ret = 0;
   char *version_str = NULL;
-  co_obj_t *bool_obj = NULL, *key_obj = NULL, *sig_obj = NULL;
+  co_obj_t *bool_obj = NULL, *key_obj = NULL, *sig_obj = NULL, *ptr_obj = NULL;
   
   CHECK(IS_LIST(params),"Received invalid params");
   co_obj_t *ctx_obj = co_list_element(params,0);
@@ -94,6 +98,7 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
       co_obj_t *old_fields = co_list_delete(ctx->service_list->service_fields, s->fields);
       CHECK(old_fields, "Failed to delete old service fields");
       co_obj_free(old_fields);
+      s->fields = NULL;
     }
     
     // clear signature so a new one is created upon submission
@@ -104,11 +109,32 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   // attach passed list of service fields to our newly created/updated service
   CHECK(co_list_delete(params, service_fields), "Failed to remove service fields from cmd params list");
   s->fields = service_fields;
-  hattach(s->fields, s);
+  service_attach(s->fields, s);
   
-  co_obj_t *lifetime_obj = co_tree_find(s->fields, "lifetime", strlen("lifetime") + 1);
-  CHECK(lifetime_obj, "Service doesn't contain lifetime field");
-  s->lifetime = atol(co_obj_data_ptr(lifetime_obj));
+  ptr_obj = co_tree_find(s->fields, "lifetime", strlen("lifetime") + 1);
+  CHECK(ptr_obj, "Service doesn't contain lifetime field");
+  s->lifetime = atol(co_obj_data_ptr(ptr_obj));
+  
+  ptr_obj = co_tree_find(s->fields, "version", strlen("version") + 1);
+  if (ptr_obj) {
+    char *version_str = co_obj_data_ptr(ptr_obj);
+    char *dot = strchr(version_str, '.');
+    CHECK(dot, "Invalid version string; doesn't use semantic versioning");
+    *dot = '\0';
+    s->version.major = atoi(version_str);
+    s->version.minor = atof(dot + 1);
+  } else {
+    s->version = ctx->schema->version;
+    CHECK(asprintf(&version_str, "%d.%f", s->version.major, s->version.minor) != -1, "Failed to generate version string");
+    CHECK(csm_service_set_str(s, "version", version_str), "Failed to set version");
+  }
+  
+  ptr_obj = co_tree_find(s->fields, "key", strlen("key") + 1);
+  if (ptr_obj)
+    s->key = co_obj_data_ptr(ptr_obj);
+  ptr_obj = co_tree_find(s->fields, "signature", strlen("signature") + 1);
+  if (ptr_obj)
+    s->signature = co_obj_data_ptr(ptr_obj);
   
   if (!found)
     success = csm_add_service(ctx->service_list, s, ctx);
@@ -116,11 +142,7 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
     success = csm_update_service(ctx->service_list, s, ctx);
   
   if (success) {
-    ctx->service = s;
-
-    s->version = ctx->schema->version;
-    CHECK(asprintf(&version_str, "%d.%f", s->version.major, s->version.minor) != -1, "Failed to generate version string");
-    CHECK(csm_service_set_str(s, "version", version_str), "Failed to set version");
+//     ctx->service = s;
 
     s->l.uptodate = 0; // flag used to indicate need to re-register w/ avahi server if it's an already existing service (otherwise ignored)
     

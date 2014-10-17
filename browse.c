@@ -101,7 +101,7 @@ _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt, csm_ctx *ctx)
 	"Failed to extract version from TXT list");
   char *dot = strchr(val, '.');
   CHECK(dot, "Invalid version string; doesn't use semantic versioning");
-  dot = '\0';
+  *dot = '\0';
   s->version.major = atoi(val);
   s->version.minor = atof(dot + 1);
   val = NULL;
@@ -117,6 +117,7 @@ _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt, csm_ctx *ctx)
   for (; txt; txt = avahi_string_list_get_next(txt)) {
     CHECK(avahi_string_list_get_pair(txt,&key,&val,NULL) == 0,
 	  "Failed to extract string from TXT list");
+    DEBUG("Parsing TXT field %s=%s", key, val);
     csm_schema_field_t *field = csm_schema_get_field(schema, key);
     if (field) {
       switch (field->type) {
@@ -148,6 +149,7 @@ _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt, csm_ctx *ctx)
 		CHECK_MEM(val_obj);
 		CHECK(co_list_append(field_list, val_obj), "Failed to insert list entry into service");
 	      }
+	      break;
 	    case CSM_FIELD_INT:
 	      int_val = atol(val);
 	      if (!co_list_parse(field_list, _csm_field_list_find_int_i, &int_val)) {
@@ -155,6 +157,7 @@ _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt, csm_ctx *ctx)
 		CHECK_MEM(val_obj);
 		CHECK(co_list_append(field_list, val_obj), "Failed to insert list entry into service");
 	      }
+	      break;
 	    default:
 	      SENTINEL("Invalid schema subtype");
 	  }
@@ -206,6 +209,7 @@ _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt, csm_ctx *ctx)
   CHECK(obj, "Service doesn't contain lifetime field");
   s->lifetime = atol(co_obj_data_ptr(obj));
   
+  ret = 1;
 error:
   if (val)
     avahi_free(val);
@@ -218,6 +222,55 @@ error:
   if (list)
     co_obj_free(list);
   return ret;
+}
+
+static int
+_csm_find_pending_service(csm_ctx *ctx, const char *uuid)
+{
+  csm_pending_service *pending = ctx->pending;
+  for (; pending; pending = pending->_next) {
+    if (strcmp(uuid, pending->name) == 0)
+      return 1;
+  }
+  return 0;
+}
+
+static int
+_csm_insert_pending_service(csm_ctx *ctx, const char *uuid)
+{
+  csm_pending_service *new = h_calloc(1, sizeof(csm_pending_service));
+  if (!new) {
+    ERROR("Failed to allocate pending service %s", uuid);
+    return 0;
+  }
+  strncpy(new->name, uuid, 255);
+  new->_next = ctx->pending;
+  if (ctx->pending)
+    ctx->pending->_prev = new;
+  ctx->pending = new;
+  return 1;
+}
+
+static int
+_csm_remove_pending_service(csm_ctx *ctx, const char *uuid)
+{
+  if (!ctx->pending)
+    return 1;
+  csm_pending_service *pending = ctx->pending;
+  for (; pending; pending = pending->_next) {
+    if (strcmp(uuid, pending->name) == 0) {
+      if (ctx->pending == pending) {
+	ctx->pending = pending->_next;
+      } else {
+	pending->_prev->_next = pending->_next;
+      }
+      if (pending->_next)
+	pending->_next->_prev = pending->_prev;
+      h_free(pending);
+      return 1;
+    }
+  }
+  return 0;
 }
 
 void resolve_callback(
@@ -237,27 +290,40 @@ void resolve_callback(
     
     assert(userdata);
     csm_ctx *ctx = (csm_ctx*)userdata;
-    csm_service *s = ctx->service;
+//     csm_service *s = ctx->service;
 #ifdef CLIENT
     AvahiClient *client = ctx->client;
 #else
     AvahiServer *server = ctx->server;
 #endif
     assert(r);
+    
+    if (!txt) {
+      INFO("Resolved service does not contain TXT fields");
+      RESOLVER_FREE(r);
+      return;
+    }
 
+    /* create the service.*/
+    csm_service *s = csm_service_new(interface, protocol, uuid, type, domain);
+    CHECK_MEM(s);
+    
     switch (event) {
         case AVAHI_RESOLVER_FAILURE:
             ERROR("Failed to resolve service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
+	    _csm_remove_pending_service(ctx, uuid);
             break;
 
         case AVAHI_RESOLVER_FOUND: {
+	    CHECK(_csm_remove_pending_service(ctx, uuid), "Failed to remove pending service");
+	  
             avahi_address_snprint(s->r.address, 
                 sizeof(s->r.address),
                 address);
 	    s->r.host_name = h_strdup(host_name);
 	    
 	    CHECK_MEM(s->r.host_name);
-	    hattach(s->r.host_name, s);
+	    service_attach(s->r.host_name, s);
 
 	    CHECK(port >= 0 && port <= 65535, "Invalid port: %s",uuid);
 	    s->port = port;
@@ -271,12 +337,15 @@ void resolve_callback(
 	    
 	    break;
         }
+	default:
+	  _csm_remove_pending_service(ctx, uuid);
     }
 error:
-    RESOLVER_FREE(s->r.resolver);
-    s->r.resolver = NULL;
+//     RESOLVER_FREE(s->r.resolver);
+    RESOLVER_FREE(r);
+//     s->r.resolver = NULL;
     // if no signature is present, indicates service resolution failed
-    if (event == AVAHI_RESOLVER_FOUND && !s->signature) {
+    if (event == AVAHI_RESOLVER_FOUND && s && !s->signature) {
       csm_remove_service(ctx->service_list, s);
       csm_service_destroy(s);
     }
@@ -316,25 +385,26 @@ void browse_service_callback(
 	    
 	    /* Lookup the service to see if it's already in our list */
 	    csm_service *found_service = csm_find_service(ctx->service_list, uuid);
-            if (event == AVAHI_BROWSER_NEW && !found_service) {
-                /* add the service.*/
-		csm_service *s = csm_service_new(interface, protocol, uuid, type, domain);
-		if (!s) {
-		  ERROR("Failed to allocate new service");
+            if (event == AVAHI_BROWSER_NEW && !found_service && !_csm_find_pending_service(ctx, uuid)) {
+		if (!_csm_insert_pending_service(ctx, uuid)) {
+		  ERROR("Failed to isnert pending service");
 		  return;
 		}
-		
-		ctx->service = s;
-		s->r.resolver = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, ctx);
-		if (!s->r.resolver) {
-		  csm_service_destroy(s);
-		  INFO("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
+// 		ctx->service = s;
+// 		s->r.resolver = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, ctx);
+		RESOLVER *r = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, ctx);
+// 		if (!s->r.resolver) {
+		if (!r) {
+// 		  csm_service_destroy(s);
+		  ERROR("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
 		  return;
 		}
             }
-            if (event == AVAHI_BROWSER_REMOVE && found_service) {
+            if (event == AVAHI_BROWSER_REMOVE) {
                 /* remove the service.*/
-                csm_remove_service(NULL, found_service);
+		if (found_service)
+		  csm_remove_service(NULL, found_service);
+		_csm_remove_pending_service(ctx, uuid);
             }
             break;
         }

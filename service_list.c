@@ -192,6 +192,7 @@ int
 csm_add_service(csm_service_list *services, csm_service *s, csm_ctx *ctx)
 {
   // validate service fields against schema
+  // TODO since update_service calls this, perhaps we can get rid if this call
   CHECK(csm_validate_fields(ctx, s), "Service doesn't validate");
   
   // attach service to service list
@@ -224,7 +225,7 @@ int
 csm_update_service(csm_service_list *services, csm_service *s, csm_ctx *ctx)
 {
   CHECK(csm_validate_fields(ctx, s), "Service doesn't validate");
-  assert(s->lifetime);
+//   assert(s->lifetime);
   long lifetime = s->lifetime;
   
   // check if service is attached to service_list
@@ -270,7 +271,7 @@ csm_update_service(csm_service_list *services, csm_service *s, csm_ctx *ctx)
 	c_time_string[strlen(c_time_string)-1] = '\0'; /* ctime adds \n to end of time string; remove it */
 	s->expiration = h_strdup(c_time_string);
 	CHECK_MEM(s->expiration);
-	hattach(s->expiration, s);
+	service_attach(s->expiration, s);
       }
     }
   }
@@ -306,7 +307,7 @@ csm_remove_service(csm_service_list *services, csm_service *s)
   co_obj_t *fields = s->fields;
   if (fields && services && co_list_contains(services->service_fields, fields)) {
     co_list_delete(services->service_fields, fields);
-    hattach(s->fields, s);
+    service_attach(s->fields, s);
   }
   
   // remove service from service list

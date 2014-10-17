@@ -553,16 +553,14 @@ error:
     /* Close commotiond socket connection */
     co_shutdown();
     
-    csm_socket->destroy((co_obj_t*)csm_socket);
+    if (csm_socket)
+      csm_socket->destroy((co_obj_t*)csm_socket);
     
     co_cmds_shutdown();
     
     /* Cleanup things */
     if (ctx.stb)
         TYPE_BROWSER_FREE(ctx.stb);
-
-    /* Remove main socket watch */
-    avahi_simple_poll_get(simple_poll)->watch_free(csm_watch);
 
     /* Free server/client */
     csm_ctx *ctx_ptr = &ctx;
@@ -574,8 +572,11 @@ error:
     csm_destroy_schemas(&ctx);
 
     /* Free event loop */
-    if (simple_poll)
-        avahi_simple_poll_free(simple_poll);
+    if (simple_poll) {
+      /* Remove main socket watch */
+      avahi_simple_poll_get(simple_poll)->watch_free(csm_watch);
+      avahi_simple_poll_free(simple_poll);
+    }
     
     return ret;
 }

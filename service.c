@@ -81,6 +81,7 @@ _csm_sort_service_fields_i(co_obj_t *data, co_obj_t *key, co_obj_t *field, void 
 	     (long)*co_obj_data_ptr(field));
   } else if (IS_LIST(field)) {
     csm_list_parse(field, key, _csm_sort_service_fields_i, context);
+    return;
   } else {
     ERROR("Invalid service field");
     h_free(fields->fields[fields->current_field]);
@@ -95,6 +96,7 @@ _csm_create_signing_template(csm_service *s, char **template)
 {
   int ret = 0;
   char *txt_fields = NULL;
+  size_t txt_len = 0;
   
   /* Sort fields into alphabetical order */
   ssize_t num_fields = co_tree_length(s->fields);
@@ -109,15 +111,18 @@ _csm_create_signing_template(csm_service *s, char **template)
   assert(fields.num_fields == fields.current_field);
   
   // Alphabetically sort the array of template strings we've built
-  qsort(&fields.fields,num_fields,sizeof(char*),cmpstringp);
+  // TODO this might be redundant due to how co_trees are arranged
+//   qsort(fields.fields,num_fields,sizeof(char*),cmpstringp);
   
   // build the full txt field template
   for (int i = 0; i < num_fields; i++) {
-    txt_fields = h_realloc(txt_fields, strlen(txt_fields) + strlen(fields.fields[i]) + 1);
+    txt_fields = h_realloc(txt_fields, (txt_len + strlen(fields.fields[i]) + 1 + 1) * sizeof(char));
+    memset(&txt_fields[txt_len],'\0',strlen(fields.fields[i]) + 1 + 1);
     strcat(txt_fields, fields.fields[i]);
     strcat(txt_fields, "\n");
+    txt_len += strlen(fields.fields[i]) + 1;
   }
-  txt_fields[strlen(txt_fields) - 1] = '\0'; // remove last \n
+  txt_fields[txt_len] = '\0'; // remove last \n
   
   // finally create the signing template
   int bytes = asprintf(template,
@@ -189,21 +194,21 @@ csm_service_new(AvahiIfIndex interface,
 //   csm_service *s = h_calloc(1, sizeof(csm_service));
   
   CHECK_MEM(s_obj);
-  csm_service *s = &s_obj->service;
+  csm_service *s = &(s_obj->service);
   
   s->interface = interface;
   s->protocol = protocol;
   if (uuid) {
     s->uuid = h_strdup(uuid);
     CHECK_MEM(s->uuid);
-    hattach(s->uuid, s);
+    service_attach(s->uuid, s);
   }
   s->type = h_strdup(type);
   CHECK_MEM(s->type);
-  hattach(s->type, s);
+  service_attach(s->type, s);
   s->domain = h_strdup(domain);
   CHECK_MEM(s->domain);
-  hattach(s->domain, s);
+  service_attach(s->domain, s);
   
   // create tree for holding user-defined service fields
   co_obj_t *fields = co_tree16_create();
@@ -217,7 +222,7 @@ csm_service_new(AvahiIfIndex interface,
 #endif
   
   s->fields = fields;
-  hattach(s->fields, s);
+  service_attach(s->fields, s);
   return s;
 error:
   if (s)
@@ -233,8 +238,8 @@ csm_service_destroy(csm_service *s)
   // get the co_service_t container and free that
   co_service_t *s_obj = container_of(s, co_service_t, service);
   
-  if (s->r.resolver)
-    RESOLVER_FREE(s->r.resolver);
+//   if (s->r.resolver)
+//     RESOLVER_FREE(s->r.resolver);
   
   if (s->r.txt_lst)
     avahi_string_list_free(s->r.txt_lst);
@@ -295,19 +300,22 @@ int
 csm_service_set_int(csm_service *s, const char *field, int32_t n)
 {
   assert(IS_TREE(s->fields));
-  if (n) {
-    co_obj_t *int_obj = co_int32_create(n, 0);
-    CHECK_MEM(int_obj);
-    CHECK(co_tree_insert(s->fields, field, strlen(field) + 1, int_obj),
-	  "Failed to insert %s into service", field);
-  } else {
-    co_obj_t *old_int = co_tree_delete(s->fields, field, strlen(field) + 1);
-    if (old_int)
-      co_obj_free(old_int);
-  }
+  co_obj_t *int_obj = co_int32_create(n, 0);
+  CHECK_MEM(int_obj);
+  CHECK(co_tree_insert(s->fields, field, strlen(field) + 1, int_obj),
+	"Failed to insert %s into service", field);
   return 1;
 error:
   return 0;
+}
+
+int csm_service_remove_int(csm_service *s, const char *field)
+{
+  assert(IS_TREE(s->fields));
+  co_obj_t *old_int = co_tree_delete(s->fields, field, strlen(field) + 1);
+  if (old_int)
+    co_obj_free(old_int);
+  return 1;
 }
 
 int
@@ -605,7 +613,7 @@ csm_create_signature(csm_service *s)
     CHECK(get_uuid(key,strlen(key),uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
     s->uuid = h_strdup(uuid);
     CHECK_MEM(s->uuid);
-    hattach(s->uuid, s);
+    service_attach(s->uuid, s);
   }
   
   ret = 1;

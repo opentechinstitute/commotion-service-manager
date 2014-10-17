@@ -4,6 +4,8 @@ schema versions will be semantic versioning. CSMs using schemas with different m
 
 TODO
 Add CSM API method for fetching schema
+test avahi client while restarting avahi daemon
+configure which interface(s) to listen on
 make note in README that version, lifetime, fingerprint, and signature are required fields in the schema
 don't hardcode service protocol, instead make runtime protocol configuration using config file
   convert functions to use schema: print_service

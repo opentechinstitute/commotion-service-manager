@@ -205,6 +205,7 @@ void
 uci_read(AvahiTimeout *t, void *userdata)
 {
   csm_ctx *ctx = (csm_ctx*)userdata;
+  co_obj_t *ctx_obj = NULL;
 //   int ret = 0;
   CHECK(ctx && ctx->service_list, "Uninitialized context");
   struct uci_context *c = NULL;
@@ -235,7 +236,6 @@ uci_read(AvahiTimeout *t, void *userdata)
 	  val_obj = _csm_store_uci_field(key, val, ctx);
 	  CHECK(co_tree_insert(fields, key, strlen(key) + 1, val_obj), "Failed to add field to imported service");
 	  DEBUG("Read service field %s : %s", key, val);
-	  co_obj_free(val_obj);
 	  val_obj = NULL;
 	} else { // option->type == UCI_TYPE_LIST
 	  struct uci_element *l = NULL;
@@ -249,19 +249,18 @@ uci_read(AvahiTimeout *t, void *userdata)
 	    val_obj = _csm_store_uci_field(key, val, ctx);
 	    CHECK(co_list_append(list, val_obj), "Failed to add list field to new service");
 	    DEBUG("Read service list field %s : %s", key, val);
-	    co_obj_free(val_obj);
 	    val_obj = NULL;
 	  }
 	  CHECK(co_tree_insert(fields, key, strlen(key) + 1, list), "Failed to add list field to new service");
 	}
       }
       // if service has local=1, create co_list = [ctx, service_fields] and call cmd_commit_service() (which will do validation against schema)
-      co_obj_t *local = co_tree_find(fields,"local",sizeof("local"));
-      if (local && strcmp(co_obj_data_ptr(local), "1") == 0) {
+//       co_obj_t *local = co_tree_find(fields,"local",sizeof("local"));
+//       if (local && strcmp(co_obj_data_ptr(local), "1") == 0) {
 	verdict = NULL;
 	params = co_list16_create();
 	CHECK_MEM(params);
-	co_obj_t *ctx_obj = co_ctx_create(ctx);
+	ctx_obj = co_ctx_create(ctx);
 	CHECK_MEM(ctx_obj);
 	CHECK(co_list_append(params, ctx_obj), "Failed to append ctx to command params");
 	CHECK(co_list_append(params, fields), "Failed to append service fields to command params");
@@ -276,7 +275,7 @@ uci_read(AvahiTimeout *t, void *userdata)
 	  CHECK(co_response_get_str(verdict, &key, "key", sizeof("key")), "Failed to fetch key from response");
 	  INFO("Successfully added local service with key %s", key);
 	}
-      }
+//       }
     }
   }
   

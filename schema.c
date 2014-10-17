@@ -129,8 +129,9 @@ static int
 _csm_validate_int(csm_schema_field_t *schema_field, co_obj_t *entry)
 {
   if (IS_INT(entry)) {
-    int n;
-    co_obj_data((char**)&n, entry);
+    long n;
+//     co_obj_data((char**)&n, entry);
+    n = ((co_int32_t*)entry)->data;
     if ((!(schema_field->limits_flag & CSM_LIMIT_MIN) || n >= schema_field->min)
       && (!(schema_field->limits_flag & CSM_LIMIT_MAX) || n <= schema_field->max))
       return 1;
@@ -143,8 +144,8 @@ _csm_validate_string(csm_schema_field_t *schema_field, co_obj_t *entry, int hex)
 {
   if (IS_STR(entry)) {
     char *str;
-    size_t str_len = co_obj_data(&str, entry);
-    if (!schema_field->length || str_len < schema_field->length) {
+    size_t str_len = co_obj_data(&str, entry) - 1;
+    if (!schema_field->length || str_len == schema_field->length) {
       if (hex) {
 	for (int i = 0; i < str_len; ++i) {
 	  if (!isxdigit(str[i]))
@@ -190,6 +191,7 @@ _csm_validate_field(csm_schema_field_t *schema_field, csm_field_type type, co_ob
 	ERROR("Invalid service field list");
 	return 0;
       }
+      break;
     default:
       ERROR("Invalid field type");
       return 0;
@@ -232,7 +234,7 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
   int ret = 0;
   char *buffer = NULL;
   FILE *schema_file = NULL;
-  schema_file = fopen(path, "rb");
+  schema_file = fopen(path, "r");
   csm_schema_field_t *field = NULL;
   jsmntok_t *tokens = NULL;
   CHECK(schema_file != NULL, "File %s could not be opened", path);
@@ -291,6 +293,7 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
         state = VALUE;
         key = _co_json_token_stringify(buffer, t);
         klen = t->end - t->start;
+// 	DEBUG("Read in key: %s",key);
 
         break;
 
@@ -298,6 +301,7 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	assert(key != NULL && klen > 0);
 	
 	char *val = _co_json_token_stringify(buffer, t);
+// 	DEBUG("Read in val: %s",val);
 	CHECK(val, "Invalid schema version");
 	
 	if (strcmp(key, "version") == 0) {
@@ -305,11 +309,16 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	  INFO("Registering schema with version %s", val);
 	  char *dot = strchr(val, '.');
 	  CHECK(dot, "Invalid version string; please use semantic versioning");
-	  dot = '\0';
+	  *dot = '\0';
 	  schema->version.major = atoi(val);
 	  schema->version.minor = atof(dot + 1);
+	  state = KEY;
+	  key = NULL;
+	  klen = 0;
+	  object_tokens--;
 	} else if (strcmp(key, "fields") == 0) {
 	  // pass
+	  state = START;
 	} else { // field attributes
 // 	  assert(field);
 	  CHECK(t->type == JSMN_STRING || t->type == JSMN_PRIMITIVE, "Values must be strings or primitive");
@@ -364,14 +373,13 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	    default:
 	      SENTINEL("Invalid field attribute");
 	  }
+	  state = KEY;
+	  key = NULL;
+	  klen = 0;
+	  object_tokens--;
 	}
 
-        key = NULL;
-        klen = 0;
-        object_tokens--;
-        state = KEY;
-
-        if (object_tokens == 0) {
+        if (object_tokens == 0 && field) {
 	  CHECK(strlen(field->name) > 0 && field->type, "Invalid field");
 	  if (field->type == CSM_FIELD_LIST)
 	    CHECK(field->subtype, "Invalid field subtype");
@@ -379,9 +387,10 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	  // append field to schema
 	  field->_next = schema->fields;
 	  schema->fields = field;
+	  DEBUG("Read in field with key: %s", field->name);
 	  
 	  field = NULL;
-          state = STOP;
+          state = START;
 	}
 	
         break;
@@ -426,6 +435,7 @@ int
 csm_import_schemas(csm_ctx *ctx, const char *dir)
 {
   int ret = 0;
+  char *file_path = NULL;
   size_t path_size = strlen(dir);
   csm_schema_t *schema = NULL, *tmp = NULL;
   DIR *dir_iter = NULL;
@@ -441,7 +451,13 @@ csm_import_schemas(csm_ctx *ctx, const char *dir)
     
     schema = _csm_schema_new();
     CHECK_MEM(schema);
-    CHECK(_csm_import_schema(schema, dir_entry->d_name), "Failed to import schemas");
+    char full_path[path_size + strlen(dir_entry->d_name) + 2];
+    strcpy(full_path, dir);
+    strcat(full_path, "/");
+    strcat(full_path, dir_entry->d_name);
+    file_path = realpath(full_path, NULL);
+    CHECK(file_path, "Failed to retrieve absolute path of schema file");
+    CHECK(_csm_import_schema(schema, file_path), "Failed to import schemas");
     
     // insert into linked list, order by version
     if (!ctx->schema) {
@@ -474,6 +490,8 @@ csm_import_schemas(csm_ctx *ctx, const char *dir)
   ret = 1;
 error:
   if(dir_iter) closedir(dir_iter);
+  if (file_path)
+    free(file_path);
   return ret;
 }
 

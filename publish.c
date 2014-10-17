@@ -183,7 +183,7 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
       s->l.group = ENTRY_GROUP_NEW(server_entry_group_callback, NULL);
 #endif
       CHECK(s->l.group,"ENTRY_GROUP_NEW failed: %s", AVAHI_ERROR);
-      hattach(s->l.group, s);
+      service_attach(s->l.group, s);
     }
     
     CHECK(csm_tree_process(s->fields, _csm_import_into_txt_list, &t),
