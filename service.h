@@ -33,6 +33,8 @@
 #include "defs.h"
 #include "schema.h"
 
+#define SAS_FETCH_RETRIES 3
+
 #define service_attach(B,P) hattach(B,container_of(P, co_service_t, service))
 
 typedef struct csm_service_list csm_service_list;

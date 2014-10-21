@@ -511,6 +511,8 @@ int main(int argc, char*argv[]) {
     avahi_config.publish_domain = 0;
     avahi_config.n_wide_area_servers = 0;
     avahi_config.enable_wide_area = 0;
+    avahi_config.enable_reflector = 0;
+    avahi_config.reflect_ipv = 0;
 
     /* Allocate a new server */
     ctx.server = avahi_server_new(avahi_simple_poll_get(simple_poll), &avahi_config, server_callback, &ctx, &error);

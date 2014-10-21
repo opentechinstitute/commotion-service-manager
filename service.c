@@ -537,7 +537,7 @@ error:
 int
 csm_verify_signature(csm_service *s)
 {
-  int verdict = 0;
+  int verdict = 0, i;
   co_obj_t *co_conn = NULL, *co_req = NULL, *co_resp = NULL;
   char *to_verify = NULL;
   CHECK(s->key && s->signature, "Service missing key or signature");
@@ -546,7 +546,12 @@ csm_verify_signature(csm_service *s)
   
   char sas_buf[2*SAS_SIZE+1] = {0};
   
-  CHECK(keyring_send_sas_request_client(s->key,strlen(s->key),sas_buf,2*SAS_SIZE+1),"Failed to fetch signing key");
+  for (i = 0; i < SAS_FETCH_RETRIES; i++) {
+    if (keyring_send_sas_request_client(s->key,strlen(s->key),sas_buf,2*SAS_SIZE+1))
+      break;
+  }
+  if (i == SAS_FETCH_RETRIES)
+    SENTINEL("Failed to fetch signing key");
   
   bool output;
   CHECK((co_conn = co_connect(csm_config.co_sock,strlen(csm_config.co_sock)+1)),

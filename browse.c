@@ -323,6 +323,8 @@ void resolve_callback(
 #endif
     assert(r);
     
+    _csm_remove_pending_service(ctx, uuid);
+    
     if (!txt) {
       INFO("Resolved service does not contain TXT fields");
       RESOLVER_FREE(r);
@@ -336,11 +338,9 @@ void resolve_callback(
     switch (event) {
         case AVAHI_RESOLVER_FAILURE:
             ERROR("Failed to resolve service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
-	    _csm_remove_pending_service(ctx, uuid);
             break;
 
         case AVAHI_RESOLVER_FOUND: {
-	    CHECK(_csm_remove_pending_service(ctx, uuid), "Failed to remove pending service");
 	  
             avahi_address_snprint(s->r.address, 
                 sizeof(s->r.address),
@@ -363,7 +363,7 @@ void resolve_callback(
 	    break;
         }
 	default:
-	  _csm_remove_pending_service(ctx, uuid);
+	  break;
     }
 error:
 //     RESOLVER_FREE(s->r.resolver);
