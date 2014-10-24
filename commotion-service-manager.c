@@ -31,232 +31,59 @@
 #include "extern/halloc.h"
 
 #include "defs.h"
+#include "util.h"
 #include "commotion-service-manager.h"
 
-CSMService *service_create(CSMServiceList *services) {
-  co_obj_t *service = co_tree16_create();
-  CHECK_MEM(service);
-  co_list_append(services,service);
+int
+services_fetch(void **services) {
+  co_obj_t *request = NULL,
+	    *response = NULL,
+	    *conn = NULL;
+  int ret = 0;
   
-  /* Set defaults */
-  CHECK(service_set_ttl(service,5),"Failed to set default TTL");
-  CHECK(service_set_lifetime(service,0),"Failed to set default lifetime");
+  co_init();
+  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
+  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
+  CHECK_MEM((request = co_request_create()));
   
-  return (CSMService*)service;
+  co_call(conn, &response, "list_services", sizeof("list_services"), request);
+  CHECK(response != NULL, "Invalid response");
+  
+  // check response for success, then set return val accordingly
+  CHECK(CO_TYPE(co_response_get(response,"success",sizeof("success"))) == _true,
+	"Failed to get list of services");
+  
+  co_obj_t *service_list = co_response_get(response,"services",sizeof("services"));
+  CHECK(CO_TYPE(service_list) == _list16,"Invalid response");
+  
+  *services = (void*)service_list;
+  
+  ret = co_list_length(service_list);
 error:
-  return NULL;
+  if (request) co_free(request);
+  
+  /* Close commotiond socket connection */
+  co_disconnect(conn);
+  return ret;
 }
-
-#define SERVICE_SET_STR(M) \
-int \
-service_set_##M(CSMService *s, char const *m) \
-{ \
-  CHECK(IS_TREE(s),"Not a valid service"); \
-  if (m) { \
-    co_obj_t *o = co_str8_create(m, strlen(m) + 1, 0); \
-    CHECK_MEM(o); \
-    CHECK(co_tree_insert_force(s, \
-			      "M", \
-			      sizeof("M"), \
-			      o), \
-	  "Failed to insert M into service"); \
-  } else { \
-    co_obj_t *val = co_tree_delete(s, "M", sizeof("M")); \
-    if (val) \
-      co_obj_free(val); \
-  } \
-  return 1; \
-error: \
-  return 0; \
-}
-SERVICE_SET_STR(name);
-SERVICE_SET_STR(description);
-SERVICE_SET_STR(uri);
-SERVICE_SET_STR(icon);
-#undef SERVICE_SET_STR
 
 int
-service_set_ttl(CSMService *service, int ttl)
-{
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *o = co_uint8_create(ttl, 0);
-  CHECK_MEM(o);
-  CHECK(co_tree_insert_force(service,
-			     "ttl",
-			     sizeof("ttl"),
-			     o),
-	"Failed to insert ttl into service");
+services_free(void *services) {
+  CHECK(IS_LIST((co_obj_t*)services),
+	"Not a valid list");
+  co_obj_free(services);
   return 1;
 error:
   return 0;
 }
 
-int service_set_lifetime(CSMService *service, long lifetime) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *o = co_uint32_create(lifetime, 0);
-  CHECK_MEM(o);
-  CHECK(co_tree_insert_force(service,
-			     "lifetime",
-			     sizeof("lifetime"),
-			     o),
-	"Failed to insert lifetime into service");
-  return 1;
-error:
-  return 0;
-}
-
-int service_set_categories(CSMService *service, char const * const *categories, size_t cat_len) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  CHECK(cat_len < UINT16_MAX && cat_len >= 0,"Too many categories/invalid category count");
-  if (cat_len) {
-    co_obj_t *category_list = co_list16_create();
-    CHECK_MEM(category_list);
-    for (int i = 0; i < cat_len; i++) {
-      co_obj_t *category = co_str8_create(categories[i],strlen(categories[i])+1,0);
-      CHECK_MEM(category);
-      CHECK(co_list_append(category_list,category),"Failed to insert category");
-    }
-    CHECK(co_tree_insert_force(service,
-			      "categories",
-			      sizeof("categories"),
-			      category_list),
-	  "Failed to insert categories into service");
-  } else {
-    co_obj_t *cat_obj = co_tree_delete(service, "categories", sizeof("categories"));
-    if (cat_obj)
-      co_obj_free(cat_obj);
-  }
-  return 1;
-error:
-  return 0;
-}
-
-int service_add_category(CSMService *service, char const *category) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  CHECK(category, "Invalid category");
-  if (!IS_LIST(co_tree_find(service,"categories",sizeof("categories")))) {
-    CHECK(service_set_categories(service,&category,1),"Failed to add category");
-  } else {
-    co_obj_t *category_obj = co_str8_create(category,strlen(category)+1,0);
-    CHECK_MEM(category_obj);
-    CHECK(co_list_append(co_tree_find(service,"categories",sizeof("categories")),
-			 category_obj),
-	  "Failed to add category");
-  }
-  return 1;
-error:
-  return 0;
-}
-
-static co_obj_t *_categories_contains_str_i(co_obj_t *list, co_obj_t *current, void *str) {
-  if (IS_LIST(current)) return NULL;
-  char *the_str = (char*)current;
-  if (co_str_cmp_str(current,the_str) == 0)
-    return current;
-  return NULL;
-}
-
-int service_remove_category(CSMService *service, char const *category) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  
-  co_obj_t *categories = co_tree_find(service,"categories",sizeof("categories"));
-  CHECK(IS_LIST(categories),"Invalid category list");
-  
-  co_obj_t *to_remove = co_list_parse(categories,_categories_contains_str_i,(char*)category);
-  CHECK(to_remove,"Service doesn't contain category");
-  
-  CHECK(co_list_delete(categories,to_remove),"Failed to remove category");
-  
-  return 1;
-error:
-  return 0;
-}
-
-char *service_get_key(CSMService *service) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *field = co_tree_find(service,"key",sizeof("key"));
-  CHECK(field,"Service does not have key");
-  return ((co_str8_t*)field)->data;
-error:
-  return NULL;
-}
-
-char *service_get_name(CSMService *service) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *field = co_tree_find(service,"name",sizeof("name"));
-  CHECK(field,"Service does not have name");
-  return ((co_str8_t*)field)->data;
-error:
-  return NULL;
-}
-
-char *service_get_description(CSMService *service) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *field = co_tree_find(service,"description",sizeof("description"));
-  CHECK(field,"Service does not have description");
-  return ((co_str8_t*)field)->data;
-error:
-  return NULL;
-}
-
-char *service_get_uri(CSMService *service) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *field = co_tree_find(service,"uri",sizeof("uri"));
-  CHECK(field,"Service does not have uri");
-  return ((co_str8_t*)field)->data;
-error:
-  return NULL;
-}
-
-char *service_get_icon(CSMService *service) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *field = co_tree_find(service,"icon",sizeof("icon"));
-  CHECK(field,"Service does not have icon");
-  return ((co_str8_t*)field)->data;
-error:
-  return NULL;
-}
-
-int service_get_ttl(CSMService *service) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *field = co_tree_find(service,"ttl",sizeof("ttl"));
-  CHECK(field,"Service does not have ttl");
-  return ((co_uint8_t*)field)->data;
-error:
-  return -1;
-}
-
-long service_get_lifetime(CSMService *service) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *field = co_tree_find(service,"lifetime",sizeof("lifetime"));
-  CHECK(field,"Service does not have lifetime");
-  return ((co_uint32_t*)field)->data;
-error:
-  return -1;
-}
-
-int service_get_categories(CSMService *service, CategoryList **categories) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *cats = (void*)co_tree_find(service,"categories",sizeof("categories"));
-  CHECK(IS_LIST(cats),"Invalid categories field");
-  *categories = cats;
-  return co_list_length(cats);
-error:
-  return 0;
-}
-
-char *categories_get(CategoryList *categories, int index) {
-  CHECK(IS_LIST(categories),"Not a valid category list");
-  return ((co_str8_t*)co_list_element(categories,index))->data;
-error:
-  return NULL;
-}
-
-char *service_get_signature(CSMService *service) {
-  CHECK(IS_TREE(service),"Not a valid service");
-  co_obj_t *field = co_tree_find(service,"signature",sizeof("signature"));
-  CHECK(field,"Service does not have signature");
-  return ((co_str8_t*)field)->data;
+CSMService *
+service_create(void) {
+// service_create(CSMServiceList *services) {
+  co_obj_t *service = co_tree16_create();
+  CHECK_MEM(service);
+//   CHECK(co_list_append(services,service), "Failed to add service to list");
+  return (CSMService*)service;
 error:
   return NULL;
 }
@@ -271,12 +98,6 @@ int service_commit(CSMService *service) {
   int ret = 0;
   
   CHECK(IS_TREE(service),"Invalid service");
-  CHECK(/*co_tree_find(service,"key",sizeof("key"))
-        && */co_tree_find(service,"name",sizeof("name"))
-        && co_tree_find(service,"description",sizeof("description"))
-        && co_tree_find(service,"uri",sizeof("uri"))
-        && co_tree_find(service,"icon",sizeof("icon")),
-	"Service missing required fields");
   
   co_obj_t *current_key = co_tree_find(service,"key",sizeof("key"));
   
@@ -296,6 +117,7 @@ int service_commit(CSMService *service) {
   // response should contain key and signature
   CHECK(CO_TYPE(co_response_get(response,"success",sizeof("success"))) == _true,"Failed to add/update service");
   
+  // TODO we may just want to skip this, since the client should update its service list with services_fetch() anyway
   char *key = NULL, *signature = NULL;
   CHECK(co_response_get_str(response,&key,"key",sizeof("key")),"Failed to fetch key from response");
   CHECK(co_response_get_str(response,&signature,"signature",sizeof("signature")),"Failed to fetch signature from response");
@@ -324,7 +146,6 @@ error:
   return ret;
 }
 
-/* calls service_free() */
 int service_remove(CSMService *service) {
   co_obj_t *request = NULL,
 	    *response = NULL,
@@ -364,47 +185,422 @@ error:
   return ret;
 }
 
-int services_fetch(void **services) {
-  co_obj_t *request = NULL,
-	    *response = NULL,
-	    *conn = NULL;
-  int ret = 0;
-  
-  co_init();
-  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
-  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
-  CHECK_MEM((request = co_request_create()));
-  
-  co_call(conn, &response, "list_services", sizeof("list_services"), request);
-  CHECK(response != NULL, "Invalid response");
-  
-  // check response for success, then set return val accordingly
-  CHECK(CO_TYPE(co_response_get(response,"success",sizeof("success"))) == _true,"Failed to get list of services");
-  
-  co_obj_t *service_list = co_response_get(response,"services",sizeof("services"));
-  CHECK(CO_TYPE(service_list) == _list16,"Invalid response");
-  
-  *services = (void*)service_list;
-  
-  ret = co_list_length(service_list);
-error:
-  if (request) co_free(request);
-  
-  /* Close commotiond socket connection */
-  co_disconnect(conn);
-  return ret;
-}
-
-void *services_get(void *services, int index) {
+void *
+services_get_by_index(void *services, int index) {
   CHECK(IS_LIST((co_obj_t*)services),"Not a valid list");
+  CHECK(index >= 0 && index < co_list_length((co_obj_t*)services), "Out of bounds index");
   return (void*)co_list_element((co_obj_t*)services,(unsigned int)index);
 error:
   return NULL;
 }
 
-int services_free(void *services) {
-  CHECK(IS_LIST((co_obj_t*)services) && co_list_length((co_obj_t*)services) > 0,"Not a valid list");
-  co_obj_free(services);
+static co_obj_t *
+_services_get_by_key_i(co_obj_t *list, co_obj_t *current, void *context)
+{
+  CHECK(IS_TREE(current), "Invalid service");
+  co_obj_t *key = co_tree_find(current, "key", strlen("key")+1);
+  if (key && strcmp(co_obj_data_ptr(key), (char*)context) == 0)
+    return current;
+error:
+  return NULL;
+}
+
+void *
+services_get_by_key(void *services, char *key) {
+  CHECK(IS_LIST((co_obj_t*)services),"Not a valid list");
+  return (void*)co_list_parse((co_obj_t*)services, _services_get_by_key_i, key);
+error:
+  return NULL;
+}
+
+int
+service_is_local(void *service)
+{
+  CHECK(IS_TREE((co_obj_t*)service), "Invalid service");
+  co_obj_t *local = co_tree_find((co_obj_t*)service, "local", strlen("local")+1);
+  if (local && (int32_t)*co_obj_data_ptr(local) == 1)
+    return 1;
+error:
+  return 0;
+}
+
+int
+service_fields_get_length(void *service)
+{
+  CHECK(IS_TREE((co_obj_t*)service), "Invalid service");
+  return (int)co_tree_length((co_obj_t*)service);
+error:
+  return -1;
+}
+
+void *
+service_field_get_next(void *service, void *current, char **name)
+{
+  CHECK(IS_TREE((co_obj_t*)service), "Invalid service");
+  CHECK(CO_TYPE(current) == _str8, "Invalid service field");
+  co_obj_t *next = co_tree_next((co_obj_t*)service, current);
+  CHECK(next, "No more service fields, or current service field not found");
+  char *key = co_obj_data_ptr(next);
+  if (name) *name = key;
+  return (void*)co_tree_find_node(co_tree_root(service), key, strlen(key)+1);
+error:
+  return NULL;
+}
+
+void *
+service_field_get_by_name(void *service, const char *name)
+{
+  _treenode_t *node = NULL;
+  CHECK(IS_TREE((co_obj_t*)service), "Invalid service");
+  node = co_tree_find_node(co_tree_root(service), name, strlen(name)+1);
+  if (!node) ERROR("Field %s not found", name);
+error:
+  return node;
+}
+
+char *
+service_field_get_name(void *field)
+{
+  co_obj_t *key = NULL;
+  if (field && (key = co_node_key(field)))
+    return co_obj_data_ptr(key);
+  ERROR("Invalid field");
+  return NULL;
+}
+
+int
+service_field_get_type(void *field)
+{
+  co_obj_t *val = NULL;
+  CHECK(field && (val = co_node_value((_treenode_t*)field)),
+	"Invalid field");
+  if (IS_INT(val))
+    return CSM_FIELD_INT;
+  else if (IS_STR(val)) {
+    char *str = co_obj_data_ptr(val);
+    return (isHex(str,strlen(str))) ? CSM_FIELD_HEX : CSM_FIELD_STRING;
+  } else if (IS_LIST(val)) {
+    return CSM_FIELD_LIST;
+  }
+error:
+  return -1;
+}
+
+long
+service_field_get_int(void *field)
+{
+  co_obj_t *val = NULL;
+  CHECK(field
+        && (val = co_node_value((_treenode_t*)field))
+	&& IS_INT(val),
+	"Invalid int field");
+  return (long)*co_obj_data_ptr(val);
+error:
+  return -1;
+}
+
+char *
+service_field_get_string(void *field)
+{
+  co_obj_t *val = NULL;
+  CHECK(field
+        && (val = co_node_value((_treenode_t*)field))
+	&& IS_STR(val),
+	"Invalid string field");
+  return co_obj_data_ptr(val);
+error:
+  return NULL;
+}
+
+int
+service_field_get_list_subtype(void *field)
+{
+  co_obj_t *val = NULL;
+  CHECK(field
+        && (val = co_node_value((_treenode_t*)field))
+	&& IS_LIST(val),
+	"Invalid list field");
+  ssize_t llen = co_list_length(val);
+  CHECK(llen, "Empty list, cannot determine type");
+  co_obj_t *first = co_list_get_first(val);
+  if (IS_INT(first))
+    return CSM_FIELD_INT;
+  else if (IS_STR(first)) {
+    char *str = co_obj_data_ptr(first);
+    return (isHex(str,strlen(str))) ? CSM_FIELD_HEX : CSM_FIELD_STRING;
+  } else if (IS_LIST(first)) {
+    return CSM_FIELD_LIST;
+  }
+error:
+  return -1;
+}
+
+int
+service_field_get_list_length(void *field)
+{
+  co_obj_t *val = NULL;
+  CHECK(field
+        && (val = co_node_value((_treenode_t*)field))
+	&& IS_LIST(val),
+	"Invalid list field");
+  return co_list_length(val);
+error:
+  return -1;
+}
+
+long
+service_field_get_list_int(void *field, int index)
+{
+  co_obj_t *val = NULL;
+  CHECK(field
+        && (val = co_node_value((_treenode_t*)field))
+	&& IS_LIST(val),
+	"Invalid list field");
+  CHECK(index >= 0 && index < co_list_length(val), "Out of bounds index");
+  co_obj_t *ret = co_list_element(val, (unsigned int)index);
+  CHECK(IS_INT(ret), "Invalid int field");
+  return (long)*co_obj_data_ptr(ret);
+error:
+  return -1;
+}
+
+char *
+service_field_get_list_string(void *field, int index)
+{
+  co_obj_t *val = NULL;
+  CHECK(field
+        && (val = co_node_value((_treenode_t*)field))
+	&& IS_LIST(val),
+	"Invalid list field");
+  CHECK(index >= 0 && index < co_list_length(val), "Out of bounds index");
+  co_obj_t *ret = co_list_element(val, (unsigned int)index);
+  CHECK(IS_STR(ret), "Invalid int field");
+  return co_obj_data_ptr(ret);
+error:
+  return NULL;
+}
+
+int
+service_field_set_int(void *field, long n)
+{
+  _treenode_t *node = (_treenode_t*)field;
+  CHECK(node && node->key, "Invalid field");
+  if(node->value != NULL) {
+    co_obj_free(node->value);
+  }
+  node->value = co_int32_create(n, 0);
+  CHECK_MEM(node->value);
+  hattach(node->value, node);
+  node->value->_ref++;
+  return 1;
+error:
+  return 0;
+}
+
+int
+service_field_set_string(void *field, const char *str)
+{
+  CHECK(strlen(str) < 256, "String too long");
+  _treenode_t *node = (_treenode_t*)field;
+  CHECK(node && node->key, "Invalid field");
+  if(node->value != NULL) {
+    co_obj_free(node->value);
+  }
+  node->value = co_str8_create(str, strlen(str)+1, 0);
+  CHECK_MEM(node->value);
+  hattach(node->value, node);
+  node->value->_ref++;
+  return 1;
+error:
+  return 0;
+}
+
+int
+service_field_set_int_list_from_array(void *field, long *array, int length)
+{
+  _treenode_t *node = (_treenode_t*)field;
+  CHECK(node && node->key, "Invalid field");
+  if(node->value != NULL) {
+    co_obj_free(node->value);
+  }
+  node->value = co_list16_create();
+  CHECK_MEM(node->value);
+  hattach(node->value, node);
+  node->value->_ref++;
+  for (int i = 0; i < length; i++) {
+    co_obj_t *n = co_int32_create(array[i],0);
+    CHECK_MEM(n);
+    CHECK(co_list_append(node->value, n), "Failed to add int to field list");
+  }
+  return 1;
+error:
+  return 0;
+}
+
+int
+service_field_set_string_list_from_array(void *field, const char **array, int length)
+{
+  _treenode_t *node = (_treenode_t*)field;
+  CHECK(node && node->key, "Invalid field");
+  if(node->value != NULL) {
+    co_obj_free(node->value);
+  }
+  node->value = co_list16_create();
+  CHECK_MEM(node->value);
+  hattach(node->value, node);
+  node->value->_ref++;
+  for (int i = 0; i < length; i++) {
+    CHECK(strlen(array[i]) < 256, "String too long");
+    co_obj_t *str = co_str8_create(array[i], strlen(array[i])+1, 0);
+    CHECK_MEM(str);
+    CHECK(co_list_append(node->value, str), "Failed to add string to field list");
+  }
+  return 1;
+error:
+  return 0;
+}
+
+int
+service_field_list_append_int(void *field, long n)
+{
+  _treenode_t *node = (_treenode_t*)field;
+  CHECK(node && node->key && node->value && IS_LIST(node->value), "Invalid field");
+  co_obj_t *new = co_int32_create(n,0);
+  CHECK_MEM(new);
+  CHECK(co_list_append(node->value, new), "Failed to add int to field list");
+  return 1;
+error:
+  return 0;
+}
+
+int
+service_field_list_append_str(void *field, const char *str)
+{
+  CHECK(strlen(str) < 256, "String too long");
+  _treenode_t *node = (_treenode_t*)field;
+  CHECK(node && node->key && node->value && IS_LIST(node->value), "Invalid field");
+  co_obj_t *new = co_str8_create(str, strlen(str)+1, 0);
+  CHECK_MEM(new);
+  CHECK(co_list_append(node->value, new), "Failed to add int to field list");
+  return 1;
+error:
+  return 0;
+}
+
+int service_set_int(CSMService *service, const char *field, long n)
+{
+  CHECK(service_is_local(service), "Cannot modify service");
+  co_obj_t *o = co_int32_create(n, 0);
+  CHECK_MEM(o);
+  CHECK(co_tree_insert_force(service,
+			     field,
+			     strlen(field) + 1,
+			     o),
+	"Failed to insert %s into service", field);
+  return 1;
+error:
+  return 0;
+}
+
+int
+service_set_string(CSMService *service, const char *field, const char *str)
+{
+  CHECK(service_is_local(service), "Cannot modify service");
+  CHECK(strlen(str) < 256, "String too long");
+  co_obj_t *o = co_str8_create(str, strlen(str) + 1, 0);
+  CHECK_MEM(o);
+  CHECK(co_tree_insert_force(service,
+			    field, \
+			    strlen(field) + 1,
+			    o),
+	"Failed to insert %s into service", field);
+  return 1;
+error:
+  return 0;
+}
+
+int
+service_set_int_list_from_array(CSMService *service, const char *field, long *array, int length)
+{
+  CHECK(service_is_local(service), "Cannot modify service");
+  co_obj_t *field_list = co_list16_create();
+  CHECK_MEM(field_list);
+  for (int i = 0; i < length; i++) {
+    co_obj_t *field_obj = co_int32_create(array[i],0);
+    CHECK_MEM(field_obj);
+    CHECK(co_list_append(field_list, field_obj),
+	  "Failed to add int %ld to field list %s", array[i], field);
+  }
+  CHECK(co_tree_insert_force(service, field, strlen(field) + 1, field_list),
+	"Failed to insert list %s into service", field);
+  return 1;
+error:
+  return 0;
+}
+
+int
+service_set_string_list_from_array(CSMService *service, const char *field, const char **array, int length)
+{
+  CHECK(service_is_local(service), "Cannot modify service");
+  co_obj_t *field_list = co_list16_create();
+  CHECK_MEM(field_list);
+  for (int i = 0; i < length; i++) {
+    co_obj_t *field_obj = co_str8_create(array[i], strlen(array[i])+1, 0);
+    CHECK_MEM(field_obj);
+    CHECK(co_list_append(field_list, field_obj),
+	  "Failed to add string %s to field list %s", array[i], field);
+  }
+  CHECK(co_tree_insert_force(service, field, strlen(field) + 1, field_list),
+	"Failed to insert list %s into service", field);
+  return 1;
+error:
+  return 0;
+}
+
+int service_list_append_int(CSMService *service, const char *field, long n)
+{
+  CHECK(service_is_local(service), "Cannot modify service");
+  co_obj_t *field_list = co_tree_find(service,field,strlen(field) + 1);
+  if (!field_list || !IS_LIST(field_list)) {
+    field_list = co_list16_create();
+    CHECK_MEM(field_list);
+    CHECK(co_tree_insert_force(service, field, strlen(field) + 1, field_list),
+	  "Failed to insert list %s into service", field);
+  }
+  co_obj_t *field_obj = co_int32_create(n,0);
+  CHECK_MEM(field_obj);
+  CHECK(co_list_append(field_list, field_obj),
+	"Failed to add int %ld to field list %s", n, field);
+  return 1;
+error:
+  return 0;
+}
+
+int service_list_append_string(CSMService *service, const char *field, const char *str)
+{
+  CHECK(service_is_local(service), "Cannot modify service");
+  co_obj_t *field_list = co_tree_find(service,field,strlen(field) + 1);
+  if (!field_list || !IS_LIST(field_list)) {
+    field_list = co_list16_create();
+    CHECK_MEM(field_list);
+    CHECK(co_tree_insert_force(service, field, strlen(field) + 1, field_list),
+	  "Failed to insert list %s into service", field);
+  }
+  co_obj_t *field_obj = co_str8_create(str,strlen(str)+1,0);
+  CHECK_MEM(field_obj);
+  CHECK(co_list_append(field_list, field_obj),
+	"Failed to add string %s to field list %s", str, field);
+  return 1;
+error:
+  return 0;
+}
+
+int service_remove_field(CSMService *service, const char *field)
+{
+  CHECK(service_is_local(service), "Cannot modify service");
+  co_obj_t *val = co_tree_delete(service, field, strlen(field) + 1);
+  if (val)
+    co_obj_free(val);
   return 1;
 error:
   return 0;

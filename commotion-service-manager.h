@@ -25,39 +25,57 @@
 #ifndef COMMOTION_SERVICE_MANAGER_H
 #define COMMOTION_SERVICE_MANAGER_H
 
+#include "schema.h"
+
 typedef void CSMService;
 typedef void CSMServiceList;
-typedef void CategoryList;
+typedef void CSMField;
+typedef void CSMSchema;
 
-int services_fetch(CSMServiceList **services);
-CSMService *services_get(CSMServiceList *services, int index);
-int services_free(CSMServiceList *services);
+// TODO schema functions
+int schema_fetch(CSMSchema **schema); // returns number of fields
 
-CSMService *service_create(CSMServiceList *services);
-int service_commit(CSMService *service);
-int service_remove(CSMService *service);
 
-/* It is the responsibility of the caller to make sure
- * all strings are NULL-terminated, and less than 256 chars. */
-int service_set_name(CSMService *service, char const *name);
-int service_set_description(CSMService *service, char const *description);
-int service_set_uri(CSMService *service, char const *uri);
-int service_set_icon(CSMService *service, char const *icon);
-int service_set_ttl(CSMService *service, int ttl);
-int service_set_lifetime(CSMService *service, long lifetime);
-int service_set_categories(CSMService *service, char const * const *categories, size_t cat_len);
-int service_add_category(CSMService *service, char const *category);
-int service_remove_category(CSMService *service, char const *category);
+int services_fetch(CSMServiceList **service_list);
+int services_free(CSMServiceList *service_list);
 
-char *service_get_key(CSMService *service);
-char *service_get_name(CSMService *service);
-char *service_get_description(CSMService *service);
-char *service_get_uri(CSMService *service);
-char *service_get_icon(CSMService *service);
-int service_get_ttl(CSMService *service);
-long service_get_lifetime(CSMService *service);
-int service_get_categories(CSMService *service, CategoryList **categories);
-char *categories_get(CategoryList *categories, int index);
-char *service_get_signature(CSMService *service);
+CSMService *service_create(void);
+int service_commit(CSMService *service); // adds key and signature to service
+int service_remove(CSMService *service); // does not destroy service or remove from list
+
+CSMService *services_get_by_index(CSMServiceList *service_list, int index);
+CSMService *services_get_by_key(CSMServiceList *service_list, char *key);
+
+int service_is_local(CSMService *service);
+
+int service_fields_get_length(CSMService *service);
+CSMField *service_field_get_next(CSMService *service, CSMField *current, char **name); // set name if not NULL
+CSMField *service_field_get_by_name(CSMService *service, const char *name);
+
+char *service_field_get_name(CSMField *field);
+int service_field_get_type(CSMField *field);
+long service_field_get_int(CSMField *field);
+char *service_field_get_string(CSMField *field);
+
+int service_field_get_list_subtype(CSMField *field);
+int service_field_get_list_length(CSMField *field);
+long service_field_get_list_int(CSMField *field, int index);
+char *service_field_get_list_string(CSMField *field, int index);
+
+int service_field_set_int(CSMField *field, long n);
+int service_field_set_string(CSMField *field, const char *str);
+int service_field_set_int_list_from_array(CSMField *field, long *array, int length);
+int service_field_set_string_list_from_array(CSMField *field, const char **array, int length);
+int service_field_list_append_int(CSMField *field, long n);
+int service_field_list_append_str(CSMField *field, const char *str);
+
+int service_set_int(CSMService *service, const char *field, long n);
+int service_set_string(CSMService *service, const char *field, const char *str);
+int service_set_int_list_from_array(CSMService *service, const char *field, long *array, int length);
+int service_set_string_list_from_array(CSMService *service, const char *field, const char **array, int length);
+int service_list_append_int(CSMService *service, const char *field, long n);
+int service_list_append_string(CSMService *service, const char *field, const char *str);
+
+int service_remove_field(CSMService *service, const char *field);
 
 #endif
