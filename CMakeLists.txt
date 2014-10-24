@@ -31,12 +31,12 @@ SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-SET(DAEMONSRC defs.h browse.h browse.c schema.h schema.c cmd.h cmd.c service.h service.c service_list.h service_list.c commotion-service-manager.h commotion-service-manager.c publish.h publish.c daemon.c service.h service.c util.h util.c extern/base32.h extern/base32.c extern/jsmn.h extern/jsmn.c)
-SET(LIBSRC defs.h commotion-service-manager.h commotion-service-manager.c)
+SET(DAEMONSRC daemon.c)
+SET(LIBSRC defs.h browse.h browse.c schema.h schema.c cmd.h cmd.c service.h service.c service_list.h service_list.c commotion-service-manager.h commotion-service-manager.c publish.h publish.c service.h service.c util.h util.c extern/base32.h extern/base32.c extern/jsmn.h extern/jsmn.c)
 # SET(CLIENTSRC client.c ${LIBSRC})
 
-SET(DAEMONLIBS commotion commotion_serval-sas avahi-core avahi-common m)
-SET(LIBLIBS commotion)
+SET(DAEMONLIBS commotion avahi-core avahi-common)
+SET(LIBLIBS commotion commotion_serval-sas m)
 
 IF(OPENWRT OR USE_UCI)
   ADD_DEFINITIONS(-DUSE_UCI)
@@ -59,7 +59,7 @@ ADD_EXECUTABLE(daemon ${DAEMONSRC})
 ADD_LIBRARY(library SHARED ${LIBSRC})
 # ADD_EXECUTABLE(client ${CLIENTSRC})
 
-TARGET_LINK_LIBRARIES(daemon ${DAEMONLIBS})
+TARGET_LINK_LIBRARIES(daemon ${DAEMONLIBS} library)
 TARGET_LINK_LIBRARIES(library ${LIBLIBS})
 # TARGET_LINK_LIBRARIES(client commotion-service-manager)
 
