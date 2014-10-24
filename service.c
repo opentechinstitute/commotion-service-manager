@@ -63,6 +63,7 @@ struct _csm_fields_array {
 static void
 _csm_sort_service_fields_i(co_obj_t *data, co_obj_t *key, co_obj_t *field, void *context)
 {
+  // TODO this might be made easier with co_tree_next
   struct _csm_fields_array *fields = (struct _csm_fields_array*)context;
   /* max length of TXT record is 256 char, so the max length of our
      template string is 256 + sizeof('<txt-record></txt-record>\0') = 282 */
@@ -142,31 +143,6 @@ error:
   return ret;
 }
 
-// this is redundant by co_tree_find
-#if 0
-inline co_obj_t *
-csm_tree_find_r(co_obj_t *tree, _treenode_t *current, const _csm_iter_t iter, void *context)
-{
-  co_obj_t *ret = NULL;
-  CHECK(IS_TREE(tree), "Recursion target is not a tree.");
-  if(current != NULL)
-  {
-    if(current->value != NULL) {
-      ret = iter(tree, current->key, current->value, context);
-      if (ret) return ret;
-    }
-    ret = csm_tree_process_r(tree, current->low, iter, context);
-    if (ret) return ret;
-    ret = csm_tree_process_r(tree, current->equal, iter, context);
-    if (ret) return ret;
-    ret = csm_tree_process_r(tree, current->high, iter, context);
-  }
-  return ret;
-error:
-  return NULL;
-}
-#endif
-
 /* Public */
 
 static co_obj_t *
@@ -214,13 +190,6 @@ csm_service_new(AvahiIfIndex interface,
   co_obj_t *fields = co_tree16_create();
   CHECK_MEM(fields);
   
-#if 0
-  // set current CSM protocol version
-  co_obj_t *version = co_str8_create(CSM_PROTO_VERSION, strlen(CSM_PROTO_VERSION) + 1, 0);
-  CHECK_MEM(version);
-  CHECK(co_tree_insert(fields, "version", sizeof("version"), version), "Failed to insert version into service fields");
-#endif
-  
   s->fields = fields;
   service_attach(s->fields, s);
   return s;
@@ -237,9 +206,6 @@ csm_service_destroy(csm_service *s)
   
   // get the co_service_t container and free that
   co_service_t *s_obj = container_of(s, co_service_t, service);
-  
-//   if (s->r.resolver)
-//     RESOLVER_FREE(s->r.resolver);
   
   if (s->r.txt_lst)
     avahi_string_list_free(s->r.txt_lst);
@@ -372,167 +338,6 @@ csm_service_append_int_to_list(csm_service *s, const char *field, int32_t n)
 error:
   return 0;
 }
-
-#if 0
-/**
- * most getters and setters are wrappers around calls to 
- * functions in commotion-service-manager.h/c
- */
-#define SERVICE_GET(M,T) \
-inline T \
-csm_service_get_##M(csm_service *s) \
-{ \
-  return service_get_##M(s->fields); \
-}
-SERVICE_GET(name,char *);
-SERVICE_GET(description,char *);
-SERVICE_GET(uri,char *);
-SERVICE_GET(icon,char *);
-SERVICE_GET(ttl,int);
-SERVICE_GET(lifetime,long);
-SERVICE_GET(key,char *);
-SERVICE_GET(signature,char *);
-#undef SERVICE_GET
-
-co_obj_t *
-csm_service_get_categories(csm_service *s)
-{
-  assert(IS_TREE(s->fields));
-  return co_tree_find(s->fields, "categories", sizeof("categories"));
-}
-
-char *
-csm_service_get_version(csm_service *s)
-{
-  assert(IS_TREE(s->fields));
-  co_obj_t *version = co_tree_find(s->fields,"version",sizeof("version"));
-  CHECK(version,"Service does not have version");
-  return ((co_str8_t*)version)->data;
-error:
-  return NULL;
-}
-
-#define SERVICE_SET(M,T) \
-inline int \
-csm_service_set_##M(csm_service *s, T m) \
-{ \
-  return service_set_##M(s, m); \
-}
-SERVICE_SET(name, const char *);
-SERVICE_SET(description, const char *);
-SERVICE_SET(uri, const char *);
-SERVICE_SET(icon, const char *);
-SERVICE_SET(ttl, int);
-SERVICE_SET(lifetime, long);
-#undef SERVICE_SET
-
-int
-csm_service_set_categories(csm_service *s, co_obj_t *categories)
-{
-  assert(IS_TREE(s->fields));
-  if (categories) {
-    assert(IS_LIST(categories));
-    CHECK(co_tree_insert_force(s->fields,
-			      "categories",
-			      sizeof("categories"),
-			      categories),
-	  "Failed to insert categories into service");
-  } else {
-    co_obj_t *cat_obj = co_tree_delete(s->fields, "categories", sizeof("categories"));
-    if (cat_obj)
-      co_obj_free(cat_obj);
-  }
-  return 1;
-error:
-  return 0;
-}
-
-int
-csm_service_set_key(csm_service *s, const char *key)
-{
-  assert(IS_TREE(s->fields));
-  if (key) {
-    co_obj_t *key_obj = co_str8_create(key, strlen(key) + 1, 0);
-    CHECK_MEM(key_obj);
-    CHECK(co_tree_insert_force(s->fields,
-			      "key",
-			      sizeof("key"),
-			      key_obj),
-	  "Failed to insert key into service");
-  } else {
-    co_obj_t *key_obj = co_tree_delete(s->fields, "key", sizeof("key"));
-    if (key_obj)
-      co_obj_free(key_obj);
-  }
-  
-  return 1;
-error:
-  return 0;
-}
-
-int
-csm_service_set_signature(csm_service *s, const char *signature)
-{
-  assert(IS_TREE(s->fields));
-  if (signature) {
-    co_obj_t *sig_obj = co_str8_create(signature, strlen(signature) + 1, 0);
-    CHECK_MEM(sig_obj);
-    CHECK(co_tree_insert_force(s->fields,
-			       "signature",
-			       sizeof("signature"),
-			       sig_obj),
-	  "Failed to insert signature into service");
-  } else {
-    co_obj_t *sig_obj = co_tree_delete(s->fields, "signature", sizeof("signature"));
-    if (sig_obj)
-      co_obj_free(sig_obj);
-  }
-  return 1;
-error:
-  return 0;
-}
-
-int
-csm_service_set_version(csm_service *s, const char *version)
-{
-  assert(IS_TREE(s->fields));
-  co_obj_t *version_obj = co_str8_create(version, strlen(version) + 1, 0);
-  CHECK_MEM(version_obj);
-  CHECK(co_tree_insert_force(s->fields,
-			     "version",
-			     sizeof("version"),
-			     version_obj),
-	"Failed to insert version into service");
-  return 1;
-error:
-  return 0;
-}
-#endif
-
-#if 0
-/**
- * caller is responsible for freeing category array
- */
-size_t
-csm_service_categories_to_array(csm_service *s, char ***cat_array)
-{
-  size_t cat_len = 0;
-  co_obj_t *cats_obj = csm_service_get_categories(s);
-  if (cats_obj) {
-    cat_len = co_list_length(cats_obj);
-    *cat_array = h_calloc(cat_len, sizeof(char*));
-    CHECK_MEM(cat_array);
-    for (int i = 0; i < cat_len; i++) {
-      co_obj_data(&(*cat_array[i]), co_list_element(cats_obj, i));
-    }
-    /* Sort types into alphabetical order */
-    qsort(*cat_array,cat_len,sizeof(char*),cmpstringp);
-  }
-  return cat_len;
-error:
-  return 0;
-}
-#endif
 
 int
 csm_verify_signature(csm_service *s)

@@ -48,7 +48,6 @@ struct csm_service_remote {
   char *host_name;
   char address[AVAHI_ADDRESS_STR_MAX];
   AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
-//   RESOLVER *resolver;
 };
 
 typedef struct csm_service {
