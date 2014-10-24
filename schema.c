@@ -213,18 +213,20 @@ static csm_schema_t *
 _csm_schema_new(void)
 {
   csm_schema_t *schema = h_calloc(1, sizeof(csm_schema_t));
+  CHECK_MEM(schema);
+  schema->fields = co_list16_create();
+  CHECK_MEM(schema->fields);
+  hattach(schema->fields, schema);
   return schema;
+error:
+  if (schema)
+    h_free(schema);
+  return NULL;
 }
 
 static void
 _csm_schema_destroy(csm_schema_t *schema)
 {
-  csm_schema_field_t *tmp = NULL;
-  while (schema->fields) {
-    tmp = schema->fields;
-    schema->fields = tmp->_next;
-    h_free(tmp);
-  }
   h_free(schema);
 }
 
@@ -324,8 +326,9 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	  CHECK(t->type == JSMN_STRING || t->type == JSMN_PRIMITIVE, "Values must be strings or primitive");
 	  
 	  if (!field) {
-	    field = h_calloc(1, sizeof(csm_schema_field_t));
-	    CHECK_MEM(field);
+	    co_schema_field_t *co_field = (co_schema_field_t*)co_schema_create();
+	    CHECK_MEM(co_field);
+	    field = &co_field->field;
 	  }
 	  
 	  csm_field_attr attr = _csm_attr_str(key);
@@ -385,8 +388,10 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	    CHECK(field->subtype, "Invalid field subtype");
 	  
 	  // append field to schema
-	  field->_next = schema->fields;
-	  schema->fields = field;
+// 	  field->_next = schema->fields;
+// 	  schema->fields = field;
+	  CHECK(co_list_append(schema->fields,(co_obj_t*)container_of(field,co_schema_field_t,field)),
+		"Failed to append schema field to schema");
 	  DEBUG("Read in field with key: %s", field->name);
 	  
 	  field = NULL;
@@ -413,7 +418,7 @@ error:
   if (tokens)
     h_free(tokens);
   if (field)
-    h_free(field);
+    h_free(container_of(field,co_schema_field_t,field));
   return ret;
 }
 
@@ -495,7 +500,27 @@ error:
   return ret;
 }
 
-
+static co_obj_t *
+_csm_validate_field_i(co_obj_t *list, co_obj_t *current, void *context)
+{
+  if (IS_LIST(current)) return NULL;
+  if (!IS_SCHEMA(current)) {
+    ERROR("Invalid schema field");
+    return current;
+  }
+  co_obj_t *entries = (co_obj_t*)context;
+  csm_schema_field_t *schema_field = &((co_schema_field_t*)current)->field;
+  co_obj_t *service_field = co_tree_find(entries, schema_field->name, strlen(schema_field->name) + 1);
+  if (schema_field->required && !service_field) {
+    ERROR("Missing required field %s", schema_field->name);
+    return current;
+  }
+  if (service_field
+    && !_csm_validate_field(schema_field, schema_field->type, service_field))
+    return current;
+  
+  return NULL;
+}
 
 int
 // csm_validate_fields(csm_schema_t *schema, co_obj_t *entries)
@@ -518,16 +543,9 @@ csm_validate_fields(csm_ctx *ctx, csm_service *s)
   if (!schema) schema = ctx->schema;
   
   // iterate through schema fields
-  csm_schema_field_t *schema_field = schema->fields;
-  for (; schema_field; schema_field = schema_field->_next) {
-    co_obj_t *service_field = co_tree_find(entries, schema_field->name, strlen(schema_field->name) + 1);
-    if (schema_field->required && !service_field) {
-      ERROR("Missing required field %s", schema_field->name);
-      return 0;
-    }
-    if (service_field
-        && !_csm_validate_field(schema_field, schema_field->type, service_field))
-      return 0;
+  if (co_list_parse(schema->fields, _csm_validate_field_i, entries) != NULL) {
+    WARN("Service fields did not validate");
+    return 0;
   }
   return 1;
 }
@@ -559,12 +577,22 @@ csm_find_schema(csm_schema_t *list, int major_version, double minor_version)
   return NULL;
 }
 
+static co_obj_t *
+_csm_schema_find_field_i(co_obj_t *list, co_obj_t *current, void *context)
+{
+  if (IS_LIST(current)) return NULL;
+  CHECK(IS_SCHEMA(current), "Invalid schema field");
+  csm_schema_field_t *field = &((co_schema_field_t*)current)->field;
+  if (strcmp(field->name,(char*)context) == 0)
+    return current;
+error:
+  return NULL;
+}
+
 csm_schema_field_t *
 csm_schema_get_field(csm_schema_t *schema, char *name) {
-  csm_schema_field_t *field = schema->fields;
-  for (; field; field = field->_next) {
-    if (strcmp(field->name,name) == 0)
-      return field;
-  }
+  co_obj_t *field = co_list_parse(schema->fields, _csm_schema_find_field_i, name);
+  if (field)
+    return &((co_schema_field_t*)field)->field;
   return NULL;
 }

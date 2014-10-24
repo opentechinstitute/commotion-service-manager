@@ -61,7 +61,7 @@ typedef struct csm_schema_field_t {
    */
 //   csm_field_validator_t validate; 
   
-  struct csm_schema_field_t *_next;
+//   struct csm_schema_field_t *_next;
 } csm_schema_field_t;
 
 struct csm_schema_version {
@@ -70,22 +70,42 @@ struct csm_schema_version {
 };
 
 typedef struct csm_schema_t {
-  struct csm_schema_field_t *fields;
-  //   char version[8];
+  co_obj_t *fields; // co_list16_t of co_schema_field_t fields
   struct csm_schema_version version;
   struct csm_schema_t *_next;
   struct csm_schema_t *_prev;
 } csm_schema_t;
 
-csm_schema_t *csm_schema_new(void);
-// void csm_schema_destroy(csm_schema_t *schema);
 void csm_destroy_schemas(csm_ctx *ctx);
-// int csm_import_service_schema(csm_schema_t *schema, const char *path);
 int csm_import_schemas(csm_ctx *ctx, const char *dir);
 int csm_validate_fields(csm_ctx *ctx, csm_service *s);
-// int csm_validate_fields(csm_schema_t *schema, co_obj_t *entries);
-// int csm_validate_field(csm_schema_t *schema, const char *field_name, csm_field_type type, co_obj_t *entry);
 csm_schema_t *csm_find_schema(csm_schema_t *list, int major_version, double minor_version);
 csm_schema_field_t *csm_schema_get_field(csm_schema_t *schema, char *name);
+
+/** 
+ * libcommotion object extended type for CSM schema field
+ * (used for passing to clients from command handlers) 
+ */
+typedef struct {
+  co_obj_t _header;
+  uint8_t _exttype;
+  uint16_t _len;
+  csm_schema_field_t field;
+} co_schema_field_t;
+
+#define _schema 252
+
+#define IS_SCHEMA(J) (IS_EXT(J) && ((co_schema_field_t *)J)->_exttype == _schema)
+
+static inline co_obj_t *co_schema_create(void) {
+  co_schema_field_t *output = h_calloc(1,sizeof(co_schema_field_t));
+  CHECK_MEM(output);
+  output->_header._type = _ext16;
+  output->_exttype = _schema;
+  output->_len = sizeof(co_schema_field_t);
+  return (co_obj_t*)output;
+error:
+  return NULL;
+}
 
 #endif
