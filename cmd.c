@@ -241,3 +241,21 @@ cmd_list_services(co_obj_t *self, co_obj_t **output, co_obj_t *params)
 error:
   return 0;
 }
+
+int
+cmd_get_schema(co_obj_t *self, co_obj_t **output, co_obj_t *params)
+{
+  CHECK(IS_LIST(params),"Received invalid params");
+  co_obj_t *ctx_obj = co_list_element(params,0);
+  CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
+  csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
+  
+  CMD_OUTPUT("schema",ctx->schema->fields);
+  co_obj_t *true_obj = co_bool_create(true,0);
+  CHECK_MEM(true_obj);
+  CMD_OUTPUT("success",true_obj);
+  
+  return 1;
+error:
+  return 0;
+}
