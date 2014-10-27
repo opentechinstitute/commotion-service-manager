@@ -41,7 +41,6 @@
 #include "util.h"
 #include "service.h"
 #include "schema.h"
-#include "commotion-service-manager.h"
 
 extern struct csm_config csm_config;
 

@@ -56,7 +56,6 @@
 #if USE_UCI
 #include "uci-utils.h"
 #endif
-#include "commotion-service-manager.h"
 
 #define REQUEST_MAX 1024
 #define RESPONSE_MAX 1024
