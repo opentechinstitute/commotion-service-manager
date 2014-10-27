@@ -259,3 +259,24 @@ cmd_get_schema(co_obj_t *self, co_obj_t **output, co_obj_t *params)
 error:
   return 0;
 }
+
+int
+cmd_get_schema_version(co_obj_t *self, co_obj_t **output, co_obj_t *params)
+{
+  CHECK(IS_LIST(params),"Received invalid params");
+  co_obj_t *ctx_obj = co_list_element(params,0);
+  CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
+  csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
+  
+  co_obj_t *major = co_int8_create(ctx->schema->version.major,0);
+  co_obj_t *minor = co_float64_create(ctx->schema->version.minor,0);
+  CMD_OUTPUT("major",major);
+  CMD_OUTPUT("minor",minor);
+  co_obj_t *true_obj = co_bool_create(true,0);
+  CHECK_MEM(true_obj);
+  CMD_OUTPUT("success",true_obj);
+  
+  return 1;
+error:
+  return 0;
+}

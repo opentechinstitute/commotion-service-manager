@@ -533,6 +533,7 @@ int main(int argc, char*argv[]) {
     CMD_REGISTER(remove_service, "remove_service <key>", "Remove local service.");
     CMD_REGISTER(list_services, "list_services", "List services on local Commotion network.");
     CMD_REGISTER(get_schema, "get_schema", "Get the schema list of service fields");
+    CMD_REGISTER(get_schema_version, "get_schema_version", "Get the schema version");
     
     /* Set up CSM management socket */
     csm_socket = (co_socket_t*)NEW(co_socket, unix_socket);
