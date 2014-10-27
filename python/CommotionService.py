@@ -1,61 +1,12 @@
 from ctypes import *
 import collections
 
-libCSM = CDLL("../build/libcommotion-service-manager.so")
-
-libCSM.services_fetch.argtypes = [POINTER(c_void_p)]
-libCSM.services_free.argtypes = [c_void_p]
-
-libCSM.service_create.restype = c_void_p
-libCSM.service_commit.argtypes = [c_void_p]
-libCSM.service_remove.argtypes = [c_void_p]
-
-libCSM.services_get_by_index.argtypes = [c_void_p, c_int]
-libCSM.services_get_by_index.restype = c_void_p
-libCSM.services_get_by_key.argtypes = [c_void_p, c_char_p]
-libCSM.services_get_by_key.restype = c_void_p
-
-libCSM.service_is_local.argtypes = [c_void_p]
-
-libCSM.service_fields_get_length.argtypes = [c_void_p]
-libCSM.service_field_get_next.argtypes = [c_void_p, c_void_p, POINTER(c_char_p)]
-libCSM.service_field_get_next.restype = c_void_p
-libCSM.service_field_get_by_name.argtypes = [c_void_p, c_char_p]
-libCSM.service_field_get_by_name.restype = c_void_p
-
-libCSM.service_field_get_name.argtypes = [c_void_p]
-libCSM.service_field_get_name.restype = c_char_p
-libCSM.service_field_get_type.argtypes = [c_void_p]
-libCSM.service_field_get_int.argtypes = [c_void_p]
-libCSM.service_field_get_int.restype = c_long
-libCSM.service_field_get_string.argtypes = [c_void_p]
-libCSM.service_field_get_string.restype = c_char_p
-
-libCSM.service_field_get_list_subtype.argtypes = [c_void_p]
-libCSM.service_field_get_list_length.argtypes = [c_void_p]
-libCSM.service_field_get_list_int.argtypes = [c_void_p, c_int]
-libCSM.service_field_get_list_int.restype = c_long
-libCSM.service_field_get_list_string.argtypes = [c_void_p, c_int]
-libCSM.service_field_get_list_string.restype = c_char_p
-
-libCSM.service_set_int.argtypes = [c_void_p, c_char_p, c_long]
-libCSM.service_set_string.argtypes = [c_void_p, c_char_p, c_char_p]
-libCSM.service_set_int_list_from_array.argtypes = [c_void_p, c_char_p, POINTER(c_long), c_int]
-libCSM.service_set_string_list_from_array.argtypes = [c_void_p, c_char_p, POINTER(c_char_p), c_int]
-
-#typedef enum {
-  #CSM_FIELD_STRING = 1,
-  #CSM_FIELD_LIST,
-  #CSM_FIELD_INT,  /** int32_t */
-  #CSM_FIELD_HEX,
-#} csm_field_type;
-
-class FieldType:
-    STRING,LIST,INT,HEX = range(1,5)
-
-# TODO set these as restype for libCSM functions
+class ReturnCode:
+    OK = 0
+    ERROR = -1
+    
 def CheckSimpleError(ret):
-    if ret == -1:
+    if ret == ReturnCode.ERROR:
 	raise RuntimeError
     return ret
 
@@ -64,11 +15,75 @@ def CheckPointerError(ret):
 	raise RuntimeError
     return ret
 
+libCSM = CDLL("../build/libcommotion-service-manager.so")
+
+libCSM.csm_services_fetch.argtypes = [POINTER(c_void_p)]
+libCSM.csm_services_free.argtypes = [c_void_p]
+libCSM.csm_services_free.errcheck = CheckSimpleError
+
+libCSM.csm_service_create.restype = c_void_p
+libCSM.csm_service_create.errcheck = CheckPointerError
+libCSM.csm_service_commit.argtypes = [c_void_p]
+libCSM.csm_service_commit.errcheck = CheckSimpleError
+libCSM.csm_service_remove.argtypes = [c_void_p]
+libCSM.csm_service_remove.errcheck = CheckSimpleError
+
+libCSM.csm_services_get_by_index.argtypes = [c_void_p, c_int]
+libCSM.csm_services_get_by_index.restype = c_void_p
+libCSM.csm_services_get_by_index.errcheck = CheckPointerError
+libCSM.csm_services_get_by_key.argtypes = [c_void_p, c_char_p]
+libCSM.csm_services_get_by_key.restype = c_void_p
+libCSM.csm_services_get_by_key.errcheck = CheckPointerError
+
+libCSM.csm_service_is_local.argtypes = [c_void_p]
+
+libCSM.csm_service_fields_get_length.argtypes = [c_void_p]
+libCSM.csm_service_fields_get_length.errcheck = CheckSimpleError
+libCSM.csm_service_field_get_next.argtypes = [c_void_p, c_void_p, POINTER(c_char_p)]
+libCSM.csm_service_field_get_next.restype = c_void_p
+libCSM.csm_service_field_get_next.errcheck = CheckPointerError
+libCSM.csm_service_field_get_by_name.argtypes = [c_void_p, c_char_p]
+libCSM.csm_service_field_get_by_name.restype = c_void_p
+libCSM.csm_service_field_get_by_name.errcheck = CheckPointerError
+
+libCSM.csm_field_get_name.argtypes = [c_void_p]
+libCSM.csm_field_get_name.restype = c_char_p
+libCSM.csm_field_get_name.errcheck = CheckPointerError
+libCSM.csm_field_get_type.argtypes = [c_void_p]
+libCSM.csm_field_get_type.errcheck = CheckSimpleError
+libCSM.csm_field_get_int.argtypes = [c_void_p, POINTER(c_long)]
+libCSM.csm_field_get_int.errcheck = CheckSimpleError
+libCSM.csm_field_get_string.argtypes = [c_void_p]
+libCSM.csm_field_get_string.restype = c_char_p
+libCSM.csm_field_get_string.errcheck = CheckPointerError
+
+libCSM.csm_field_get_list_subtype.argtypes = [c_void_p]
+libCSM.csm_field_get_list_subtype.errcheck = CheckSimpleError
+libCSM.csm_field_get_list_length.argtypes = [c_void_p]
+libCSM.csm_field_get_list_length.errcheck = CheckSimpleError
+libCSM.csm_field_get_list_int.argtypes = [c_void_p, c_int, POINTER(c_long)]
+libCSM.csm_field_get_list_int.errcheck = CheckSimpleError
+libCSM.csm_field_get_list_string.argtypes = [c_void_p, c_int]
+libCSM.csm_field_get_list_string.restype = c_char_p
+libCSM.csm_field_get_list_string.errcheck = CheckPointerError
+
+libCSM.csm_service_set_int.argtypes = [c_void_p, c_char_p, c_long]
+libCSM.csm_service_set_int.errcheck = CheckSimpleError
+libCSM.csm_service_set_string.argtypes = [c_void_p, c_char_p, c_char_p]
+libCSM.csm_service_set_string.errcheck = CheckSimpleError
+libCSM.csm_service_set_int_list_from_array.argtypes = [c_void_p, c_char_p, POINTER(c_long), c_int]
+libCSM.csm_service_set_int_list_from_array.errcheck = CheckSimpleError
+libCSM.csm_service_set_string_list_from_array.argtypes = [c_void_p, c_char_p, POINTER(c_char_p), c_int]
+libCSM.csm_service_set_string_list_from_array.errcheck = CheckSimpleError
+
+class FieldType:
+    STRING,LIST,INT,HEX = range(1,5)
+
 class CSMSchema(object):
     def __init__(self):
 	self.fields = []
 	schema = c_void_p
-	#self.len = libCSM.schema_fetch(byref(schema))
+	#self.len = libCSM.csm_schema_fetch(byref(schema))
 	
     def get_type(self, name):
       pass
@@ -123,31 +138,31 @@ class CSMServiceList(collections.Mapping):
 	    raise KeyError
 	if not isinstance(key, basestring):
 	    raise TypeError
-	return CSMService(libCSM.services_get_by_key(self.__services,key))
+	return CSMService(libCSM.csm_services_get_by_key(self.__services,key))
 	
     def __iter__(self):
 	for i in range(self.__len):
-	    yield CSMService(libCSM.services_get_by_index(self.__services,i))
+	    yield CSMService(libCSM.csm_services_get_by_index(self.__services,i))
     
     def __delitem__(self,key):
-	assert libCSM.service_remove(libCSM.services_get_by_key(self.__services,key)).value == 1
+	libCSM.csm_service_remove(libCSM.csm_services_get_by_key(self.__services,key))
 	self.update()
     
     def append(self,value):
 	if not isinstance(value,CSMService):
 	    raise TypeError
-	assert libCSM.service_commit(value.ptr).value == 1
+	libCSM.csm_service_commit(value.ptr)
 	self.update()
     
     def update(self):
         """ Free's current list of services and repopulates it from the Commotion service manager."""
 	# first, free current list of services
 	if (self.__services and self.__len):
-	    assert libCSM.services_free(self.__services).value == 1
+	    libCSM.csm_services_free(self.__services)
 	
 	# next, fetch list of services from CSM
 	self.__services = c_void_p
-	self.__len = libCSM.services_fetch(byref(self.__services)).value
+	self.__len = libCSM.csm_services_fetch(byref(self.__services))
 	
 class CSMService(object):
     """A service object that handles service creation, modification, comparison, and deletion."""
@@ -167,36 +182,40 @@ class CSMService(object):
 		raise TypeError
             self.ptr = ptr
             # fetch all fields so client can display service
-            self.__len = libCSM.service_fields_get_length(field)
+            self.__len = libCSM.csm_service_fields_get_length(field)
             key = c_char_p
-            field = libCSM.service_field_get_next(self.ptr, None, byref(key))
+            field = libCSM.csm_service_field_get_next(self.ptr, None, byref(key))
             while field.value:
-		field_type = libCSM.service_field_get_type(field)
+		field_type = libCSM.csm_field_get_type(field)
 		if field_type == FieldType.STRING or field_type == FieldType.HEX:
-		    self.__dict__[key] = libCSM.service_field_get_string(field).value
+		    self.__dict__[key] = libCSM.csm_field_get_string(field).value
 		elif field_type == FieldType.INT:
-		    self.__dict__[key] = libCSM.service_field_get_int(field)
+		    out = c_long
+		    libCSM.csm_field_get_int(field, byref(out))
+		    self.__dict__[key] = out.value
 		elif field_type == FieldType.LIST:
-		    field_subtype = libCSM.service_field_get_list_subtype(field)
-		    list_len = libCSM.service_field_list_get_length(field)
+		    field_subtype = libCSM.csm_field_get_list_subtype(field)
+		    list_len = libCSM.csm_field_list_get_length(field)
 		    self.__dict__[key] = []
 		    if field_subtype == FieldType.INT:
 			for i in range(list_len):
-			    self.__dict__[key].append(libCSM.service_field_get_list_int(field,i))
+			    out = c_long
+			    libCSM.csm_field_get_list_int(field,i,byref(out))
+			    self.__dict__[key].append(out.value)
 		    elif field_subtype == FieldType.STRING or field_subtype == FieldType.HEX:
 			for s in range(list_len):
-			    self.__dict__[key].append(libCSM.service_field_get_list_string(field,i).value)
+			    self.__dict__[key].append(libCSM.csm_field_get_list_string(field,i).value)
 		    else:
 			raise TypeError
 		else:
 		    raise TypeError
 		# get next field
-		field = libCSM.service_field_get_next(self.ptr, field, byref(key))
+		field = libCSM.csm_service_field_get_next(self.ptr, field, byref(key))
             # flag to indicate whether service is local/editable or not
-            if libCSM.service_is_local(self.ptr) == 0:
+            if libCSM.csm_service_is_local(self.ptr) == 0:
 		self.__local = 0
         else:
-            self.ptr = libCSM.service_create()
+            self.ptr = libCSM.csm_service_create()
             self.__len = 0
     
     def is_current(self):
@@ -208,22 +227,22 @@ class CSMService(object):
     def __setattr__(self,name,value):
 	if not self.__local:
 	    raise TypeError
-	field = libCSM.service_field_get_by_name(self.ptr, name)
+	field = libCSM.csm_service_field_get_by_name(self.ptr, name)
 	if field.value:
-	    field_type = libCSM.service_field_get_type(field).value
+	    field_type = libCSM.csm_field_get_type(field)
 	if isinstance(value,int) or isinstance(value,long):
 	    if field_type and field_type != FieldType.INT:
 		raise TypeError
-	    assert libCSM.service_set_int(self.ptr, name, c_long(value)).value == 1
+	    libCSM.csm_service_set_int(self.ptr, name, c_long(value))
 	elif isinstance(value, basestring):
 	    if field_type and field_type != FieldType.STRING and field_type != FieldType.HEX:
 		raise TypeError
-	    assert libCSM.service_set_string(self.ptr, name, value).value == 1
+	    libCSM.csm_service_set_string(self.ptr, name, value)
 	elif isinstance(value, list):
 	    if field_type:
 		if field_type != FieldType.LIST:
 		    raise TypeError
-		field_subtype = libCSM.service_field_get_list_subtype(self.ptr).value
+		field_subtype = libCSM.csm_field_get_list_subtype(self.ptr)
 	    list_len = len(value)
 	    if list_len <= 0:
 		raise ValueError
@@ -235,56 +254,51 @@ class CSMService(object):
 		if field_subtype and field_subtype != FieldType.INT:
 		    raise TypeError
 		new_list = (c_long * list_len)(*value)
-		assert libCSM.service_set_int_list_from_array(self.ptr,name,new_list,list_len).value == 1
+		libCSM.csm_service_set_int_list_from_array(self.ptr,name,new_list,list_len)
 	    elif subtype == str:
 		if field_subtype and field_subtype != FieldType.STRING and field_subtype != FieldType.HEX:
 		    raise TypeError
 		new_list = (c_char_p * list_len)(*value)
-		assert libCSM.service_set_string_list_from_array(self.ptr,name,new_list,list_len).value == 1
+		libCSM.csm_service_set_string_list_from_array(self.ptr,name,new_list,list_len)
 	    else:
 		raise TypeError
 	else:
 	    raise TypeError
 	self.__dirty = True
     
-    # TODO can we assume schema will match with service?
     def __getattr__(self,name):
-	field = libCSM.service_field_get_by_name(self.ptr, name)
+	field = libCSM.csm_service_field_get_by_name(self.ptr, name)
 	if not field.value:
 	    raise LookupError
-	field_type = libCSM.service_field_get_type(field).value
+	field_type = libCSM.csm_field_get_type(field)
 	if field_type == FieldType.INT:
-	    return libCSM.service_field_get_int(field).value
+	    out = c_long
+	    libCSM.csm_field_get_int(field, byref(out))
+	    return out.value
 	elif field_type == FieldType.STRING or field_type == FieldType.HEX:
-	    return libCSM.service_field_get_str(field)
-	
-	
-	
-	field_type = self.__schema.get_type(name)
-	if field_type == 'INT':
-	    return libCSM.service_get_int(self.ptr,name).value
-	elif field_type == 'STR':
-	    return libCSM.service_get_str(self.ptr,name).value
-	elif field_type == 'LIST':
-	    subtype = self.__schema.get_subtype(name)
+	    return libCSM.csm_field_get_string(field)
+	elif field_type == FieldType.LIST:
+	    field_subtype = libCSM.csm_field_get_list_subtype(field)
+	    list_len = libCSM.csm_field_get_list_length(field)
 	    ret = []
-	    list_p = c_void_p
-	    list_len = libCSM.service_get_list(self.ptr,name,byref(list_p)).value
-	    if subtype == 'INT':
+	    if field_subtype == FieldType.INT:
 		for i in range(list_len):
-		    ret.append(libCSM.service_list_get_int(list_p,c_int(i)).value)
-	    elif subtype == 'STR':
-		for s in range(list_len):
-		    ret.append(libCSM.service_list_get_str(list_p,c_int(i)).value)
+		    out = c_long
+		    libCSM.csm_field_get_list_int(field,i,byref(out))
+		    ret.append(out.value)
+	    elif field_subtype == FieldType.STRING or field_subtype == FieldType.HEX:
+		for i in range(list_len):
+		    ret.append(libCSM.csm_field_get_list_string(field,i))
 	    else:
 		raise TypeError
+	    return ret
 	else:
-	    raise TypeError
+	    raise LookupError
     
     def __delattr__(self,name):
 	if not self.__local:
 	    raise TypeError
-	assert libCSM.service_remove_field(self.ptr,name).value == 1
+	libCSM.csm_service_remove_field(self.ptr,name)
 	self.__dirty = True
     
     def __eq__(self, other):
@@ -295,8 +309,6 @@ class CSMService(object):
         """
         return (isinstance(other, self.__class__)
             and self.__dict__ == other.__dict__)
-        #return (isinstance(other, self.__class__)
-            #and self.ptr == other.ptr)
 
     def __ne__(self, other):
         """Test inequality of this service and another.
@@ -329,24 +341,12 @@ class CSMService(object):
         if not self.__dirty:
 	    return
 	# Upon commiting, key and signature will be set
-	assert libCSM.commit_service(self.ptr).value == 1
+	libCSM.csm_service_commit(self.ptr)
 	self.__dirty = False
     
     def remove_service(self):
         """Removes the service in both the Commotion Service Manager and locally."""
         if not self.__local:
 	    raise TypeError
-        assert libCSM.remove_service(self.ptr).value == 1
+        libCSM.csm_service_remove(self.ptr)
         self.__del__(self)
-
-
-
-		#key = c_char_p
-		#val = c_void_p
-		#field_type = libCSM.service_get_field(byref(key), byref(val)).value
-		#if field_type == FieldType.STRING or field_type == FieldType.HEX:
-		    #self.__dict__[key.value] = cast(val, c_char_p).value
-		#elif field_type == FieldType.INT:
-		    #self.__dict__[key.value] = cast(val, POINTER(c_long)).contents.value
-		#elif field_type == FieldType.LIST:
-		    #field_subtype = libCSM.service_get_list_subtype(field)
