@@ -22,6 +22,8 @@
  * =====================================================================================
  */
 
+#include <ctype.h>
+
 #include <commotion/debug.h>
 #include <commotion/obj.h>
 #include <commotion/list.h>
@@ -31,8 +33,18 @@
 #include "extern/halloc.h"
 
 #include "defs.h"
-#include "util.h"
 #include "commotion-service-manager.h"
+
+static int
+isHex(const char *str, size_t len)
+{
+  int i;
+  for (i = 0; i < len; ++i) {
+    if (!isxdigit(str[i]))
+      return 0;
+  }
+  return 1;
+}
 
 int
 services_fetch(void **services) {
@@ -361,7 +373,7 @@ service_field_get_list_int(void *field, int index)
   CHECK(IS_INT(ret), "Invalid int field");
   return (long)*co_obj_data_ptr(ret);
 error:
-  return -1;
+  return -1; // TODO this is not acceptable for error code, since correct value might be -1
 }
 
 char *

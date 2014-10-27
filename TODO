@@ -1,8 +1,23 @@
+client schema use:
+fetch schema object, turn into array of fields
+field object:
+    name
+    type
+    required
+    (subtype)
+    (length)
+    (min)
+    (max)
+int and string fields should inherit from general field
+delete method
+
 comparison of new service against schema should happen in service_commit in commotion-service-manager.c and csm_add_service/csm_update_service in service_list.h
 verifying signatures will be separate from schemas. it will simply order fields (and elements of list fields) alphabetically and create signing template
 schema versions will be semantic versioning. CSMs using schemas with different major version numbers will reject announcements from each other, while same major version numbers will attempt to be forward and backward compatible. For forward compatibility, it will use the current schema version it has (so new minor revisions can only add additional fields). For backward compatibility, it will either find its copy of the schema of that version or use the next closest version it has.
 
 TODO
+make csm_schema_t a co_list since it will need to be sent to clients
+client API should have standard error return value
 Add CSM API method for fetching schema
 test avahi client while restarting avahi daemon
 configure which interface(s) to listen on
@@ -14,9 +29,9 @@ create error/return code enum and use that for all return code checking
   (and create same for libcommotion return/error codes)
 service updates registration/subscription and notifications for clients
 UCI-defaults script
-	delete /etc/avahi/services
-	read all local==1 apps in UCI to lua tables, remove all UCI apps, import lua tables into CSM (which will write out to UCI)
-	need to convert UUID
+	delete /etc/avahi/services/*
+	for all local==1 apps in UCI, s/fingerprint/key and re-create signatures using alpha ordering of txt fields
+	need to convert UUID?
 unit tests
 pull in gtest via makefile, don't include in repo
 pare down header includes

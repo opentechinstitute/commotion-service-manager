@@ -31,12 +31,12 @@ SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-SET(DAEMONSRC daemon.c)
-SET(LIBSRC defs.h browse.h browse.c schema.h schema.c cmd.h cmd.c service.h service.c service_list.h service_list.c commotion-service-manager.h commotion-service-manager.c publish.h publish.c service.h service.c util.h util.c extern/base32.h extern/base32.c extern/jsmn.h extern/jsmn.c)
+SET(DAEMONSRC daemon.c defs.h browse.h browse.c schema.h schema.c cmd.h cmd.c service.h service.c service_list.h service_list.c publish.h publish.c service.h service.c util.h util.c extern/base32.h extern/base32.c extern/jsmn.h extern/jsmn.c)
+SET(LIBSRC commotion-service-manager.h commotion-service-manager.c)
 # SET(CLIENTSRC client.c ${LIBSRC})
 
-SET(DAEMONLIBS commotion avahi-core avahi-common)
-SET(LIBLIBS commotion commotion_serval-sas m)
+SET(DAEMONLIBS commotion commotion_serval-sas m avahi-core avahi-common)
+SET(LIBLIBS commotion)
 
 IF(OPENWRT OR USE_UCI)
   ADD_DEFINITIONS(-DUSE_UCI)

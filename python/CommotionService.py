@@ -1,105 +1,296 @@
 from ctypes import *
+import collections
 
-libCSM = CDLL("libcommotion-service-manager.so")
-
-libCSM.service_create.argtypes = [POINTER(c_char_p)]
-libCSM.service_create.restype = c_void_p
-
-libCSM.service_get_key.restype = c_char_p
-libCSM.service_get_name.restype = c_char_p
-libCSM.service_get_desciption.restype = c_char_p
-libCSM.service_get_uri.restype = c_char_p
-libCSM.service_get_icon.restype = c_char_p
-libCSM.service_get_key.restype = c_char_p
-#libCSM.service_get_categories.argtypes = [c_void_p,POINTER(POINTER(c_char_p))]
-libCSM.service_get_categories.argtypes = [c_void_p,POINTER(c_void_p)];
-libCSM.categories_get.restype = c_char_p
-libCSM.service_get_signature.restype = c_char_p
-
-libCSM.service_set_categories.argtypes = [c_void_p,POINTER(c_char_p),c_int]
-
-#libCSM.commit_service.argtypes = [c_void_p,POINTER(c_char_p)]
-
-#libCSM.get_services.argtypes = [POINTER(POINTER(c_void_p))]
-#libCSM.free_services.argtypes = [POINTER(c_void_p),c_int]
+libCSM = CDLL("../build/libcommotion-service-manager.so")
 
 libCSM.services_fetch.argtypes = [POINTER(c_void_p)]
-libCSM.services_get.restype = c_void_p
+libCSM.services_free.argtypes = [c_void_p]
 
-class CSM(list):
-    """ Fetches all current services.
+libCSM.service_create.restype = c_void_p
+libCSM.service_commit.argtypes = [c_void_p]
+libCSM.service_remove.argtypes = [c_void_p]
 
-    list : ????
-    """
+libCSM.services_get_by_index.argtypes = [c_void_p, c_int]
+libCSM.services_get_by_index.restype = c_void_p
+libCSM.services_get_by_key.argtypes = [c_void_p, c_char_p]
+libCSM.services_get_by_key.restype = c_void_p
+
+libCSM.service_is_local.argtypes = [c_void_p]
+
+libCSM.service_fields_get_length.argtypes = [c_void_p]
+libCSM.service_field_get_next.argtypes = [c_void_p, c_void_p, POINTER(c_char_p)]
+libCSM.service_field_get_next.restype = c_void_p
+libCSM.service_field_get_by_name.argtypes = [c_void_p, c_char_p]
+libCSM.service_field_get_by_name.restype = c_void_p
+
+libCSM.service_field_get_name.argtypes = [c_void_p]
+libCSM.service_field_get_name.restype = c_char_p
+libCSM.service_field_get_type.argtypes = [c_void_p]
+libCSM.service_field_get_int.argtypes = [c_void_p]
+libCSM.service_field_get_int.restype = c_long
+libCSM.service_field_get_string.argtypes = [c_void_p]
+libCSM.service_field_get_string.restype = c_char_p
+
+libCSM.service_field_get_list_subtype.argtypes = [c_void_p]
+libCSM.service_field_get_list_length.argtypes = [c_void_p]
+libCSM.service_field_get_list_int.argtypes = [c_void_p, c_int]
+libCSM.service_field_get_list_int.restype = c_long
+libCSM.service_field_get_list_string.argtypes = [c_void_p, c_int]
+libCSM.service_field_get_list_string.restype = c_char_p
+
+libCSM.service_set_int.argtypes = [c_void_p, c_char_p, c_long]
+libCSM.service_set_string.argtypes = [c_void_p, c_char_p, c_char_p]
+libCSM.service_set_int_list_from_array.argtypes = [c_void_p, c_char_p, POINTER(c_long), c_int]
+libCSM.service_set_string_list_from_array.argtypes = [c_void_p, c_char_p, POINTER(c_char_p), c_int]
+
+#typedef enum {
+  #CSM_FIELD_STRING = 1,
+  #CSM_FIELD_LIST,
+  #CSM_FIELD_INT,  /** int32_t */
+  #CSM_FIELD_HEX,
+#} csm_field_type;
+
+class FieldType:
+    STRING,LIST,INT,HEX = range(1,5)
+
+# TODO set these as restype for libCSM functions
+def CheckSimpleError(ret):
+    if ret == -1:
+	raise RuntimeError
+    return ret
+
+def CheckPointerError(ret):
+    if not ret.value: # function returned NULL
+	raise RuntimeError
+    return ret
+
+class CSMSchema(object):
     def __init__(self):
-        """ Sets all defaults to empty"""
-	self.services = []
-	self.len = 0
+	self.fields = []
+	schema = c_void_p
+	#self.len = libCSM.schema_fetch(byref(schema))
+	
+    def get_type(self, name):
+      pass
+    
+    def get_subtype(self, name):
+      pass
+    
+    def get_required(self, name):
+      pass
+
+class CSMSchemaField(object):
+    def __init__(self,name,field_type,required=False):
+	self.name = name
+	if (field_type != 'INT' and field_type != 'STR' and field_type != 'LIST'):
+	    raise TypeError
+	self.field_type = field_type
+	self.required = required
+
+class CSMSchemaFieldInt(CSMSchemaField):
+    def __init__(self,name,val,required=False):
+	CSMSchemaField.__init__(self,name,'INT',required)
+	self.val = val
+	self.min = None
+	self.max = None
+
+class CSMSchemaFieldString(CSMSchemaField):
+    def __init__(self,name,val,required=False):
+	CSMSchemaField.__init__(self,name,'STR',required)
+	self.val = val
+	self.length = None
+	
+class CSMSchemaFieldList(CSMSchemaField):
+    def __init__(self,name,subtype,required=False):
+	if (subtype != 'INT' and subtype != 'STR'):
+	    raise TypeError
+	CSMSchemaField.__init__(self,name,'LIST',required)
+	self.subtype = subtype
+
+csm_schema = CSMSchema()
+
+class CSMServiceList(collections.Mapping):
+    def __init__(self):
+	self.__services = None
+	self.__len = 0
+	self.update()
+    
+    def __len__(self):
+	return self.__len
+    
+    def __getitem__(self,key):
+	if not key:
+	    raise KeyError
+	if not isinstance(key, basestring):
+	    raise TypeError
+	return CSMService(libCSM.services_get_by_key(self.__services,key))
+	
+    def __iter__(self):
+	for i in range(self.__len):
+	    yield CSMService(libCSM.services_get_by_index(self.__services,i))
+    
+    def __delitem__(self,key):
+	assert libCSM.service_remove(libCSM.services_get_by_key(self.__services,key)).value == 1
+	self.update()
+    
+    def append(self,value):
+	if not isinstance(value,CSMService):
+	    raise TypeError
+	assert libCSM.service_commit(value.ptr).value == 1
+	self.update()
     
     def update(self):
         """ Free's current list of services and repopulates it from the Commotion service manager."""
 	# first, free current list of services
-	if (self._service_list and self.len):
-	    assert libCSM.services_free(self._service_list).value == 1
-	#if (self.len and self.services):
-	    #service_array = c_void_p * self.len
-	    #c_services = service_array()
-	    #for i in range(self.len):
-		#c_services[i] = c_void_p(self.services[i])
-	    #assert libCSM.free_services(c_services,c_int(self.len)).value == 1
+	if (self.__services and self.__len):
+	    assert libCSM.services_free(self.__services).value == 1
 	
 	# next, fetch list of services from CSM
-	self._service_list = c_void_p
-	self.len = libCSM.services_fetch(byref(self._service_list)).value
-	self.services = []
-	for i in range(self.len):
-	    service = libCSM.services_get(self._service_list,c_int(i))
-	    self.services.append(CommotionService(service))
-	#c_services = POINTER(c_void_p)()
-	#self.len = libCSM.get_services(byref(c_services)).value
-	#self.services = []
-	# iterator for POINTER doesn't work so well, so we create our own list
-	#for i in range(self.len):
-	    #self.services.append(CommotionService(c_services[i]))
-
-class CommotionService(object):
+	self.__services = c_void_p
+	self.__len = libCSM.services_fetch(byref(self.__services)).value
+	
+class CSMService(object):
     """A service object that handles service creation, modification, comparison, and deletion."""
-    def __init__(self, ptr=None):
+    def __init__(self, schema, ptr=None):
         """
         Uses a pointer to load an existing service, or requests a pointer for a new Commotion service.
         
         ptr : C pointer to a commotion service
         """
-        if (ptr):
-            assert type(ptr) = c_void_p
+        self.__dirty = False
+        self.__local = 1
+        if not isinstance(schema, CSMSchema):
+	    raise TypeError
+	self.__schema = schema
+        if ptr:
+            if type(ptr) != c_void_p:
+		raise TypeError
             self.ptr = ptr
-            self.key = libCSM.service_get_key(self.ptr).value
-            self.name = libCSM.service_get_name(self.ptr).value
-            self.description = libCSM.service_get_desciption(self.ptr).value
-            self.uri = libCSM.service_get_uri(self.ptr).value
-            self.icon = libCSM.service_get_icon(self.ptr).value
-            self.ttl = libCSM.service_get_ttl(self.ptr).value
-            self.lifetime = libCSM.service_get_lifetime(self.ptr).value
-            category_list = c_void_p
-            categories_len = libCSM.service_get_categories(self.ptr,byref(category_list)).value
-            self.categories = []
-            for i in range(categories_len):
-		category = libCSM.categories_get(category_list,i)
-		self.categories.append(category.value)
-            #self.c_categories = POINTER(c_char_p)()
-            #self.cat_len = libCSM.service_get_categories(self.ptr,byref(self.c_categories)).value
-            #self.categories = []
-            #for i in range(self.cat_len):
-                #self.categories.append(self.c_categories[i])
-            self.signature = libCSM.service_get_signature(self.ptr).value
+            # fetch all fields so client can display service
+            self.__len = libCSM.service_fields_get_length(field)
+            key = c_char_p
+            field = libCSM.service_field_get_next(self.ptr, None, byref(key))
+            while field.value:
+		field_type = libCSM.service_field_get_type(field)
+		if field_type == FieldType.STRING or field_type == FieldType.HEX:
+		    self.__dict__[key] = libCSM.service_field_get_string(field).value
+		elif field_type == FieldType.INT:
+		    self.__dict__[key] = libCSM.service_field_get_int(field)
+		elif field_type == FieldType.LIST:
+		    field_subtype = libCSM.service_field_get_list_subtype(field)
+		    list_len = libCSM.service_field_list_get_length(field)
+		    self.__dict__[key] = []
+		    if field_subtype == FieldType.INT:
+			for i in range(list_len):
+			    self.__dict__[key].append(libCSM.service_field_get_list_int(field,i))
+		    elif field_subtype == FieldType.STRING or field_subtype == FieldType.HEX:
+			for s in range(list_len):
+			    self.__dict__[key].append(libCSM.service_field_get_list_string(field,i).value)
+		    else:
+			raise TypeError
+		else:
+		    raise TypeError
+		# get next field
+		field = libCSM.service_field_get_next(self.ptr, field, byref(key))
+            # flag to indicate whether service is local/editable or not
+            if libCSM.service_is_local(self.ptr) == 0:
+		self.__local = 0
         else:
             self.ptr = libCSM.service_create()
-            #self.key = libCSM.service_get_key(self.ptr).value
+            self.__len = 0
+    
+    def is_current(self):
+	return not self.__dirty
+    
+    def __len__(self):
+	return self.__len
+    
+    def __setattr__(self,name,value):
+	if not self.__local:
+	    raise TypeError
+	field = libCSM.service_field_get_by_name(self.ptr, name)
+	if field.value:
+	    field_type = libCSM.service_field_get_type(field).value
+	if isinstance(value,int) or isinstance(value,long):
+	    if field_type and field_type != FieldType.INT:
+		raise TypeError
+	    assert libCSM.service_set_int(self.ptr, name, c_long(value)).value == 1
+	elif isinstance(value, basestring):
+	    if field_type and field_type != FieldType.STRING and field_type != FieldType.HEX:
+		raise TypeError
+	    assert libCSM.service_set_string(self.ptr, name, value).value == 1
+	elif isinstance(value, list):
+	    if field_type:
+		if field_type != FieldType.LIST:
+		    raise TypeError
+		field_subtype = libCSM.service_field_get_list_subtype(self.ptr).value
+	    list_len = len(value)
+	    if list_len <= 0:
+		raise ValueError
+	    subtype = type(value[0])
+	    for x in value:
+		if type(x) != subtype:
+		    raise TypeError
+	    if subtype == int or subtype == long:
+		if field_subtype and field_subtype != FieldType.INT:
+		    raise TypeError
+		new_list = (c_long * list_len)(*value)
+		assert libCSM.service_set_int_list_from_array(self.ptr,name,new_list,list_len).value == 1
+	    elif subtype == str:
+		if field_subtype and field_subtype != FieldType.STRING and field_subtype != FieldType.HEX:
+		    raise TypeError
+		new_list = (c_char_p * list_len)(*value)
+		assert libCSM.service_set_string_list_from_array(self.ptr,name,new_list,list_len).value == 1
+	    else:
+		raise TypeError
+	else:
+	    raise TypeError
+	self.__dirty = True
+    
+    # TODO can we assume schema will match with service?
+    def __getattr__(self,name):
+	field = libCSM.service_field_get_by_name(self.ptr, name)
+	if not field.value:
+	    raise LookupError
+	field_type = libCSM.service_field_get_type(field).value
+	if field_type == FieldType.INT:
+	    return libCSM.service_field_get_int(field).value
+	elif field_type == FieldType.STRING or field_type == FieldType.HEX:
+	    return libCSM.service_field_get_str(field)
+	
+	
+	
+	field_type = self.__schema.get_type(name)
+	if field_type == 'INT':
+	    return libCSM.service_get_int(self.ptr,name).value
+	elif field_type == 'STR':
+	    return libCSM.service_get_str(self.ptr,name).value
+	elif field_type == 'LIST':
+	    subtype = self.__schema.get_subtype(name)
+	    ret = []
+	    list_p = c_void_p
+	    list_len = libCSM.service_get_list(self.ptr,name,byref(list_p)).value
+	    if subtype == 'INT':
+		for i in range(list_len):
+		    ret.append(libCSM.service_list_get_int(list_p,c_int(i)).value)
+	    elif subtype == 'STR':
+		for s in range(list_len):
+		    ret.append(libCSM.service_list_get_str(list_p,c_int(i)).value)
+	    else:
+		raise TypeError
+	else:
+	    raise TypeError
+    
+    def __delattr__(self,name):
+	if not self.__local:
+	    raise TypeError
+	assert libCSM.service_remove_field(self.ptr,name).value == 1
+	self.__dirty = True
     
     def __eq__(self, other):
         """Test equality of this service and another.
 
-        other : CommotionService object
+        other : CSMService object
         return : bool
         """
         return (isinstance(other, self.__class__)
@@ -110,7 +301,7 @@ class CommotionService(object):
     def __ne__(self, other):
         """Test inequality of this service and another.
 
-        other : CommotionService object
+        other : CSMService object
         return : bool
         """
         return not self.__eq__(other)
@@ -121,82 +312,41 @@ class CommotionService(object):
 
         return : string
         """
-        categories = '['
-        for category in self.categories:
-            categories += "%s, " % category
-        categories = categories.rstrip(', ') + ']'
-        return ("CommotionService("
-                "key = %r, "
-                "name = %r, "
-                "description = %r, "
-                "uri = %r, "
-                "icon = %r, "
-                "ttl = %r, "
-                "lifetime = %r, "
-                "categories = %r, "
-                "signature = %r)") % (self.key,
-                                      self.name,
-                                      self.description,
-                                      self.uri,
-                                      self.icon,
-                                      self.ttl,
-                                      self.lifetime,
-                                      categories,
-                                      self.signature)
+	pass
     
     def __str__(self):
-                """
+	"""
         The human readable string representation of this service.
 
         return : string
         """
-
-        categories = '['
-        for category in self.categories:
-            categories += "%s, " % category
-        categories = categories.rstrip(', ') + ']'
-        return ("{\n"
-                "\tkey = %s,\n"
-                "\tname = %s,\n"
-                "\tdescription = %s,\n"
-                "\turi = %s,\n"
-                "\ticon = %s,\n"
-                "\tttl = %d,\n"
-                "\tlifetime = %d,\n"
-                "\tcategories = %s,\n"
-                "\tsignature = %s}") % (self.key,
-                                        self.name,
-                                        self.description,
-                                        self.uri,
-                                        self.icon,
-                                        self.ttl,
-                                        self.lifetime,
-                                        categories,
-                                        self.signature)
+	pass
     
     def commit_service(self):
         """Sets current service values to its pointer in the Commotion Service Manager """
-        #try:
-            assert libCSM.service_set_name(self.ptr,c_char_p(self.name)).value == 1
-            assert libCSM.service_set_description(self.ptr,c_char_p(self.description)).value == 1
-            assert libCSM.service_set_uri(self.ptr,c_char_p(self.uri)).value == 1
-            assert libCSM.service_set_icon(self.ptr,c_char_p(self.icon)).value == 1
-            assert libCSM.service_set_ttl(self.ptr,c_int(self.ttl)).value == 1
-            assert libCSM.service_set_lifetime(self.ptr,c_long(self.lifetime)).value == 1
-            n = len(self.categories)
-            cat_array = c_char_p * n
-            c_categories = cat_array()
-            for i in range(n):
-                c_categories[i] = c_char_p(self.categories[i])
-            assert libCSM.service_set_categories(self.ptr,c_categories,c_int(n)).value == 1
-            # Upon commiting, key and signature will be set
-            assert libCSM.commit_service(self.ptr).value == 1
-            #c_sig = c_char_p
-            #assert libCSM.commit_service(self.ptr,byref(c_sig)).value == 1
-            #self.signature = c_sig.value
-            
+        if not self.__local:
+	    raise TypeError
+        if not self.__dirty:
+	    return
+	# Upon commiting, key and signature will be set
+	assert libCSM.commit_service(self.ptr).value == 1
+	self.__dirty = False
     
     def remove_service(self):
         """Removes the service in both the Commotion Service Manager and locally."""
+        if not self.__local:
+	    raise TypeError
         assert libCSM.remove_service(self.ptr).value == 1
         self.__del__(self)
+
+
+
+		#key = c_char_p
+		#val = c_void_p
+		#field_type = libCSM.service_get_field(byref(key), byref(val)).value
+		#if field_type == FieldType.STRING or field_type == FieldType.HEX:
+		    #self.__dict__[key.value] = cast(val, c_char_p).value
+		#elif field_type == FieldType.INT:
+		    #self.__dict__[key.value] = cast(val, POINTER(c_long)).contents.value
+		#elif field_type == FieldType.LIST:
+		    #field_subtype = libCSM.service_get_list_subtype(field)

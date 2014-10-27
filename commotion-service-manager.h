@@ -27,6 +27,9 @@
 
 #include "schema.h"
 
+#define CSM_ERROR -1
+#define CSM_OK 0
+
 typedef void CSMService;
 typedef void CSMServiceList;
 typedef void CSMField;
