@@ -46,6 +46,244 @@ is_hex(const char *str, size_t len)
   return 1;
 }
 
+// returns number of fields
+int
+csm_schema_fetch(void **schema)
+{
+  co_obj_t *request = NULL,
+	    *response = NULL,
+	    *conn = NULL;
+  int ret = 0;
+  
+  co_init();
+  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
+  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
+  CHECK_MEM((request = co_request_create()));
+  
+  co_call(conn, &response, "get_schema", sizeof("get_schema"), request);
+  CHECK(response != NULL, "Invalid response");
+  
+  // check response for success, then set return val accordingly
+  CHECK(CO_TYPE(co_response_get(response,"success",sizeof("success"))) == _true,
+	"Failed to fetch schema");
+  
+  co_obj_t *list = co_response_get(response,"schema",sizeof("schema"));
+  CHECK(CO_TYPE(list) == _list16,"Invalid response");
+  
+  CHECK(co_tree_delete(response,"schema",sizeof("schema")), 
+	"Failed to detach schema from response");
+  *schema = (void*)list;
+  
+  ret = co_list_length(list);
+error:
+  if (request) co_free(request);
+  
+  if (response) co_free(response);
+  
+  /* Close commotiond socket connection */
+  co_disconnect(conn);
+  return ret;
+}
+
+int
+csm_schema_free(void *schema)
+{
+  CHECK(IS_LIST((co_obj_t*)schema),
+	"Not a valid schema");
+  co_obj_free(schema);
+  return CSM_OK;
+error:
+  return CSM_ERROR;
+}
+
+int
+csm_schema_get_major_version(void *schema)
+{
+  co_obj_t *request = NULL,
+	    *response = NULL,
+	    *conn = NULL;
+  int ret = CSM_ERROR;
+  
+  co_init();
+  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
+  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
+  CHECK_MEM((request = co_request_create()));
+  
+  co_call(conn, &response, "get_schema_version", sizeof("get_schema_version"), request);
+  CHECK(response != NULL, "Invalid response");
+  
+  // check response for success, then set return val accordingly
+  CHECK(CO_TYPE(co_response_get(response,"success",sizeof("success"))) == _true,
+	"Failed to get schema version");
+  
+  co_obj_t *major = co_response_get(response,"major",sizeof("major"));
+  CHECK(CO_TYPE(major) == _int8,"Invalid response");
+  
+  ret = (int)*co_obj_data_ptr(major);
+error:
+  if (request) co_free(request);
+  
+  if (response) co_free(response);
+  
+  /* Close commotiond socket connection */
+  co_disconnect(conn);
+  return ret;
+}
+
+double
+csm_schema_get_minor_version(void *schema)
+{
+  co_obj_t *request = NULL,
+	    *response = NULL,
+	    *conn = NULL;
+  int ret = CSM_ERROR;
+  
+  co_init();
+  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
+  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
+  CHECK_MEM((request = co_request_create()));
+  
+  co_call(conn, &response, "get_schema_version", sizeof("get_schema_version"), request);
+  CHECK(response != NULL, "Invalid response");
+  
+  // check response for success, then set return val accordingly
+  CHECK(CO_TYPE(co_response_get(response,"success",sizeof("success"))) == _true,
+	"Failed to get schema version");
+  
+  co_obj_t *minor = co_response_get(response,"minor",sizeof("minor"));
+  CHECK(CO_TYPE(minor) == _float64,"Invalid response");
+  
+  ret = (double)*co_obj_data_ptr(minor);
+error:
+  if (request) co_free(request);
+  
+  if (response) co_free(response);
+  
+  /* Close commotiond socket connection */
+  co_disconnect(conn);
+  return ret;
+}
+
+void *
+csm_schema_get_next_field(void *schema, void *current, char **name)
+{
+  CHECK(IS_LIST((co_obj_t*)schema), "Invalid schema");
+  ssize_t len = co_list_length(schema);
+  for (int i = 0; i < len - 1; i++) {
+    if (co_list_element((co_obj_t*)schema,i) == (co_obj_t*)current)
+      return (void*)co_list_element((co_obj_t*)schema,i+1);
+  }
+error:
+  return NULL;
+}
+
+static co_obj_t *
+_csm_schema_get_field_i(co_obj_t *list, co_obj_t *current, void *context)
+{
+  if (IS_SCHEMA(current) && strcmp(((co_schema_field_t*)current)->field.name, (char*)context) == 0)
+    return current;
+  return NULL;
+}
+
+void *
+csm_schema_get_field_by_index(void *schema, int index, char **name)
+{
+  CHECK(IS_LIST((co_obj_t*)schema), "Invalid schema");
+  co_obj_t *ret = co_list_element((co_obj_t*)schema, index);
+  if (name)
+    *name = ((co_schema_field_t*)ret)->field.name;
+  return (void*)ret;
+error:
+  return NULL;
+}
+
+void *
+csm_schema_get_field_by_name(void *schema, char *name)
+{
+  CHECK(IS_LIST((co_obj_t*)schema), "Invalid schema");
+  return (void*)co_list_parse((co_obj_t*)schema, _csm_schema_get_field_i, name);
+error:
+  return NULL;
+}
+
+char *
+csm_schema_field_get_name(void *schema_field)
+{
+  CHECK(IS_SCHEMA((co_obj_t*)schema_field), "Invalid schema field");
+  return ((co_schema_field_t*)schema_field)->field.name;
+error:
+  return NULL;
+}
+
+bool
+csm_schema_field_get_required(void *schema_field)
+{
+  CHECK(IS_SCHEMA((co_obj_t*)schema_field), "Invalid schema field");
+  return ((co_schema_field_t*)schema_field)->field.required;
+error:
+  return NULL;
+}
+
+int
+csm_schema_field_get_type(void *schema_field)
+{
+  CHECK(IS_SCHEMA((co_obj_t*)schema_field), "Invalid schema field");
+  return ((co_schema_field_t*)schema_field)->field.type;
+error:
+  return CSM_ERROR;
+}
+
+int
+csm_schema_field_get_list_subtype(void *schema_field)
+{
+  CHECK(IS_SCHEMA((co_obj_t*)schema_field) 
+        && ((co_schema_field_t*)schema_field)->field.type == CSM_FIELD_LIST,
+	"Invalid schema list field");
+  return ((co_schema_field_t*)schema_field)->field.subtype;
+error:
+  return CSM_ERROR;
+}
+
+int
+csm_schema_field_get_string_length(void *schema_field)
+{
+  CHECK(IS_SCHEMA((co_obj_t*)schema_field) 
+        && (((co_schema_field_t*)schema_field)->field.type == CSM_FIELD_STRING
+        || ((co_schema_field_t*)schema_field)->field.type == CSM_FIELD_HEX),
+	"Invalid schema string field");
+  return (int)((co_schema_field_t*)schema_field)->field.length;
+error:
+  return CSM_ERROR;
+}
+
+int
+csm_schema_field_get_min(void *schema_field, long *out)
+{
+  CHECK(IS_SCHEMA((co_obj_t*)schema_field) 
+        && ((co_schema_field_t*)schema_field)->field.type == CSM_FIELD_INT,
+	"Invalid schema int field");
+  csm_schema_field_t *field = &((co_schema_field_t*)schema_field)->field;
+  if (field->limits_flag & CSM_LIMIT_MIN)
+    *out = field->min;
+  return CSM_OK;
+error:
+  return CSM_ERROR;
+}
+
+int
+csm_schema_field_get_max(void *schema_field, long *out)
+{
+  CHECK(IS_SCHEMA((co_obj_t*)schema_field) 
+        && ((co_schema_field_t*)schema_field)->field.type == CSM_FIELD_INT,
+	"Invalid schema int field");
+  csm_schema_field_t *field = &((co_schema_field_t*)schema_field)->field;
+  if (field->limits_flag & CSM_LIMIT_MAX)
+    *out = field->max;
+  return CSM_OK;
+error:
+  return CSM_ERROR;
+}
+
 /** returns number of services */
 int
 csm_services_fetch(void **services) {
@@ -69,11 +307,15 @@ csm_services_fetch(void **services) {
   co_obj_t *service_list = co_response_get(response,"services",sizeof("services"));
   CHECK(CO_TYPE(service_list) == _list16,"Invalid response");
   
+  CHECK(co_tree_delete(response,"services",sizeof("services")), 
+	"Failed to detach services from response");
   *services = (void*)service_list;
   
   ret = co_list_length(service_list);
 error:
   if (request) co_free(request);
+  
+  if (response) co_free(response);
   
   /* Close commotiond socket connection */
   co_disconnect(conn);
@@ -90,21 +332,31 @@ error:
   return CSM_ERROR;
 }
 
-CSMService *
+void *
 csm_service_create(void) {
-// csm_service_create(CSMServiceList *services) {
+// csm_service_create(void *services) {
   co_obj_t *service = co_tree16_create();
   CHECK_MEM(service);
+  co_obj_t *local = co_int32_create(1,0);
+  CHECK_MEM(local);
+  CHECK(co_tree_insert(service, "local", sizeof("local"), local),
+	"Failed to set local field on new service");
 //   CHECK(co_list_append(services,service), "Failed to add service to list");
-  return (CSMService*)service;
+  return (void*)service;
 error:
   return NULL;
+}
+
+void
+csm_service_destroy(void *service)
+{
+  co_obj_free((co_obj_t*)service);
 }
 
 /**
  * adds or updates service, also generates key and signature
  */
-int csm_service_commit(CSMService *service) {
+int csm_service_commit(void *service) {
   co_obj_t *request = NULL,
 	    *response = NULL,
 	    *conn = NULL;
@@ -151,15 +403,15 @@ int csm_service_commit(CSMService *service) {
 error:
   if (request) co_free(request);
   
-  /* TODO cleanup co_call to deep copy rtree into response so it can be freed by caller */
-//   if (response) co_free(response);
+  if (response) co_free(response);
   
   /* Close commotiond socket connection */
   co_disconnect(conn);
   return ret;
 }
 
-int csm_service_remove(CSMService *service) {
+int
+csm_service_remove(void *service) {
   co_obj_t *request = NULL,
 	    *response = NULL,
 	    *conn = NULL;
@@ -190,8 +442,7 @@ int csm_service_remove(CSMService *service) {
 error:
   if (request) co_free(request);
   
-  /* TODO cleanup co_call to deep copy rtree into response so it can be freed by caller */
-//   if (response) co_free(response);
+  if (response) co_free(response);
   
   /* Close commotiond socket connection */
   co_disconnect(conn);
@@ -247,11 +498,17 @@ error:
 }
 
 void *
-csm_service_field_get_next(void *service, void *current, char **name)
+csm_service_get_next_field(void *service, void *current, char **name)
 {
   CHECK(IS_TREE((co_obj_t*)service), "Invalid service");
-  CHECK(CO_TYPE(current) == _str8, "Invalid service field");
-  co_obj_t *next = co_tree_next((co_obj_t*)service, current);
+  co_obj_t *next = NULL;
+  if (current) {
+    CHECK(((_treenode_t*)current)->key && CO_TYPE(((_treenode_t*)current)->key) == _str8,
+	  "Invalid service field");
+    next = co_tree_next((co_obj_t*)service, ((_treenode_t*)current)->key);
+  } else {
+    next = co_tree_next((co_obj_t*)service, NULL);
+  }
   CHECK(next, "No more service fields, or current service field not found");
   char *key = co_obj_data_ptr(next);
   if (name) *name = key;
@@ -261,7 +518,7 @@ error:
 }
 
 void *
-csm_service_field_get_by_name(void *service, const char *name)
+csm_service_get_field_by_name(void *service, const char *name)
 {
   _treenode_t *node = NULL;
   CHECK(IS_TREE((co_obj_t*)service), "Invalid service");
@@ -502,7 +759,7 @@ error:
   return CSM_ERROR;
 }
 
-int csm_service_set_int(CSMService *service, const char *field, long n)
+int csm_service_set_int(void *service, const char *field, long n)
 {
   CHECK(csm_service_is_local(service), "Cannot modify service");
   co_obj_t *o = co_int32_create(n, 0);
@@ -518,7 +775,7 @@ error:
 }
 
 int
-csm_service_set_string(CSMService *service, const char *field, const char *str)
+csm_service_set_string(void *service, const char *field, const char *str)
 {
   CHECK(csm_service_is_local(service), "Cannot modify service");
   CHECK(strlen(str) < 256, "String too long");
@@ -535,7 +792,7 @@ error:
 }
 
 int
-csm_service_set_int_list_from_array(CSMService *service, const char *field, long *array, int length)
+csm_service_set_int_list_from_array(void *service, const char *field, long *array, int length)
 {
   CHECK(csm_service_is_local(service), "Cannot modify service");
   co_obj_t *field_list = co_list16_create();
@@ -554,7 +811,7 @@ error:
 }
 
 int
-csm_service_set_string_list_from_array(CSMService *service, const char *field, const char **array, int length)
+csm_service_set_string_list_from_array(void *service, const char *field, const char **array, int length)
 {
   CHECK(csm_service_is_local(service), "Cannot modify service");
   co_obj_t *field_list = co_list16_create();
@@ -572,7 +829,7 @@ error:
   return CSM_ERROR;
 }
 
-int csm_service_list_append_int(CSMService *service, const char *field, long n)
+int csm_service_list_append_int(void *service, const char *field, long n)
 {
   CHECK(csm_service_is_local(service), "Cannot modify service");
   co_obj_t *field_list = co_tree_find(service,field,strlen(field) + 1);
@@ -591,7 +848,7 @@ error:
   return CSM_ERROR;
 }
 
-int csm_service_list_append_string(CSMService *service, const char *field, const char *str)
+int csm_service_list_append_string(void *service, const char *field, const char *str)
 {
   CHECK(csm_service_is_local(service), "Cannot modify service");
   co_obj_t *field_list = co_tree_find(service,field,strlen(field) + 1);
@@ -610,7 +867,7 @@ error:
   return CSM_ERROR;
 }
 
-int csm_service_remove_field(CSMService *service, const char *field)
+int csm_service_remove_field(void *service, const char *field)
 {
   CHECK(csm_service_is_local(service), "Cannot modify service");
   co_obj_t *val = co_tree_delete(service, field, strlen(field) + 1);
