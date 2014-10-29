@@ -58,7 +58,7 @@
 #endif
 
 #define REQUEST_MAX 1024
-#define RESPONSE_MAX 1024
+#define RESPONSE_MAX 4096
 
 extern co_socket_t unix_socket_proto;
 
@@ -145,7 +145,7 @@ static void request_handler(AvahiWatch *w, int fd, AvahiWatchEvent events, void 
   }
   
   /* If it's a commotion message type, parse the header, target and payload */
-  CHECK(co_list_import(&request, reqbuf, reqlen) > 0, "Failed to import request.");
+  CHECK(co_list_import(&request, reqbuf, reqlen) > 0 && co_list_length(request) == 4, "Failed to import request.");
   co_obj_data((char **)&type, co_list_element(request, 0));
   CHECK(*type == 0, "Not a valid request.");
   CHECK(co_obj_data((char **)&id, co_list_element(request, 1)) == sizeof(uint32_t), "Not a valid request ID.");
@@ -452,7 +452,7 @@ int main(int argc, char*argv[]) {
     csm_config.schema_dir = CSM_SCHEMA_DIR;
     
     /* Set Avahi allocator to use halloc */
-#if 0
+// #if 0
     static AvahiAllocator hallocator = {
       .malloc = h_malloc,
       .free = h_free,
@@ -460,7 +460,7 @@ int main(int argc, char*argv[]) {
       .calloc = h_calloc
     };
     avahi_set_allocator(&hallocator);
-#endif
+// #endif
     
     argp_parse (&argp, argc, argv, 0, 0, &csm_config);
     
