@@ -40,11 +40,6 @@
 
 #define DEFAULT_TOKENS 128
 
-enum {
-  CSM_LIMIT_MIN = (1 << 0),
-  CSM_LIMIT_MAX = (1 << 1)
-};
-
 typedef enum {
   CSM_ATTR_FIELD = 1,
   CSM_ATTR_REQUIRED,
@@ -52,7 +47,8 @@ typedef enum {
   CSM_ATTR_SUBTYPE,
   CSM_ATTR_LENGTH,
   CSM_ATTR_MIN,
-  CSM_ATTR_MAX
+  CSM_ATTR_MAX,
+  CSM_ATTR_GENERATED
 } csm_field_attr;
 
 /* Private */
@@ -108,6 +104,8 @@ _csm_attr_str(char *key)
     return CSM_ATTR_MIN;
   else if (0 == strcmp(key, "max"))
     return CSM_ATTR_MAX;
+  else if (0 == strcmp(key, "generated"))
+    return CSM_ATTR_GENERATED;
   return -1;
 }
 
@@ -345,6 +343,12 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	      else
 		field->required = false;
 	      break;
+	    case CSM_ATTR_GENERATED:
+	      if (strncmp(val, "t", 1) == 0)
+		field->generated = true;
+	      else
+		field->generated = false;
+	      break;
 	    case CSM_ATTR_TYPE:
 	      n = _csm_type_str(val);
 	      CHECK(n != -1, "Invalid field type %s", val);
@@ -512,8 +516,11 @@ _csm_validate_field_i(co_obj_t *list, co_obj_t *current, void *context)
   csm_schema_field_t *schema_field = &((co_schema_field_t*)current)->field;
   co_obj_t *service_field = co_tree_find(entries, schema_field->name, strlen(schema_field->name) + 1);
   if (schema_field->required && !service_field) {
-    ERROR("Missing required field %s", schema_field->name);
-    return current;
+    co_obj_t *local = co_tree_find(entries, "local", sizeof("local"));
+    if (!local || (int32_t)*co_obj_data_ptr(local) != 1) { // local services don't need to provide generated fields
+      ERROR("Missing required field %s", schema_field->name);
+      return current;
+    }
   }
   if (service_field
     && !_csm_validate_field(schema_field, schema_field->type, service_field))

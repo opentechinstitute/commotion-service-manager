@@ -48,6 +48,7 @@ CSMSchemaField *csm_schema_get_field_by_name(CSMSchema *schema, char *name);
 
 char *csm_schema_field_get_name(CSMSchemaField *schema_field);
 bool csm_schema_field_get_required(CSMSchemaField *schema_field);
+bool csm_schema_field_get_generated(void *schema_field);
 int csm_schema_field_get_type(CSMSchemaField *schema_field);
 
 int csm_schema_field_get_list_subtype(CSMSchemaField *schema_field);

@@ -224,6 +224,15 @@ error:
   return NULL;
 }
 
+bool
+csm_schema_field_get_generated(void *schema_field)
+{
+  CHECK(IS_SCHEMA((co_obj_t*)schema_field), "Invalid schema field");
+  return ((co_schema_field_t*)schema_field)->field.generated;
+error:
+  return NULL;
+}
+
 int
 csm_schema_field_get_type(void *schema_field)
 {

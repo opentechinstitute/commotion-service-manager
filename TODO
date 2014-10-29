@@ -1,24 +1,4 @@
-client schema use:
-fetch schema object, turn into array of fields
-field object:
-    name
-    type
-    required
-    (subtype)
-    (length)
-    (min)
-    (max)
-int and string fields should inherit from general field
-delete method
-
-comparison of new service against schema should happen in service_commit in commotion-service-manager.c and csm_add_service/csm_update_service in service_list.h
-verifying signatures will be separate from schemas. it will simply order fields (and elements of list fields) alphabetically and create signing template
-schema versions will be semantic versioning. CSMs using schemas with different major version numbers will reject announcements from each other, while same major version numbers will attempt to be forward and backward compatible. For forward compatibility, it will use the current schema version it has (so new minor revisions can only add additional fields). For backward compatibility, it will either find its copy of the schema of that version or use the next closest version it has.
-
 TODO
-make csm_schema_t a co_list since it will need to be sent to clients
-client API should have standard error return value
-Add CSM API method for fetching schema
 test avahi client while restarting avahi daemon
 configure which interface(s) to listen on
 make note in README that version, lifetime, fingerprint, and signature are required fields in the schema
@@ -58,3 +38,7 @@ TTL field isn't functional for CSM, so remove it from csm_service_t
 write schema-generic setters/getters in service.h/c
 ctx should have all available versions of schema (maybe linked list with most recent first?)
 convert functions to use schema system: _csm_extract_from_txt_list, _csm_create_signing_template, csm_update_service, csm_publish_service, cmd_commit_service, uci_read, uci_write
+make csm_schema_t a co_list since it will need to be sent to clients
+client API should have standard error return value
+Add CSM API method for fetching schema
+add "generated" option to schema fields, so while required for remote services, locally created services don't have to provide them when committing

@@ -39,9 +39,15 @@ typedef enum {
   CSM_FIELD_HEX,
 } csm_field_type;
 
+enum {
+  CSM_LIMIT_MIN = (1 << 0),
+  CSM_LIMIT_MAX = (1 << 1)
+};
+
 typedef struct csm_schema_field_t {
   char name[256];
   bool required;
+  bool generated;
   csm_field_type type;
   
   // lists only
@@ -86,12 +92,13 @@ csm_schema_field_t *csm_schema_get_field(csm_schema_t *schema, char *name);
  * libcommotion object extended type for CSM schema field
  * (used for passing to clients from command handlers) 
  */
-typedef struct {
+typedef struct co_schema_field_t co_schema_field_t;
+struct co_schema_field_t {
   co_obj_t _header;
   uint8_t _exttype;
   uint16_t _len;
   csm_schema_field_t field;
-} co_schema_field_t;
+} __attribute__ ((packed));
 
 #define _schema 252
 
@@ -100,6 +107,7 @@ typedef struct {
 static inline co_obj_t *co_schema_create(void) {
   co_schema_field_t *output = h_calloc(1,sizeof(co_schema_field_t));
   CHECK_MEM(output);
+  output->_header._flags = 1;
   output->_header._type = _ext16;
   output->_exttype = _schema;
   output->_len = sizeof(co_schema_field_t);

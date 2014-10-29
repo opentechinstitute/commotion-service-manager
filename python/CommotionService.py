@@ -174,6 +174,7 @@ class CSMSchemaField(object):
 	else:
 	    self.name = name
 	self.required = libCSM.csm_schema_field_get_required(self.ptr)
+	self.generated = libCSM.csm_schema_field_get_generated(self.ptr)
 	self.type = libCSM.csm_schema_field_get_type(self.ptr)
 
 class CSMSchemaFieldInt(CSMSchemaField):

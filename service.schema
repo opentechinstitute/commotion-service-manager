@@ -44,12 +44,14 @@
       {
 	"field": "fingerprint",
 	"required": true,
+	"generated": true,
 	"type": "hex",
 	"length": "64"
       },
       {
 	"field": "signature",
 	"required": true,
+	"generated": true,
 	"type": "hex",
 	"length": "128"
       },

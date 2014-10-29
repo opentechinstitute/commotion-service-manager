@@ -416,7 +416,9 @@ csm_create_signature(csm_service *s)
   
   if (!s->key) {
     CHECK(csm_service_set_str(s, "fingerprint", key), "Failed to set key");
-    s->key = co_obj_data_ptr(co_tree_find(s->fields, "fingerprint", sizeof("key")));
+    co_obj_t *key_obj = co_tree_find(s->fields, "fingerprint", sizeof("fingerprint"));
+    CHECK(key_obj, "Failed to get service key");
+    s->key = co_obj_data_ptr(key_obj);
     // set UUID
     char uuid[UUID_LEN + 1] = {0};
     CHECK(get_uuid(key,strlen(key),uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
