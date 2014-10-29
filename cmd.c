@@ -225,12 +225,13 @@ cmd_list_services(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
   csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
   
-  if (csm_services_length(ctx->service_list) == 0) {
-    co_obj_t *false_obj = co_bool_create(false,0);
-    CHECK_MEM(false_obj);
-    CMD_OUTPUT("success",false_obj);
-    return 1;
-  }
+  // NOTE: if there are no services in list, it should still return successful
+//   if (csm_services_length(ctx->service_list) == 0) {
+//     co_obj_t *false_obj = co_bool_create(false,0);
+//     CHECK_MEM(false_obj);
+//     CMD_OUTPUT("success",false_obj);
+//     return 1;
+//   }
   
   CMD_OUTPUT("services",ctx->service_list->service_fields);
   co_obj_t *true_obj = co_bool_create(true,0);
