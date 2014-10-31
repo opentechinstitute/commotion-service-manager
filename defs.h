@@ -103,6 +103,7 @@
 #endif
 
 struct csm_config {
+  char *csm_sock;
   char *co_sock;
 #ifdef USE_UCI
   int uci;

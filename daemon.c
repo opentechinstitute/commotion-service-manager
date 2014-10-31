@@ -57,8 +57,8 @@
 #include "uci-utils.h"
 #endif
 
-#define REQUEST_MAX 1024
-#define RESPONSE_MAX 4096
+#define REQUEST_MAX 65536
+#define RESPONSE_MAX 65536
 
 extern co_socket_t unix_socket_proto;
 
@@ -396,6 +396,9 @@ static void server_callback(AvahiServer *s, AvahiServerState state, AVAHI_GCC_UN
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
   switch (key) {
     case 'b':
+      csm_config.csm_sock = arg;
+      break;
+    case 'c':
       csm_config.co_sock = arg;
       break;
 #ifdef USE_UCI
@@ -431,7 +434,8 @@ int main(int argc, char*argv[]) {
     argp_program_version = "1.0";
     static char doc[] = "Commotion Service Manager";
     static struct argp_option options[] = {
-      {"bind", 'b', "URI", 0, "commotiond management socket"},
+      {"bind", 'b', "FILE", 0, "CSM management socket"},
+      {"cosock", 'c', "FILE", 0, "commotiond management socket"},
       {"nodaemon", 'n', 0, 0, "Do not fork into the background" },
       {"schema", 's', "DIR", 0, "Directory including schema files for service announcements" },
       {"pid", 'p', "FILE", 0, "Specify PID file"},
@@ -443,6 +447,7 @@ int main(int argc, char*argv[]) {
     static struct argp argp = { options, parse_opt, NULL, doc };
     
     /* Set defaults */
+    csm_config.csm_sock = CSM_MANAGESOCK;
     csm_config.co_sock = COMMOTION_MANAGESOCK;
 #ifdef USE_UCI
     csm_config.uci = 0;
@@ -452,7 +457,8 @@ int main(int argc, char*argv[]) {
     csm_config.schema_dir = CSM_SCHEMA_DIR;
     
     /* Set Avahi allocator to use halloc */
-// #if 0
+    /* NOTE: this is disabled b/c h_realloc causes mysterious heap corruption */
+#if 0
     static AvahiAllocator hallocator = {
       .malloc = h_malloc,
       .free = h_free,
@@ -460,7 +466,7 @@ int main(int argc, char*argv[]) {
       .calloc = h_calloc
     };
     avahi_set_allocator(&hallocator);
-// #endif
+#endif
     
     argp_parse (&argp, argc, argv, 0, 0, &csm_config);
     
@@ -478,6 +484,8 @@ int main(int argc, char*argv[]) {
     sa.sa_handler = csm_shutdown;
     CHECK(sigaction(SIGINT,&sa,NULL) == 0, "Failed to set signal handler");
     CHECK(sigaction(SIGTERM,&sa,NULL) == 0, "Failed to set signal handler");
+    sa.sa_handler = SIG_IGN;
+    CHECK(sigaction(SIGPIPE, &sa, 0) == 0, "Failed to set signal handler"); // in case our socket connection to commotiond breaks, don't die
 
     /* Initialize the psuedo-RNG */
     srand(time(NULL));
@@ -537,7 +545,7 @@ int main(int argc, char*argv[]) {
     
     /* Set up CSM management socket */
     csm_socket = (co_socket_t*)NEW(co_socket, unix_socket);
-    csm_socket->bind((co_obj_t*)csm_socket, CSM_MANAGESOCK);
+    csm_socket->bind((co_obj_t*)csm_socket, csm_config.csm_sock);
     AvahiWatch *csm_watch = avahi_simple_poll_get(simple_poll)->watch_new(avahi_simple_poll_get(simple_poll),
 									  csm_socket->fd->fd, 
 									  AVAHI_WATCH_IN | AVAHI_WATCH_HUP, 
