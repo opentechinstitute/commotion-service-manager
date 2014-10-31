@@ -199,7 +199,7 @@ _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt, csm_ctx *ctx)
     key = val = NULL;
   }
   
-  obj = co_tree_find(s->fields, "fingerprint", strlen("fingerprint") + 1);
+  obj = co_tree_find(s->fields, "key", strlen("key") + 1);
   CHECK(obj, "Service doesn't contain key/fingerprint field");
   s->key = co_obj_data_ptr(obj);
   obj = co_tree_find(s->fields, "signature", strlen("signature") + 1);
@@ -207,7 +207,7 @@ _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt, csm_ctx *ctx)
   s->signature = co_obj_data_ptr(obj);
   obj = co_tree_find(s->fields, "lifetime", strlen("lifetime") + 1);
   CHECK(obj, "Service doesn't contain lifetime field");
-  s->lifetime = atol(co_obj_data_ptr(obj));
+  s->lifetime = (long)*((int32_t*)co_obj_data_ptr(obj));
   
   ret = 1;
 error:

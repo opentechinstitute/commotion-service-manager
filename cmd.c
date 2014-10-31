@@ -113,13 +113,16 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   
   ptr_obj = co_tree_find(s->fields, "lifetime", strlen("lifetime") + 1);
   CHECK(ptr_obj, "Service doesn't contain lifetime field");
-  s->lifetime = atol(co_obj_data_ptr(ptr_obj));
+  s->lifetime = (long)*((int32_t*)co_obj_data_ptr(ptr_obj));
   
   ptr_obj = co_tree_find(s->fields, "version", strlen("version") + 1);
   if (ptr_obj) {
-    char *version_str = co_obj_data_ptr(ptr_obj);
+    char *version_str = strdup(co_obj_data_ptr(ptr_obj));
     char *dot = strchr(version_str, '.');
-    CHECK(dot, "Invalid version string; doesn't use semantic versioning");
+    if (!dot) {
+      free(version_str);
+      SENTINEL("Invalid version string; doesn't use semantic versioning");
+    }
     *dot = '\0';
     s->version.major = atoi(version_str);
     s->version.minor = atof(dot + 1);
@@ -151,12 +154,15 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
     bool_obj = co_bool_create(true,0);
     CHECK_MEM(bool_obj);
     CMD_OUTPUT("success",bool_obj);
+    bool_obj = NULL;
     key_obj = co_str8_create(s->key,strlen(s->key)+1,0);
     CHECK_MEM(key_obj);
     CMD_OUTPUT("key",key_obj);
+    key_obj = NULL;
     sig_obj = co_str8_create(s->signature,strlen(s->signature)+1,0);
     CHECK_MEM(sig_obj);
     CMD_OUTPUT("signature",sig_obj);
+    sig_obj = NULL;
     
     CHECK(csm_publish_service(s, ctx), "Failed to publish service");
   } else {
@@ -165,6 +171,7 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
     bool_obj = co_bool_create(false,0);
     CHECK_MEM(bool_obj);
     CMD_OUTPUT("success",bool_obj);
+    bool_obj = NULL;
   }
   
   ret = 1;
@@ -193,7 +200,7 @@ cmd_remove_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   
   char *key = NULL;
   size_t key_len = co_obj_data(&key,key_obj);
-  CHECK(isValidFingerprint(key,key_len),"Received invalid key");
+  CHECK(isValidFingerprint(key,key_len - 1),"Received invalid key");
   
   char uuid[UUID_LEN + 1] = {0};
   CHECK(get_uuid(key,key_len,uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");

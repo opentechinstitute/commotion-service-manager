@@ -137,6 +137,7 @@ csm_unpublish_service(csm_service *s, csm_ctx *ctx)
     avahi_s_entry_group_reset(s->l.group);
 #endif
     ENTRY_GROUP_FREE(s->l.group);
+    s->l.group = NULL;
     s->l.uptodate = 0;
   }
   return 1;
@@ -147,8 +148,10 @@ _csm_import_into_txt_list(co_obj_t *container, co_obj_t *key, co_obj_t *val, voi
 {
   AvahiStringList **txt_list = (AvahiStringList**)context;
   if (IS_INT(val)) {
-    *txt_list = avahi_string_list_add_printf(*txt_list, "%s=%ld", co_obj_data_ptr(key), (long)*co_obj_data_ptr(val));
+    DEBUG("adding INT %s=%"PRId32" to txt list",co_obj_data_ptr(key), ((co_int32_t*)val)->data);
+    *txt_list = avahi_string_list_add_printf(*txt_list, "%s=%"PRId32, co_obj_data_ptr(key), ((co_int32_t*)val)->data);
   } else if (IS_STR(val)) {
+    DEBUG("adding STRING %s=%s to txt list",co_obj_data_ptr(key), co_obj_data_ptr(val));
     *txt_list = avahi_string_list_add_printf(*txt_list, "%s=%s", co_obj_data_ptr(key), co_obj_data_ptr(val));
   } else if (IS_LIST(val)) {
     csm_list_parse(val, key, _csm_import_into_txt_list, context);
@@ -183,7 +186,7 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
       s->l.group = ENTRY_GROUP_NEW(server_entry_group_callback, NULL);
 #endif
       CHECK(s->l.group,"ENTRY_GROUP_NEW failed: %s", AVAHI_ERROR);
-      service_attach(s->l.group, s);
+//       service_attach(s->l.group, s);
     }
     
     CHECK(csm_tree_process(s->fields, _csm_import_into_txt_list, &t),
@@ -194,6 +197,7 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
     if (ENTRY_GROUP_EMPTY(s->l.group)) {
       char hostname[HOST_NAME_MAX] = {0};
       CHECK(gethostname(hostname,HOST_NAME_MAX) == 0, "Failed to get hostname");
+      strcat(hostname,".local"); // Avahi requires a FQDN
       int avahi_ret = ENTRY_GROUP_ADD_SERVICE(s->l.group,
 					      s->interface,
 					      s->protocol,
@@ -204,7 +208,7 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
 					      hostname,
 					      s->port,
 					      t);
-      CHECK(avahi_ret == AVAHI_OK, "Failed to add entry group");
+      CHECK(avahi_ret == AVAHI_OK, "Failed to add entry group: %s", AVAHI_ERROR);
     } else if (!s->l.uptodate) {
       int avahi_ret = ENTRY_GROUP_UPDATE_SERVICE(s->l.group,
 						 s->interface,
@@ -214,10 +218,11 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
 						 s->type,
 						 s->domain,
 						 t);
-      CHECK(avahi_ret == AVAHI_OK, "Failed to update entry group");
+      CHECK(avahi_ret == AVAHI_OK, "Failed to update entry group: %s", AVAHI_ERROR);
     }
     CHECK(ENTRY_GROUP_COMMIT(s->l.group) == AVAHI_OK, "Failed to commit entry group");
     s->l.uptodate = 1;
+    DEBUG("Successfully published service %s",s->uuid);
   }
   
   ret = 1;

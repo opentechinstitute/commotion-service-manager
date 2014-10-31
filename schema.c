@@ -128,7 +128,6 @@ _csm_validate_int(csm_schema_field_t *schema_field, co_obj_t *entry)
 {
   if (IS_INT(entry)) {
     long n;
-//     co_obj_data((char**)&n, entry);
     n = ((co_int32_t*)entry)->data;
     if ((!(schema_field->limits_flag & CSM_LIMIT_MIN) || n >= schema_field->min)
       && (!(schema_field->limits_flag & CSM_LIMIT_MAX) || n <= schema_field->max))
@@ -149,6 +148,10 @@ _csm_validate_string(csm_schema_field_t *schema_field, co_obj_t *entry, int hex)
 	  if (!isxdigit(str[i]))
 	    return 0;
 	}
+      }
+      if (strlen(schema_field->name) + str_len + 1 > 255) {
+	WARN("service field string %s:%s too long",schema_field->name,str);
+	return 0;
       }
       return 1;
     }
@@ -517,7 +520,7 @@ _csm_validate_field_i(co_obj_t *list, co_obj_t *current, void *context)
   co_obj_t *service_field = co_tree_find(entries, schema_field->name, strlen(schema_field->name) + 1);
   if (schema_field->required && !service_field) {
     co_obj_t *local = co_tree_find(entries, "local", sizeof("local"));
-    if (!local || (int32_t)*co_obj_data_ptr(local) != 1) { // local services don't need to provide generated fields
+    if (!local || (int32_t)*co_obj_data_ptr(local) != 1 || !schema_field->generated) { // local services don't need to provide generated fields
       ERROR("Missing required field %s", schema_field->name);
       return current;
     }
@@ -530,7 +533,6 @@ _csm_validate_field_i(co_obj_t *list, co_obj_t *current, void *context)
 }
 
 int
-// csm_validate_fields(csm_schema_t *schema, co_obj_t *entries)
 csm_validate_fields(csm_ctx *ctx, csm_service *s)
 {
   co_obj_t *entries = s->fields;

@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "fields" :
     [
       {
@@ -42,7 +42,7 @@
 	"min": 0
       },
       {
-	"field": "fingerprint",
+	"field": "key",
 	"required": true,
 	"generated": true,
 	"type": "hex",

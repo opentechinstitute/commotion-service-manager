@@ -110,7 +110,7 @@ static inline co_obj_t *co_schema_create(void) {
   output->_header._flags = 1;
   output->_header._type = _ext16;
   output->_exttype = _schema;
-  output->_len = sizeof(co_schema_field_t);
+  output->_len = sizeof(csm_schema_field_t);
   return (co_obj_t*)output;
 error:
   return NULL;
