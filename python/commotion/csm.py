@@ -1,132 +1,6 @@
 from ctypes import *
+from prototypes import libCSM, ReturnCode
 import collections
-
-class ReturnCode:
-    OK = 0
-    ERROR = -1
-    
-def CheckSimpleError(ret,func,args):
-    if ret == ReturnCode.ERROR:
-	raise RuntimeError
-    return ret
-
-def CheckCharPointerError(ret,func,args):
-    if not ret: # function returned NULL
-	raise RuntimeError
-    return ret
-  
-def CheckPointerError(ret,func,args):
-    if not ret: # function returned NULL
-	raise RuntimeError
-    return c_void_p(ret) # ctypes converts c_void_p restypes to ints...that's really annoying
-
-libCSM = CDLL("../build/libcommotion-service-manager.so")
-
-libCSM.csm_config_create.argtypes = []
-libCSM.csm_config_create.restype = c_void_p
-libCSM.csm_config_create.errcheck = CheckPointerError
-libCSM.csm_config_set_mgmt_sock.argtypes = [c_void_p, c_char_p]
-libCSM.csm_config_set_mgmt_sock.errcheck = CheckSimpleError
-libCSM.csm_config_free.argtypes = [c_void_p]
-
-libCSM.csm_schema_fetch.argtypes = [POINTER(c_void_p), c_void_p]
-libCSM.csm_schema_free.argtypes = [c_void_p]
-#libCSM.csm_schema_free.errcheck = CheckSimpleError
-libCSM.csm_schema_get_major_version.argtypes = [c_void_p, c_void_p]
-libCSM.csm_schema_get_major_version.errcheck = CheckSimpleError
-libCSM.csm_schema_get_minor_version.argtypes = [c_void_p, c_void_p]
-libCSM.csm_schema_get_minor_version.restype = c_double
-libCSM.csm_schema_get_minor_version.errcheck = CheckSimpleError
-
-libCSM.csm_schema_get_field_by_index.argtypes = [c_void_p, c_int, POINTER(c_char_p)]
-libCSM.csm_schema_get_field_by_index.restype = c_void_p
-libCSM.csm_schema_get_field_by_index.errcheck = CheckPointerError
-
-libCSM.csm_schema_field_get_name.argtypes = [c_void_p]
-libCSM.csm_schema_field_get_name.restype = c_char_p
-libCSM.csm_schema_field_get_name.errcheck = CheckCharPointerError
-libCSM.csm_schema_field_get_required.argtypes = [c_void_p]
-libCSM.csm_schema_field_get_required.errcheck = CheckSimpleError
-libCSM.csm_schema_field_get_type.argtypes = [c_void_p]
-libCSM.csm_schema_field_get_type.errcheck = CheckSimpleError
-
-libCSM.csm_schema_field_get_list_subtype.argtypes = [c_void_p]
-libCSM.csm_schema_field_get_list_subtype.errcheck = CheckSimpleError
-libCSM.csm_schema_field_get_string_length.argtypes = [c_void_p]
-libCSM.csm_schema_field_get_string_length.errcheck = CheckSimpleError
-libCSM.csm_schema_field_get_min.argtypes = [c_void_p, POINTER(c_long)]
-libCSM.csm_schema_field_get_min.errcheck = CheckSimpleError
-libCSM.csm_schema_field_get_max.argtypes = [c_void_p, POINTER(c_long)]
-libCSM.csm_schema_field_get_max.errcheck = CheckSimpleError
-
-libCSM.csm_services_fetch.argtypes = [POINTER(c_void_p), c_void_p]
-libCSM.csm_services_free.argtypes = [c_void_p]
-#libCSM.csm_services_free.errcheck = CheckSimpleError
-
-libCSM.csm_service_create.restype = c_void_p
-libCSM.csm_service_create.errcheck = CheckPointerError
-libCSM.csm_service_destroy.argtypes = [c_void_p]
-libCSM.csm_service_commit.argtypes = [c_void_p, c_void_p]
-libCSM.csm_service_commit.errcheck = CheckSimpleError
-libCSM.csm_service_remove.argtypes = [c_void_p, c_void_p]
-libCSM.csm_service_remove.errcheck = CheckSimpleError
-
-libCSM.csm_services_get_by_index.argtypes = [c_void_p, c_int]
-libCSM.csm_services_get_by_index.restype = c_void_p
-libCSM.csm_services_get_by_index.errcheck = CheckPointerError
-libCSM.csm_services_get_by_key.argtypes = [c_void_p, c_char_p]
-libCSM.csm_services_get_by_key.restype = c_void_p
-libCSM.csm_services_get_by_key.errcheck = CheckPointerError
-
-libCSM.csm_service_is_local.argtypes = [c_void_p]
-
-libCSM.csm_service_fields_get_length.argtypes = [c_void_p]
-libCSM.csm_service_fields_get_length.errcheck = CheckSimpleError
-libCSM.csm_service_get_next_field.argtypes = [c_void_p, c_void_p, POINTER(c_char_p)]
-libCSM.csm_service_get_next_field.restype = c_void_p
-libCSM.csm_service_get_next_field.errcheck = CheckPointerError
-libCSM.csm_service_get_field_by_name.argtypes = [c_void_p, c_char_p]
-libCSM.csm_service_get_field_by_name.restype = c_void_p
-libCSM.csm_service_get_field_by_name.errcheck = CheckPointerError
-
-libCSM.csm_field_get_name.argtypes = [c_void_p]
-libCSM.csm_field_get_name.restype = c_char_p
-libCSM.csm_field_get_name.errcheck = CheckCharPointerError
-libCSM.csm_field_get_type.argtypes = [c_void_p]
-libCSM.csm_field_get_type.errcheck = CheckSimpleError
-libCSM.csm_field_get_int.argtypes = [c_void_p, POINTER(c_long)]
-libCSM.csm_field_get_int.errcheck = CheckSimpleError
-libCSM.csm_field_get_string.argtypes = [c_void_p]
-libCSM.csm_field_get_string.restype = c_char_p
-libCSM.csm_field_get_string.errcheck = CheckCharPointerError
-
-libCSM.csm_field_get_list_subtype.argtypes = [c_void_p]
-libCSM.csm_field_get_list_subtype.errcheck = CheckSimpleError
-libCSM.csm_field_get_list_length.argtypes = [c_void_p]
-libCSM.csm_field_get_list_length.errcheck = CheckSimpleError
-libCSM.csm_field_get_list_int.argtypes = [c_void_p, c_int, POINTER(c_long)]
-libCSM.csm_field_get_list_int.errcheck = CheckSimpleError
-libCSM.csm_field_get_list_string.argtypes = [c_void_p, c_int]
-libCSM.csm_field_get_list_string.restype = c_char_p
-libCSM.csm_field_get_list_string.errcheck = CheckCharPointerError
-
-libCSM.csm_service_set_int.argtypes = [c_void_p, c_char_p, c_long]
-libCSM.csm_service_set_int.errcheck = CheckSimpleError
-libCSM.csm_service_set_string.argtypes = [c_void_p, c_char_p, c_char_p]
-libCSM.csm_service_set_string.errcheck = CheckSimpleError
-libCSM.csm_service_set_int_list_from_array.argtypes = [c_void_p, c_char_p, POINTER(c_long), c_int]
-libCSM.csm_service_set_int_list_from_array.errcheck = CheckSimpleError
-libCSM.csm_service_set_string_list_from_array.argtypes = [c_void_p, c_char_p, POINTER(c_char_p), c_int]
-libCSM.csm_service_set_string_list_from_array.errcheck = CheckSimpleError
-
-class CSMConfig(object):
-    def __init__(self,path=None):
-	self.ptr = libCSM.csm_config_create()
-	if (path):
-	    libCSM.csm_config_set_mgmt_sock(self.ptr,path)
-    
-    def __del__(self):
-	libCSM.csm_config_free(self.ptr)
 
 class FieldType:
     STRING,LIST,INT,HEX = range(1,5)
@@ -140,6 +14,15 @@ def FieldTypeToStr(type):
 	return "INT"
     elif type == FieldType.LIST:
 	return "LIST"
+
+class CSMConfig(object):
+    def __init__(self,path=None):
+	self.ptr = libCSM.csm_config_create()
+	if (path):
+	    libCSM.csm_config_set_mgmt_sock(self.ptr,path)
+    
+    def __del__(self):
+	libCSM.csm_config_free(self.ptr)
 
 class CSMSchema(object):
     def __init__(self,config):
@@ -163,11 +46,11 @@ class CSMSchema(object):
 	    name = name.value
 	    field_type = libCSM.csm_schema_field_get_type(field)
 	    if field_type == FieldType.INT:
-		yield CSMSchemaFieldInt(field,name)
+		yield _CSMSchemaFieldInt(field,name)
 	    elif field_type == FieldType.STRING or field_type == FieldType.HEX:
-		yield CSMSchemaFieldString(field,name)
+		yield _CSMSchemaFieldString(field,name)
 	    elif field_type == FieldType.LIST:
-		yield CSMSchemaFieldList(field,name)
+		yield _CSMSchemaFieldList(field,name)
 	    else:
 		raise TypeError
       
@@ -175,18 +58,18 @@ class CSMSchema(object):
 	field = libCSM.csm_schema_get_field_by_name(self.ptr,name)
 	field_type = libCSM.csm_schema_field_get_type(field)
 	if field_type == FieldType.INT:
-	    return CSMSchemaFieldInt(field,name)
+	    return _CSMSchemaFieldInt(field,name)
 	elif field_type == FieldType.STRING or field_type == FieldType.HEX:
-	    return CSMSchemaFieldString(field,name)
+	    return _CSMSchemaFieldString(field,name)
 	elif field_type == FieldType.LIST:
-	    return CSMSchemaFieldList(field,name)
+	    return _CSMSchemaFieldList(field,name)
 	else:
 	    raise TypeError
       
     def __del__(self):
 	libCSM.csm_schema_free(self.ptr)
 
-class CSMSchemaField(object):
+class _CSMSchemaField(object):
     def __init__(self,ptr,name=None):
 	self.ptr = ptr
 	if not name:
@@ -197,25 +80,25 @@ class CSMSchemaField(object):
 	self.generated = libCSM.csm_schema_field_get_generated(self.ptr)
 	self.type = libCSM.csm_schema_field_get_type(self.ptr)
 
-class CSMSchemaFieldInt(CSMSchemaField):
+class _CSMSchemaFieldInt(_CSMSchemaField):
     def __init__(self,ptr,name=None):
-	CSMSchemaField.__init__(self,ptr,name)
+	_CSMSchemaField.__init__(self,ptr,name)
 	limit = c_long()
 	if libCSM.csm_schema_field_get_min(self.ptr,byref(limit)) == ReturnCode.OK:
 	    self.min = limit.value
 	if libCSM.csm_schema_field_get_max(self.ptr,byref(limit)) == ReturnCode.OK:
 	    self.max = limit.value
 
-class CSMSchemaFieldString(CSMSchemaField):
+class _CSMSchemaFieldString(_CSMSchemaField):
     def __init__(self,ptr,name=None):
-	CSMSchemaField.__init__(self,ptr,name)
+	_CSMSchemaField.__init__(self,ptr,name)
 	length = libCSM.csm_schema_field_get_string_length(self.ptr)
 	if length:
 	    self.length = length
 	
-class CSMSchemaFieldList(CSMSchemaField):
+class _CSMSchemaFieldList(_CSMSchemaField):
     def __init__(self,ptr,name=None):
-	CSMSchemaField.__init__(self,ptr,name)
+	_CSMSchemaField.__init__(self,ptr,name)
 	self.subtype = libCSM.csm_schema_field_get_list_subtype(self.ptr)
 
 class CSMServiceList(collections.Mapping):
