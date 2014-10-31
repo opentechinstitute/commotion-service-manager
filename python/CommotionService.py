@@ -22,12 +22,19 @@ def CheckPointerError(ret,func,args):
 
 libCSM = CDLL("../build/libcommotion-service-manager.so")
 
-libCSM.csm_schema_fetch.argtypes = [POINTER(c_void_p)]
+libCSM.csm_config_create.argtypes = []
+libCSM.csm_config_create.restype = c_void_p
+libCSM.csm_config_create.errcheck = CheckPointerError
+libCSM.csm_config_set_mgmt_sock.argtypes = [c_void_p, c_char_p]
+libCSM.csm_config_set_mgmt_sock.errcheck = CheckSimpleError
+libCSM.csm_config_free.argtypes = [c_void_p]
+
+libCSM.csm_schema_fetch.argtypes = [POINTER(c_void_p), c_void_p]
 libCSM.csm_schema_free.argtypes = [c_void_p]
 #libCSM.csm_schema_free.errcheck = CheckSimpleError
-libCSM.csm_schema_get_major_version.argtypes = [c_void_p]
+libCSM.csm_schema_get_major_version.argtypes = [c_void_p, c_void_p]
 libCSM.csm_schema_get_major_version.errcheck = CheckSimpleError
-libCSM.csm_schema_get_minor_version.argtypes = [c_void_p]
+libCSM.csm_schema_get_minor_version.argtypes = [c_void_p, c_void_p]
 libCSM.csm_schema_get_minor_version.restype = c_double
 libCSM.csm_schema_get_minor_version.errcheck = CheckSimpleError
 
@@ -52,15 +59,16 @@ libCSM.csm_schema_field_get_min.errcheck = CheckSimpleError
 libCSM.csm_schema_field_get_max.argtypes = [c_void_p, POINTER(c_long)]
 libCSM.csm_schema_field_get_max.errcheck = CheckSimpleError
 
-libCSM.csm_services_fetch.argtypes = [POINTER(c_void_p)]
+libCSM.csm_services_fetch.argtypes = [POINTER(c_void_p), c_void_p]
 libCSM.csm_services_free.argtypes = [c_void_p]
 #libCSM.csm_services_free.errcheck = CheckSimpleError
 
 libCSM.csm_service_create.restype = c_void_p
 libCSM.csm_service_create.errcheck = CheckPointerError
-libCSM.csm_service_commit.argtypes = [c_void_p]
+libCSM.csm_service_destroy.argtypes = [c_void_p]
+libCSM.csm_service_commit.argtypes = [c_void_p, c_void_p]
 libCSM.csm_service_commit.errcheck = CheckSimpleError
-libCSM.csm_service_remove.argtypes = [c_void_p]
+libCSM.csm_service_remove.argtypes = [c_void_p, c_void_p]
 libCSM.csm_service_remove.errcheck = CheckSimpleError
 
 libCSM.csm_services_get_by_index.argtypes = [c_void_p, c_int]
@@ -111,6 +119,15 @@ libCSM.csm_service_set_int_list_from_array.errcheck = CheckSimpleError
 libCSM.csm_service_set_string_list_from_array.argtypes = [c_void_p, c_char_p, POINTER(c_char_p), c_int]
 libCSM.csm_service_set_string_list_from_array.errcheck = CheckSimpleError
 
+class CSMConfig(object):
+    def __init__(self,path=None):
+	self.ptr = libCSM.csm_config_create()
+	if (path):
+	    libCSM.csm_config_set_mgmt_sock(self.ptr,path)
+    
+    def __del__(self):
+	libCSM.csm_config_free(self.ptr)
+
 class FieldType:
     STRING,LIST,INT,HEX = range(1,5)
 
@@ -125,12 +142,15 @@ def FieldTypeToStr(type):
 	return "LIST"
 
 class CSMSchema(object):
-    def __init__(self):
+    def __init__(self,config):
+	if not isinstance(config, CSMConfig):
+	    raise TypeError
+	self.__config = config
 	self.ptr = c_void_p()
-	self.__len = libCSM.csm_schema_fetch(byref(self.ptr))
+	self.__len = libCSM.csm_schema_fetch(byref(self.ptr), self.__config.ptr)
 	self.version = {
-	    'major': libCSM.csm_schema_get_major_version(self.ptr),
-	    'minor': libCSM.csm_schema_get_minor_version(self.ptr)
+	    'major': libCSM.csm_schema_get_major_version(self.ptr, self.__config.ptr),
+	    'minor': libCSM.csm_schema_get_minor_version(self.ptr, self.__config.ptr)
 	}
     
     def __len__(self):
@@ -181,11 +201,9 @@ class CSMSchemaFieldInt(CSMSchemaField):
     def __init__(self,ptr,name=None):
 	CSMSchemaField.__init__(self,ptr,name)
 	limit = c_long()
-	libCSM.csm_schema_field_get_min(self.ptr,byref(limit))
-	if limit.value:
+	if libCSM.csm_schema_field_get_min(self.ptr,byref(limit)) == ReturnCode.OK:
 	    self.min = limit.value
-	libCSM.csm_schema_field_get_max(self.ptr,byref(limit))
-	if limit.value:
+	if libCSM.csm_schema_field_get_max(self.ptr,byref(limit)) == ReturnCode.OK:
 	    self.max = limit.value
 
 class CSMSchemaFieldString(CSMSchemaField):
@@ -201,8 +219,12 @@ class CSMSchemaFieldList(CSMSchemaField):
 	self.subtype = libCSM.csm_schema_field_get_list_subtype(self.ptr)
 
 class CSMServiceList(collections.Mapping):
-    def __init__(self):
-	self.__services = None
+    def __init__(self, config):
+	if not isinstance(config, CSMConfig):
+	    raise TypeError
+	self.__config = config
+	self.__ptr = None
+	#self.__services = []
 	self.__len = 0
 	self.update()
     
@@ -214,43 +236,50 @@ class CSMServiceList(collections.Mapping):
 	    raise KeyError
 	if not isinstance(key, basestring):
 	    raise TypeError
-	return CSMService(libCSM.csm_services_get_by_key(self.__services,key))
+	return CSMService(self.__config, libCSM.csm_services_get_by_key(self.__ptr,key))
     
     def __iter__(self):
 	for i in range(self.__len):
-	    yield CSMService(libCSM.csm_services_get_by_index(self.__services,i))
+	    yield CSMService(self.__config, libCSM.csm_services_get_by_index(self.__ptr,i))
+	    #yield self.__services[i]
     
     def __delitem__(self,key):
-	libCSM.csm_service_remove(libCSM.csm_services_get_by_key(self.__services,key))
+	libCSM.csm_service_remove(libCSM.csm_services_get_by_key(self.__ptr,key), self.__config.ptr)
 	self.update()
     
     def __del__(self):
-	libCSM.csm_services_free(self.__services)
+	libCSM.csm_services_free(self.__ptr)
     
     def append(self,value):
 	if not isinstance(value,CSMService):
 	    raise TypeError
-	libCSM.csm_service_commit(value.ptr)
+	libCSM.csm_service_commit(value.ptr, self.__config.ptr)
 	self.update()
     
     def update(self):
         """ Free's current list of services and repopulates it from the Commotion service manager."""
 	# first, free current list of services
-	if (self.__services and self.__len):
+	if (self.__ptr and self.__len):
 	    self.__del__()
 	
 	# next, fetch list of services from CSM
-	self.__services = c_void_p()
-	self.__len = libCSM.csm_services_fetch(byref(self.__services))
+	self.__ptr = c_void_p()
+	self.__len = libCSM.csm_services_fetch(byref(self.__ptr), self.__config.ptr)
+	#self.__services = []
+	#for i in range(self.__len):
+	    #self.__services.append(CSMService(libCSM.csm_services_get_by_index(self.__ptr,i)))
 	
 class CSMService(object):
     """A service object that handles service creation, modification, comparison, and deletion."""
-    def __init__(self, ptr=None):
+    def __init__(self, config, ptr=None):
         """
         Uses a pointer to load an existing service, or requests a pointer for a new Commotion service.
         
         ptr : C pointer to a commotion service
         """
+        if not isinstance(config, CSMConfig):
+	    raise TypeError
+	self.__config = config
         self.__dirty = False
         self.__local = 1
         if ptr:
@@ -271,7 +300,7 @@ class CSMService(object):
 		    self.__dict__[key.value] = out.value
 		elif field_type == FieldType.LIST:
 		    field_subtype = libCSM.csm_field_get_list_subtype(field)
-		    list_len = libCSM.csm_field_list_get_length(field)
+		    list_len = libCSM.csm_field_get_list_length(field)
 		    self.__dict__[key.value] = []
 		    if field_subtype == FieldType.INT:
 			for i in range(list_len):
@@ -279,7 +308,7 @@ class CSMService(object):
 			    libCSM.csm_field_get_list_int(field,i,byref(out))
 			    self.__dict__[key.value].append(out.value)
 		    elif field_subtype == FieldType.STRING or field_subtype == FieldType.HEX:
-			for s in range(list_len):
+			for i in range(list_len):
 			    self.__dict__[key.value].append(libCSM.csm_field_get_list_string(field,i))
 		    else:
 			raise TypeError
@@ -294,9 +323,11 @@ class CSMService(object):
             if libCSM.csm_service_is_local(self.ptr) == 0:
 		self.__local = 0
         else:
-	    print "new service"
             self.ptr = libCSM.csm_service_create()
             self.__len = 0
+    
+    def free(self):
+	libCSM.csm_service_destroy(self.ptr)
     
     def is_current(self):
 	return not self.__dirty
@@ -304,13 +335,18 @@ class CSMService(object):
     def __len__(self):
 	return self.__len
     
+    def __iter__(self):
+	for name,val in self.__dict__.iteritems():
+	    if name == "_CSMService__local" or name == "_CSMService__dirty" or name == "ptr" or name == "_CSMService__len" or name == "_CSMService__config":
+		continue
+	    yield (name,val)
+    
     def __setattr__(self,name,value):
-	if name == "_CSMService__local" or name == "_CSMService__dirty" or name == "ptr" or name == "_CSMService__len":
+	if name == "_CSMService__local" or name == "_CSMService__dirty" or name == "ptr" or name == "_CSMService__len" or name == "_CSMService__config":
 	    self.__dict__[name] = value
 	    return
 	if not self.__local:
 	    raise TypeError
-	print "setting " + name
 	field_type = None
 	try:
 	    field = libCSM.csm_service_get_field_by_name(self.ptr, name)
@@ -326,6 +362,7 @@ class CSMService(object):
 		raise TypeError
 	    libCSM.csm_service_set_string(self.ptr, name, value)
 	elif isinstance(value, list):
+	    field_subtype = None
 	    if field_type:
 		if field_type != FieldType.LIST:
 		    raise TypeError
@@ -354,7 +391,7 @@ class CSMService(object):
 	self.__dirty = True
     
     def __getattr__(self,name):
-	if name == "_CSMService__local" or name == "_CSMService__dirty" or name == "ptr" or name == "_CSMService__len":
+	if name == "_CSMService__local" or name == "_CSMService__dirty" or name == "ptr" or name == "_CSMService__len" or name == "_CSMService__config":
 	    return self.__dict__[name]
 	field = libCSM.csm_service_get_field_by_name(self.ptr, name)
 	if not field.value:
@@ -387,7 +424,7 @@ class CSMService(object):
     def __delattr__(self,name):
 	if not self.__local:
 	    raise TypeError
-	libCSM.csm_service_remove_field(self.ptr,name)
+	libCSM.csm_service_remove_field(self.ptr,name, self.__config.ptr)
 	self.__dirty = True
     
     def __eq__(self, other):
@@ -423,19 +460,18 @@ class CSMService(object):
         """
 	pass
     
-    def commit_service(self):
+    def commit(self):
         """Sets current service values to its pointer in the Commotion Service Manager """
         if not self.__local:
 	    raise TypeError
         if not self.__dirty:
 	    return
 	# Upon commiting, key and signature will be set
-	libCSM.csm_service_commit(self.ptr)
+	libCSM.csm_service_commit(self.ptr, self.__config.ptr)
 	self.__dirty = False
     
-    def remove_service(self):
+    def remove(self):
         """Removes the service in both the Commotion Service Manager and locally."""
         if not self.__local:
 	    raise TypeError
-        libCSM.csm_service_remove(self.ptr)
-        self.__del__(self)
+        libCSM.csm_service_remove(self.ptr, self.__config.ptr)
