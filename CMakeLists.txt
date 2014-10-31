@@ -35,7 +35,7 @@ SET(DAEMONSRC daemon.c defs.h browse.h browse.c schema.h schema.c cmd.h cmd.c se
 SET(LIBSRC commotion-service-manager.h commotion-service-manager.c)
 # SET(CLIENTSRC client.c ${LIBSRC})
 
-SET(DAEMONLIBS commotion commotion_serval-sas m avahi-core avahi-common)
+SET(DAEMONLIBS commotion commotion_serval-sas m avahi-common)
 SET(LIBLIBS commotion)
 
 IF(OPENWRT OR USE_UCI)
@@ -47,6 +47,8 @@ ENDIF()
 IF(CLIENT)
   ADD_DEFINITIONS(-DCLIENT)
   SET(DAEMONLIBS ${DAEMONLIBS} avahi-client)
+ELSE()
+  SET(DAEMONLIBS ${DAEMONLIBS} avahi-core)
 ENDIF()
 
 IF(OPENWRT)

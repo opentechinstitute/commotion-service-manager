@@ -1,12 +1,7 @@
 TODO
 test avahi client while restarting avahi daemon
 configure which interface(s) to listen on
-make note in README that version, lifetime, fingerprint, and signature are required fields in the schema
-don't hardcode service protocol, instead make runtime protocol configuration using config file
-  convert functions to use schema: print_service
-  redo commotion-service-manager.h/c to use schema
-create error/return code enum and use that for all return code checking
-  (and create same for libcommotion return/error codes)
+make note in README that version, lifetime, key, and signature are required fields in the schema
 service updates registration/subscription and notifications for clients
 UCI-defaults script
 	delete /etc/avahi/services/*
@@ -42,3 +37,7 @@ make csm_schema_t a co_list since it will need to be sent to clients
 client API should have standard error return value
 Add CSM API method for fetching schema
 add "generated" option to schema fields, so while required for remote services, locally created services don't have to provide them when committing
+don't hardcode service protocol, instead make runtime protocol configuration using config file
+create error/return code enum and use that for all return code checking
+redo commotion-service-manager.h/c to use schema
+validate service fields so length of "<field name>=<field value>" < 256
