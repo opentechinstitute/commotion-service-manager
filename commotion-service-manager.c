@@ -46,9 +46,40 @@ is_hex(const char *str, size_t len)
   return 1;
 }
 
+void *
+csm_config_create(void)
+{
+  struct csm_config *config = h_calloc(1,sizeof(struct csm_config));
+  CHECK_MEM(config);
+  config->csm_sock = h_strdup(CSM_MANAGESOCK); // default
+  return (void*)config;
+error:
+  return NULL;
+}
+
+int
+csm_config_set_mgmt_sock(void *config, const char *sock)
+{
+  struct csm_config *c = (struct csm_config*)config;
+  if (c->csm_sock)
+    h_free(c->csm_sock);
+  c->csm_sock = h_strdup(sock);
+  CHECK_MEM(c->csm_sock);
+  hattach(c->csm_sock,c);
+  return CSM_OK;
+error:
+  return CSM_ERROR;
+}
+
+void
+csm_config_free(void *config)
+{
+  h_free(config);
+}
+
 // returns number of fields
 int
-csm_schema_fetch(void **schema)
+csm_schema_fetch(void **schema, void *config)
 {
   co_obj_t *request = NULL,
 	    *response = NULL,
@@ -56,8 +87,8 @@ csm_schema_fetch(void **schema)
   int ret = 0;
   
   co_init();
-  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
-  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
+  conn = co_connect(((struct csm_config*)config)->csm_sock, strlen(((struct csm_config*)config)->csm_sock)+1);
+  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", ((struct csm_config*)config)->csm_sock);
   CHECK_MEM((request = co_request_create()));
   
   co_call(conn, &response, "get_schema", sizeof("get_schema"), request);
@@ -97,7 +128,7 @@ error:
 }
 
 int
-csm_schema_get_major_version(void *schema)
+csm_schema_get_major_version(void *schema, void *config)
 {
   co_obj_t *request = NULL,
 	    *response = NULL,
@@ -105,8 +136,8 @@ csm_schema_get_major_version(void *schema)
   int ret = CSM_ERROR;
   
   co_init();
-  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
-  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
+  conn = co_connect(((struct csm_config*)config)->csm_sock, strlen(((struct csm_config*)config)->csm_sock)+1);
+  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", ((struct csm_config*)config)->csm_sock);
   CHECK_MEM((request = co_request_create()));
   
   co_call(conn, &response, "get_schema_version", sizeof("get_schema_version"), request);
@@ -131,7 +162,7 @@ error:
 }
 
 double
-csm_schema_get_minor_version(void *schema)
+csm_schema_get_minor_version(void *schema, void *config)
 {
   co_obj_t *request = NULL,
 	    *response = NULL,
@@ -139,8 +170,8 @@ csm_schema_get_minor_version(void *schema)
   int ret = CSM_ERROR;
   
   co_init();
-  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
-  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
+  conn = co_connect(((struct csm_config*)config)->csm_sock, strlen(((struct csm_config*)config)->csm_sock)+1);
+  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", ((struct csm_config*)config)->csm_sock);
   CHECK_MEM((request = co_request_create()));
   
   co_call(conn, &response, "get_schema_version", sizeof("get_schema_version"), request);
@@ -272,9 +303,11 @@ csm_schema_field_get_min(void *schema_field, long *out)
         && ((co_schema_field_t*)schema_field)->field.type == CSM_FIELD_INT,
 	"Invalid schema int field");
   csm_schema_field_t *field = &((co_schema_field_t*)schema_field)->field;
-  if (field->limits_flag & CSM_LIMIT_MIN)
+  if (field->limits_flag & CSM_LIMIT_MIN) {
     *out = field->min;
-  return CSM_OK;
+    return CSM_OK;
+  }
+  return CSM_NOT_SET;
 error:
   return CSM_ERROR;
 }
@@ -286,24 +319,26 @@ csm_schema_field_get_max(void *schema_field, long *out)
         && ((co_schema_field_t*)schema_field)->field.type == CSM_FIELD_INT,
 	"Invalid schema int field");
   csm_schema_field_t *field = &((co_schema_field_t*)schema_field)->field;
-  if (field->limits_flag & CSM_LIMIT_MAX)
+  if (field->limits_flag & CSM_LIMIT_MAX) {
     *out = field->max;
-  return CSM_OK;
+    return CSM_OK;
+  }
+  return CSM_NOT_SET;
 error:
   return CSM_ERROR;
 }
 
 /** returns number of services */
 int
-csm_services_fetch(void **services) {
+csm_services_fetch(void **services, void *config) {
   co_obj_t *request = NULL,
 	    *response = NULL,
 	    *conn = NULL;
   int ret = 0;
   
   co_init();
-  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
-  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
+  conn = co_connect(((struct csm_config*)config)->csm_sock, strlen(((struct csm_config*)config)->csm_sock)+1);
+  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", ((struct csm_config*)config)->csm_sock);
   CHECK_MEM((request = co_request_create()));
   
   co_call(conn, &response, "list_services", sizeof("list_services"), request);
@@ -365,7 +400,7 @@ csm_service_destroy(void *service)
 /**
  * adds or updates service, also generates key and signature
  */
-int csm_service_commit(void *service) {
+int csm_service_commit(void *service, void *config) {
   co_obj_t *request = NULL,
 	    *response = NULL,
 	    *conn = NULL;
@@ -377,8 +412,8 @@ int csm_service_commit(void *service) {
   
   /* Initialize socket pool for connecting to CSM */
   co_init();
-  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
-  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
+  conn = co_connect(((struct csm_config*)config)->csm_sock, strlen(((struct csm_config*)config)->csm_sock)+1);
+  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", ((struct csm_config*)config)->csm_sock);
   
   CHECK_MEM((request = co_request_create()));
   
@@ -420,7 +455,7 @@ error:
 }
 
 int
-csm_service_remove(void *service) {
+csm_service_remove(void *service, void *config) {
   co_obj_t *request = NULL,
 	    *response = NULL,
 	    *conn = NULL;
@@ -433,8 +468,8 @@ csm_service_remove(void *service) {
   
   /* Initialize socket pool for connecting to CSM */
   co_init();
-  conn = co_connect(CSM_MANAGESOCK, sizeof(CSM_MANAGESOCK));
-  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", CSM_MANAGESOCK);
+  conn = co_connect(((struct csm_config*)config)->csm_sock, strlen(((struct csm_config*)config)->csm_sock)+1);
+  CHECK(conn != NULL, "Failed to connect to CSM at %s\n", ((struct csm_config*)config)->csm_sock);
   
   CHECK_MEM((request = co_request_create()));
   
@@ -573,7 +608,7 @@ csm_field_get_int(void *field, long *out)
         && (val = co_node_value((_treenode_t*)field))
 	&& IS_INT(val),
 	"Invalid int field");
-  *out = (long)*co_obj_data_ptr(val);
+  *out = (long)(*(int32_t*)co_obj_data_ptr(val));
   return CSM_OK;
 error:
   return CSM_ERROR;
@@ -639,7 +674,7 @@ csm_field_get_list_int(void *field, int index, long *out)
   CHECK(index >= 0 && index < co_list_length(val), "Out of bounds index");
   co_obj_t *ret = co_list_element(val, (unsigned int)index);
   CHECK(IS_INT(ret), "Invalid int field");
-  *out = (long)*co_obj_data_ptr(ret);
+  *out = (long)(*(int32_t*)co_obj_data_ptr(ret));
   return CSM_OK;
 error:
   return CSM_ERROR;

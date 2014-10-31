@@ -27,20 +27,29 @@
 
 #include "schema.h"
 
-#define CSM_ERROR -1
-#define CSM_OK 0
+enum {
+  CSM_OK = 0,
+  CSM_ERROR = -1,
+  CSM_NOT_SET = -2
+};
 
+typedef void CSMConfig;
 typedef void CSMService;
 typedef void CSMServiceList;
 typedef void CSMField;
 typedef void CSMSchema;
 typedef void CSMSchemaField;
 
+// config functions
+CSMConfig *csm_config_create(void);
+int csm_config_set_mgmt_sock(CSMConfig *config, const char *sock);
+void csm_config_free(CSMConfig *config);
+
 // schema functions
-int csm_schema_fetch(CSMSchema **schema); // returns number of fields
+int csm_schema_fetch(CSMSchema **schema, CSMConfig *config); // returns number of fields
 int csm_schema_free(CSMSchema *schema);
-int csm_schema_get_major_version(CSMSchema *schema);
-double csm_schema_get_minor_version(CSMSchema *schema);
+int csm_schema_get_major_version(CSMSchema *schema, CSMConfig *config);
+double csm_schema_get_minor_version(CSMSchema *schema, CSMConfig *config);
 
 CSMSchemaField *csm_schema_get_next_field(CSMSchema *schema, CSMSchemaField *current, char **name); // set name if not NULL
 CSMSchemaField *csm_schema_get_field_by_index(CSMSchema *schema, int index, char **name);
@@ -57,7 +66,7 @@ int csm_schema_field_get_min(CSMSchemaField *schema_field, long *out);
 int csm_schema_field_get_max(CSMSchemaField *schema_field, long *out);
 
 // service list functions
-int csm_services_fetch(CSMServiceList **service_list);
+int csm_services_fetch(CSMServiceList **service_list, CSMConfig *config);
 int csm_services_free(CSMServiceList *service_list);
 
 CSMService *csm_services_get_by_index(CSMServiceList *service_list, int index);
@@ -66,8 +75,8 @@ CSMService *csm_services_get_by_key(CSMServiceList *service_list, char *key);
 // service functions
 CSMService *csm_service_create(void);
 void csm_service_destroy(CSMService *service);
-int csm_service_commit(CSMService *service); // adds key and signature to service
-int csm_service_remove(CSMService *service); // does not destroy service or remove from list
+int csm_service_commit(CSMService *service, CSMConfig *config); // adds key and signature to service
+int csm_service_remove(CSMService *service, CSMConfig *config); // does not destroy service or remove from list
 
 int csm_service_is_local(CSMService *service);
 
