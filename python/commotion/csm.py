@@ -32,8 +32,8 @@ class CSMSchema(object):
 	self.ptr = c_void_p()
 	self.__len = libCSM.csm_schema_fetch(byref(self.ptr), self.__config.ptr)
 	self.version = {
-	    'major': libCSM.csm_schema_get_major_version(self.ptr, self.__config.ptr),
-	    'minor': libCSM.csm_schema_get_minor_version(self.ptr, self.__config.ptr)
+	    'major': libCSM.csm_schema_get_major_version(self.__config.ptr),
+	    'minor': libCSM.csm_schema_get_minor_version(self.__config.ptr)
 	}
     
     def __len__(self):
@@ -76,8 +76,10 @@ class _CSMSchemaField(object):
 	    self.name = libCSM.csm_schema_field_get_name(self.ptr)
 	else:
 	    self.name = name
-	self.required = libCSM.csm_schema_field_get_required(self.ptr)
-	self.generated = libCSM.csm_schema_field_get_generated(self.ptr)
+	self.required = c_bool()
+	libCSM.csm_schema_field_get_required(self.ptr, byref(self.required))
+	self.generated = c_bool()
+	libCSM.csm_schema_field_get_generated(self.ptr, byref(self.generated))
 	self.type = libCSM.csm_schema_field_get_type(self.ptr)
 
 class _CSMSchemaFieldInt(_CSMSchemaField):

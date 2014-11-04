@@ -31,9 +31,9 @@ libCSM.csm_config_free.argtypes = [c_void_p]
 libCSM.csm_schema_fetch.argtypes = [POINTER(c_void_p), c_void_p]
 libCSM.csm_schema_free.argtypes = [c_void_p]
 #libCSM.csm_schema_free.errcheck = _check_simple_error
-libCSM.csm_schema_get_major_version.argtypes = [c_void_p, c_void_p]
+libCSM.csm_schema_get_major_version.argtypes = [c_void_p]
 libCSM.csm_schema_get_major_version.errcheck = _check_simple_error
-libCSM.csm_schema_get_minor_version.argtypes = [c_void_p, c_void_p]
+libCSM.csm_schema_get_minor_version.argtypes = [c_void_p]
 libCSM.csm_schema_get_minor_version.restype = c_double
 libCSM.csm_schema_get_minor_version.errcheck = _check_simple_error
 
@@ -44,9 +44,9 @@ libCSM.csm_schema_get_field_by_index.errcheck = _check_pointer_error
 libCSM.csm_schema_field_get_name.argtypes = [c_void_p]
 libCSM.csm_schema_field_get_name.restype = c_char_p
 libCSM.csm_schema_field_get_name.errcheck = _check_char_pointer_error
-libCSM.csm_schema_field_get_required.argtypes = [c_void_p]
+libCSM.csm_schema_field_get_required.argtypes = [c_void_p, POINTER(c_bool)]
 libCSM.csm_schema_field_get_required.errcheck = _check_simple_error
-libCSM.csm_schema_field_get_type.argtypes = [c_void_p]
+libCSM.csm_schema_field_get_type.argtypes = [c_void_p, POINTER(c_bool)]
 libCSM.csm_schema_field_get_type.errcheck = _check_simple_error
 
 libCSM.csm_schema_field_get_list_subtype.argtypes = [c_void_p]

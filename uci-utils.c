@@ -312,7 +312,7 @@ _csm_write_uci_field(co_obj_t *container, co_obj_t *key, co_obj_t *val, void *co
   sec_ptr.section = uci_ctx->uuid;
   sec_ptr.option = co_obj_data_ptr(key);
   if (IS_INT(val)) {
-    CHECK_MEM(asprintf(&val_str, "%ld", ((co_int32_t*)val)->data) != -1);
+    CHECK_MEM(asprintf(&val_str, "%"PRId32, ((co_int32_t*)val)->data) != -1);
     sec_ptr.value = val_str;
     uci_ret = uci_ctx->uci_setter(uci_ctx->c, &sec_ptr);
     UCI_CHECK(uci_ret == 0, "Failed to set UCI field %s", val_str);

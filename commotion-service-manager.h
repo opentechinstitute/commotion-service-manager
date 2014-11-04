@@ -48,16 +48,17 @@ void csm_config_free(CSMConfig *config);
 // schema functions
 int csm_schema_fetch(CSMSchema **schema, CSMConfig *config); // returns number of fields
 int csm_schema_free(CSMSchema *schema);
-int csm_schema_get_major_version(CSMSchema *schema, CSMConfig *config);
-double csm_schema_get_minor_version(CSMSchema *schema, CSMConfig *config);
+int csm_schema_get_major_version(CSMConfig *config);
+double csm_schema_get_minor_version(CSMConfig *config);
+int csm_schema_length(CSMSchema *schema);
 
 CSMSchemaField *csm_schema_get_next_field(CSMSchema *schema, CSMSchemaField *current, char **name); // set name if not NULL
 CSMSchemaField *csm_schema_get_field_by_index(CSMSchema *schema, int index, char **name);
 CSMSchemaField *csm_schema_get_field_by_name(CSMSchema *schema, char *name);
 
 char *csm_schema_field_get_name(CSMSchemaField *schema_field);
-bool csm_schema_field_get_required(CSMSchemaField *schema_field);
-bool csm_schema_field_get_generated(void *schema_field);
+int csm_schema_field_get_required(CSMSchemaField *schema_field, bool *out);
+int csm_schema_field_get_generated(void *schema_field, bool *out);
 int csm_schema_field_get_type(CSMSchemaField *schema_field);
 
 int csm_schema_field_get_list_subtype(CSMSchemaField *schema_field);
@@ -68,6 +69,7 @@ int csm_schema_field_get_max(CSMSchemaField *schema_field, long *out);
 // service list functions
 int csm_services_fetch(CSMServiceList **service_list, CSMConfig *config);
 int csm_services_free(CSMServiceList *service_list);
+int csm_services_length(CSMServiceList *service_list);
 
 CSMService *csm_services_get_by_index(CSMServiceList *service_list, int index);
 CSMService *csm_services_get_by_key(CSMServiceList *service_list, char *key);

@@ -128,7 +128,7 @@ error:
 }
 
 int
-csm_schema_get_major_version(void *schema, void *config)
+csm_schema_get_major_version(void *config)
 {
   co_obj_t *request = NULL,
 	    *response = NULL,
@@ -162,7 +162,7 @@ error:
 }
 
 double
-csm_schema_get_minor_version(void *schema, void *config)
+csm_schema_get_minor_version(void *config)
 {
   co_obj_t *request = NULL,
 	    *response = NULL,
@@ -193,6 +193,15 @@ error:
   /* Close commotiond socket connection */
   co_disconnect(conn);
   return ret;
+}
+
+int
+csm_schema_length(void *schema)
+{
+  CHECK(IS_LIST((co_obj_t*)schema), "Invalid schema");
+  return co_list_length((co_obj_t*)schema);
+error:
+  return CSM_ERROR;
 }
 
 void *
@@ -246,22 +255,24 @@ error:
   return NULL;
 }
 
-bool
-csm_schema_field_get_required(void *schema_field)
+int
+csm_schema_field_get_required(void *schema_field, bool *out)
 {
   CHECK(IS_SCHEMA((co_obj_t*)schema_field), "Invalid schema field");
-  return ((co_schema_field_t*)schema_field)->field.required;
+  *out = ((co_schema_field_t*)schema_field)->field.required;
+  return CSM_OK
 error:
-  return NULL;
+  return CSM_ERROR;
 }
 
-bool
-csm_schema_field_get_generated(void *schema_field)
+int
+csm_schema_field_get_generated(void *schema_field, bool *out)
 {
   CHECK(IS_SCHEMA((co_obj_t*)schema_field), "Invalid schema field");
-  return ((co_schema_field_t*)schema_field)->field.generated;
+  *out = ((co_schema_field_t*)schema_field)->field.generated;
+  return CSM_OK
 error:
-  return NULL;
+  return CSM_ERROR;
 }
 
 int
@@ -372,6 +383,15 @@ csm_services_free(void *services) {
 	"Not a valid list");
   co_obj_free(services);
   return CSM_OK;
+error:
+  return CSM_ERROR;
+}
+
+int
+csm_services_length(CSMServiceList *service_list)
+{
+  CHECK(IS_LIST((co_obj_t*)service_list), "Invalid service list");
+  return co_list_length((co_obj_t*)service_list);
 error:
   return CSM_ERROR;
 }
