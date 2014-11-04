@@ -260,7 +260,7 @@ csm_schema_field_get_required(void *schema_field, bool *out)
 {
   CHECK(IS_SCHEMA((co_obj_t*)schema_field), "Invalid schema field");
   *out = ((co_schema_field_t*)schema_field)->field.required;
-  return CSM_OK
+  return CSM_OK;
 error:
   return CSM_ERROR;
 }
@@ -270,7 +270,7 @@ csm_schema_field_get_generated(void *schema_field, bool *out)
 {
   CHECK(IS_SCHEMA((co_obj_t*)schema_field), "Invalid schema field");
   *out = ((co_schema_field_t*)schema_field)->field.generated;
-  return CSM_OK
+  return CSM_OK;
 error:
   return CSM_ERROR;
 }

@@ -15,7 +15,7 @@ SET(COMMOTION_MANAGESOCK \"/var/run/commotiond.sock\")
 SET(CSM_MANAGESOCK \"/var/run/commotion-service-manager.sock\")
 SET(UCIPATH \"/var/run/uci\")
 
-CONFIGURE_FILE( "${CMAKE_SOURCE_DIR}/config.h.in" "${PROJECT_SOURCE_DIR}/config.h" )
+CONFIGURE_FILE( "${CMAKE_SOURCE_DIR}/src/config.h.in" "${PROJECT_SOURCE_DIR}/src/config.h" )
 
 ADD_DEFINITIONS(-Os -Wall --std=gnu99 -Wmissing-declarations -DNDEBUG -DHAVE_STDINT_H)
 
@@ -27,45 +27,20 @@ IF(DEBUG)
   ENDIF()
 ENDIF()
 
-SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-
-SET(DAEMONSRC daemon.c defs.h browse.h browse.c schema.h schema.c cmd.h cmd.c service.h service.c service_list.h service_list.c publish.h publish.c service.h service.c util.h util.c extern/base32.h extern/base32.c extern/jsmn.h extern/jsmn.c)
-SET(LIBSRC commotion-service-manager.h commotion-service-manager.c)
-
-SET(DAEMONLIBS commotion commotion_serval-sas m avahi-common)
-SET(LIBLIBS commotion)
-
-IF(OPENWRT OR USE_UCI)
-  ADD_DEFINITIONS(-DUSE_UCI)
-  SET(DAEMONSRC ${DAEMONSRC} uci-utils.h uci-utils.c)
-  SET(DAEMONLIBS ${DAEMONLIBS} uci)
-ENDIF()
-
-IF(CLIENT)
-  ADD_DEFINITIONS(-DCLIENT)
-  SET(DAEMONLIBS ${DAEMONLIBS} avahi-client)
-ELSE()
-  SET(DAEMONLIBS ${DAEMONLIBS} avahi-core)
-ENDIF()
-
 IF(OPENWRT)
   ADD_DEFINITIONS(-DOPENWRT)
   REMOVE_DEFINITIONS(-DCLIENT)
   SET(UCIPATH \"/etc/config\")
 ENDIF()
 
-ADD_EXECUTABLE(daemon ${DAEMONSRC})
-ADD_LIBRARY(library SHARED ${LIBSRC})
+IF(OPENWRT OR USE_UCI)
+  ADD_DEFINITIONS(-DUSE_UCI)
+ENDIF()
 
-TARGET_LINK_LIBRARIES(daemon ${DAEMONLIBS} library)
-TARGET_LINK_LIBRARIES(library ${LIBLIBS})
+IF(CLIENT)
+  ADD_DEFINITIONS(-DCLIENT)
+ENDIF()
 
-SET_TARGET_PROPERTIES(daemon PROPERTIES OUTPUT_NAME commotion-service-manager)
-SET_TARGET_PROPERTIES(library PROPERTIES OUTPUT_NAME commotion-service-manager)
+ADD_SUBDIRECTORY(src)
 
-INSTALL(TARGETS library DESTINATION lib)
-INSTALL(FILES commotion-service-manager.h DESTINATION include)
-INSTALL(TARGETS daemon RUNTIME DESTINATION sbin)
 INSTALL(DIRECTORY files/schemas.d DESTINATION ${CSM_SCHEMA_DIR})
