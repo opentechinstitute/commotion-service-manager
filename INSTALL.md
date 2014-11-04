@@ -12,22 +12,23 @@ The Commotion Service Manager was designed for and successfully builds for the f
 Dependencies
 ------------
 
-The Commotion Service Manager is most useful when built with [UCI][] support, which comes by default with OpenWRT. For Linux, download and install [luci-commotion-linux][], which comes with UCI.
+The Commotion Service Manager is most useful when built with [UCI][] support, which comes by default with OpenWRT.
 
 Other dependencies:
- * [commotiond][] (OpenWRT only)
+ * [commotiond][]
  * [libavahi][]
 
 Build and Install
 -----------------
 
-To build for Linux:
+To build and install for Linux:
 
     $ git clone git://github.com/opentechinstitute/commotion-service-manager.git
     $ cd commotion-service-manager
-    $ make TARGET=linux
+    $ mkdir build && cd build
+    $ cmake ..
+    $ make
     $ sudo make install
-    $
 
 To build for OpenWRT, use the supplied Makefile in the `openwrt` directory, or use the [Commotion feed][] in your OpenWRT build tree.
 
@@ -37,7 +38,6 @@ Uninstall
     $ sudo make uninstall
 
 [UCI]: http://nbd.name/gitweb.cgi?p=uci.git
-[luci-commotion-linux]: https://github.com/opentechinstitute/luci-commotion-linux
 [commotiond]: https://github.com/opentechinstitute/commotiond
 [libavahi]: http://avahi.org/
 [Commotion feed]: https://github.com/opentechinstitute/commotion-feed

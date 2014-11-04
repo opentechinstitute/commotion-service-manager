@@ -33,7 +33,6 @@ SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 SET(DAEMONSRC daemon.c defs.h browse.h browse.c schema.h schema.c cmd.h cmd.c service.h service.c service_list.h service_list.c publish.h publish.c service.h service.c util.h util.c extern/base32.h extern/base32.c extern/jsmn.h extern/jsmn.c)
 SET(LIBSRC commotion-service-manager.h commotion-service-manager.c)
-# SET(CLIENTSRC client.c ${LIBSRC})
 
 SET(DAEMONLIBS commotion commotion_serval-sas m avahi-common)
 SET(LIBLIBS commotion)
@@ -59,17 +58,14 @@ ENDIF()
 
 ADD_EXECUTABLE(daemon ${DAEMONSRC})
 ADD_LIBRARY(library SHARED ${LIBSRC})
-# ADD_EXECUTABLE(client ${CLIENTSRC})
 
 TARGET_LINK_LIBRARIES(daemon ${DAEMONLIBS} library)
 TARGET_LINK_LIBRARIES(library ${LIBLIBS})
-# TARGET_LINK_LIBRARIES(client commotion-service-manager)
 
 SET_TARGET_PROPERTIES(daemon PROPERTIES OUTPUT_NAME commotion-service-manager)
-# SET_TARGET_PROPERTIES(client PROPERTIES OUTPUT_NAME csm-client)
 SET_TARGET_PROPERTIES(library PROPERTIES OUTPUT_NAME commotion-service-manager)
 
 INSTALL(TARGETS library DESTINATION lib)
 INSTALL(FILES commotion-service-manager.h DESTINATION include)
 INSTALL(TARGETS daemon RUNTIME DESTINATION sbin)
-# INSTALL(TARGETS client RUNTIME DESTINATION bin)
+INSTALL(DIRECTORY files/schemas.d DESTINATION ${CSM_SCHEMA_DIR})
