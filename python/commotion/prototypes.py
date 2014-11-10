@@ -46,7 +46,9 @@ libCSM.csm_schema_field_get_name.restype = c_char_p
 libCSM.csm_schema_field_get_name.errcheck = _check_char_pointer_error
 libCSM.csm_schema_field_get_required.argtypes = [c_void_p, POINTER(c_bool)]
 libCSM.csm_schema_field_get_required.errcheck = _check_simple_error
-libCSM.csm_schema_field_get_type.argtypes = [c_void_p, POINTER(c_bool)]
+libCSM.csm_schema_field_get_generated.argtypes = [c_void_p, POINTER(c_bool)]
+libCSM.csm_schema_field_get_generated.errcheck = _check_simple_error
+libCSM.csm_schema_field_get_type.argtypes = [c_void_p]
 libCSM.csm_schema_field_get_type.errcheck = _check_simple_error
 
 libCSM.csm_schema_field_get_list_subtype.argtypes = [c_void_p]

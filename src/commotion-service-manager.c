@@ -208,7 +208,10 @@ void *
 csm_schema_get_next_field(void *schema, void *current, char **name)
 {
   CHECK(IS_LIST((co_obj_t*)schema), "Invalid schema");
-  ssize_t len = co_list_length(schema);
+  CHECK(co_list_length((co_obj_t*)schema) > 0, "Empty schema");
+  if (!current)
+    return (void*)co_list_element((co_obj_t*)schema,0);
+  ssize_t len = co_list_length((co_obj_t*)schema);
   for (int i = 0; i < len - 1; i++) {
     if (co_list_element((co_obj_t*)schema,i) == (co_obj_t*)current)
       return (void*)co_list_element((co_obj_t*)schema,i+1);
@@ -537,6 +540,22 @@ void *
 csm_services_get_by_key(void *services, char *key) {
   CHECK(IS_LIST((co_obj_t*)services),"Not a valid list");
   return (void*)co_list_parse((co_obj_t*)services, _csm_services_get_by_key_i, key);
+error:
+  return NULL;
+}
+
+void *
+csm_services_get_next_service(void *service_list, void *current)
+{
+  CHECK(IS_LIST((co_obj_t*)service_list), "Invalid service list");
+  ssize_t len = co_list_length((co_obj_t*)service_list);
+  CHECK(len > 0, "Empty service list");
+  if (!current)
+    return (void*)co_list_element((co_obj_t*)service_list,0);
+  for (int i = 0; i < len - 1; i++) {
+    if (co_list_element((co_obj_t*)service_list,i) == (co_obj_t*)current)
+      return (void*)co_list_element((co_obj_t*)service_list,i+1);
+  }
 error:
   return NULL;
 }

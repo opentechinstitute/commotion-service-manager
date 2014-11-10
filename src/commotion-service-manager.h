@@ -58,7 +58,7 @@ CSMSchemaField *csm_schema_get_field_by_name(CSMSchema *schema, char *name);
 
 char *csm_schema_field_get_name(CSMSchemaField *schema_field);
 int csm_schema_field_get_required(CSMSchemaField *schema_field, bool *out);
-int csm_schema_field_get_generated(void *schema_field, bool *out);
+int csm_schema_field_get_generated(CSMSchemaField *schema_field, bool *out);
 int csm_schema_field_get_type(CSMSchemaField *schema_field);
 
 int csm_schema_field_get_list_subtype(CSMSchemaField *schema_field);
@@ -71,6 +71,7 @@ int csm_services_fetch(CSMServiceList **service_list, CSMConfig *config);
 int csm_services_free(CSMServiceList *service_list);
 int csm_services_length(CSMServiceList *service_list);
 
+CSMService *csm_services_get_next_service(CSMServiceList *service_list, CSMService *current);
 CSMService *csm_services_get_by_index(CSMServiceList *service_list, int index);
 CSMService *csm_services_get_by_key(CSMServiceList *service_list, char *key);
 
