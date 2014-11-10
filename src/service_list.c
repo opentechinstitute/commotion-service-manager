@@ -192,7 +192,6 @@ int
 csm_add_service(csm_service_list *services, csm_service *s, csm_ctx *ctx)
 {
   // validate service fields against schema
-  // TODO since update_service calls this, perhaps we can get rid if this call
   CHECK(csm_validate_fields(ctx, s), "Service doesn't validate");
   
   // attach service to service list
@@ -211,7 +210,7 @@ csm_add_service(csm_service_list *services, csm_service *s, csm_ctx *ctx)
   CHECK(co_list_append(services->service_fields, fields),
         "Failed to add service fields to service list");
   
-  CHECK(csm_update_service(services, s, ctx),
+  CHECK(csm_update_service(services, s, ctx, 0),
         "Failed to finalize service");
   
   return 1;
@@ -222,9 +221,10 @@ error:
 }
 
 int
-csm_update_service(csm_service_list *services, csm_service *s, csm_ctx *ctx)
+csm_update_service(csm_service_list *services, csm_service *s, csm_ctx *ctx, int validate)
 {
-  CHECK(csm_validate_fields(ctx, s), "Service doesn't validate");
+  if (validate)
+    CHECK(csm_validate_fields(ctx, s), "Service doesn't validate");
 //   assert(s->lifetime);
   long lifetime = s->lifetime;
   

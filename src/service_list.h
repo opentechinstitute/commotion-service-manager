@@ -65,7 +65,7 @@ int csm_services_commit(csm_service_list *services);
 int csm_services_register_commit_hook(csm_service_list *services, co_cb_t handler);
 
 int csm_add_service(csm_service_list *services, csm_service *service, csm_ctx *ctx);
-int csm_update_service(csm_service_list *services, csm_service *service, csm_ctx *ctx);
+int csm_update_service(csm_service_list *services, csm_service *service, csm_ctx *ctx, int validate);
 csm_service *csm_find_service(csm_service_list *services, const char *uuid);
 csm_service *csm_remove_service(csm_service_list *services, csm_service *s);
 // void csm_print_services(csm_service_list *services);
