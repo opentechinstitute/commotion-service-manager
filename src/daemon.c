@@ -69,21 +69,6 @@ static co_socket_t *csm_socket = NULL;
 AvahiSimplePoll *simple_poll = NULL;
 co_obj_t *service_proto = NULL;
 
-#if 0
-#define SCHEMA_ADD(K, V) co_tree_insert(self, K, sizeof(K), co_str8_create(V, sizeof(V), 0))
-
-SCHEMA(service_proto)
-{
-  co_obj_t *first = co_tree16_create();
-  co_tree_insert(first, "second", sizeof("second"), co_str8_create("foo",sizeof("foo"),0));
-  CHECK_MEM(first);
-  co_tree_insert(self, "first", sizeof("first"), first);
-  return 1;
-error:
-  return 0;
-}
-#endif
-
 static void socket_send(int fd, char const *str, size_t len) {
   unsigned int sent = 0;
   unsigned int remaining = len;

@@ -75,11 +75,9 @@ _csm_signing_template_append(char **txt_fields, size_t txt_len, co_obj_t *fkey, 
   } else {
     SENTINEL("Invalid service field");
   }
-  DEBUG("appending txt record: %s", txt);
   // NOTE: for some reason, using h_realloc here was causing heap corruption:
   *txt_fields = realloc(*txt_fields, txt_len + tlen + 1 + 1); // extra +1 for trailing \n
   memset(*txt_fields + txt_len,'\0',tlen + 1 + 1);
-  DEBUG("current template: %s",*txt_fields);
   strcat(*txt_fields,txt);
   strcat(*txt_fields,"\n");
   txt_len += tlen + 1;
@@ -94,15 +92,12 @@ _csm_sort_list(co_obj_t *list, co_obj_t *current, void *context)
 {
   co_obj_t *clone = NULL, *ret = current;
   char *raw = NULL;
-  DEBUG("sorting %s",co_obj_data_ptr(current));
   co_obj_t *sorted_list = (co_obj_t*)context;
   ssize_t llen = co_list_length(sorted_list);
   CHECK(llen >= 0, "Invalid list");
   ssize_t rlen = co_obj_raw(&raw, current);
   CHECK(rlen > 0, "Invalid service field");
-  DEBUG("rlen %ld",rlen);
   CHECK(co_obj_import(&clone, raw, rlen, 0) > 0 && clone, "Failed to clone service field");
-  DEBUG("clone %p",clone);
   if (llen == 0) {
     CHECK(co_list_append(sorted_list,clone), "Failed to insert clone");
     clone = NULL;
