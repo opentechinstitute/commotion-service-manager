@@ -7,6 +7,7 @@ SET(DEBUG OFF CACHE BOOL "Turn on/off debugging.")
 SET(OPENWRT OFF CACHE BOOL "Enable/disable subsystems that are unnecessary for OpenWRT platform.")
 SET(USE_UCI ON CACHE BOOL "Enable/disable UCI integration.")
 SET(CLIENT OFF CACHE BOOL "Run full mDNS stack, or act as client to running Avahi daemon.")
+SET(LUA OFF CACHE BOOL "Compile Lua client library.")
 SET(CMAKE_VERBOSE_MAKEFILE OFF)
 
 SET(CSM_PIDFILE \"/var/run/commotion/commotion-service-manager.pid\")
@@ -31,9 +32,11 @@ IF(OPENWRT)
   ADD_DEFINITIONS(-DOPENWRT)
   REMOVE_DEFINITIONS(-DCLIENT)
   SET(UCIPATH \"/etc/config\")
+  SET(LUA ON)
+  SET(USE_UCI ON)
 ENDIF()
 
-IF(OPENWRT OR USE_UCI)
+IF(USE_UCI)
   ADD_DEFINITIONS(-DUSE_UCI)
 ENDIF()
 
@@ -42,6 +45,9 @@ IF(CLIENT)
 ENDIF()
 
 ADD_SUBDIRECTORY(src)
-ADD_SUBDIRECTORY(lua)
+
+IF(LUA)
+  ADD_SUBDIRECTORY(lua)
+ENDIF()
 
 INSTALL(DIRECTORY files/schemas.d DESTINATION ${CSM_SCHEMA_DIR})
