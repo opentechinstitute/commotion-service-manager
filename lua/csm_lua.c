@@ -1,8 +1,8 @@
 #define LUA_LIB
 #include <assert.h>
 #include <string.h>
-#include <lua5.1/lua.h>
-#include <lua5.1/lauxlib.h>
+#include <lua.h>
+#include <lauxlib.h>
 
 #include "../src/commotion-service-manager.h"
 
@@ -514,7 +514,7 @@ _l_csm_service_newindex(lua_State *L)
   /* object, key, val */
   LUA_CHECK_N_ARGS(L,3);
   void *s = _csm_check_service(L,1);
-  char *key = luaL_checkstring(L,2);
+  char *key = (char*)luaL_checkstring(L,2);
   if (lua_isnil(L,3)) {
     LUA_CHECK(csm_service_remove_field(s,key) == CSM_OK,
 	      "Failed to remove service field %s", key);
