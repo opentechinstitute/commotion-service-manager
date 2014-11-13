@@ -2,9 +2,13 @@ SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lua)
 
 SET(LIBSRC csm_lua.c)
 
+LINK_DIRECTORIES(${CMAKE_BINARY_DIR})
+
 SET(LIBLIBS lua commotion-service-manager)
 
-INCLUDE_DIRECTORIES("/usr/include/lua5.1")
+IF(NOT OPENWRT)
+  INCLUDE_DIRECTORIES("/usr/include/lua5.1")
+ENDIF()
 
 ADD_LIBRARY(lua_library SHARED ${LIBSRC})
 
