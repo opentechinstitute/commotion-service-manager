@@ -30,10 +30,13 @@
 #include <assert.h>
 #include <time.h>
 
-#include <avahi-core/core.h>
-#include <avahi-core/lookup.h>
+#ifdef CLIENT
 #include <avahi-client/client.h>
 #include <avahi-client/lookup.h>
+#else
+#include <avahi-core/core.h>
+#include <avahi-core/lookup.h>
+#endif
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>

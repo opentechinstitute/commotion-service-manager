@@ -26,10 +26,13 @@
 #include <limits.h>
 
 #include <avahi-common/error.h>
-#include <avahi-core/core.h>
-#include <avahi-core/publish.h>
+#ifdef CLIENT
 #include <avahi-client/client.h>
 #include <avahi-client/publish.h>
+#else
+#include <avahi-core/core.h>
+#include <avahi-core/publish.h>
+#endif
 
 #include <commotion/debug.h>
 #include <commotion/obj.h>

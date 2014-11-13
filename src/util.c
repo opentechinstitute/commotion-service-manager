@@ -30,8 +30,6 @@
 #include <unistd.h>
 #include <math.h>
 
-#include <avahi-core/core.h>
-
 #include <commotion/debug.h>
 #include <commotion/obj.h>
 #include <commotion/tree.h>
