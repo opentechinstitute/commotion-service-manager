@@ -31,6 +31,8 @@ class CSMSchema(object):
 	self.__config = config
 	self.ptr = c_void_p()
 	self.__len = libCSM.csm_schema_fetch(byref(self.ptr), self.__config.ptr)
+	if self.__len <= 0:
+	    raise RuntimeError
 	self.version = {
 	    'major': libCSM.csm_schema_get_major_version(self.__config.ptr),
 	    'minor': libCSM.csm_schema_get_minor_version(self.__config.ptr)
