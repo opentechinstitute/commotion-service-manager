@@ -8,9 +8,13 @@ SET(LIBSRC commotion-service-manager.h commotion-service-manager.c)
 SET(DAEMONLIBS commotion commotion_serval-sas m avahi-common)
 SET(LIBLIBS commotion)
 
-IF(OPENWRT OR USE_UCI)
+IF(USE_UCI)
   SET(DAEMONSRC ${DAEMONSRC} uci-utils.h uci-utils.c)
   SET(DAEMONLIBS ${DAEMONLIBS} uci)
+ENDIF()
+
+IF(OPENWRT)
+  SET(DAEMONLIBS ${DAEMONLIBS} argp)
 ENDIF()
 
 IF(CLIENT)
