@@ -83,11 +83,11 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   s->fields = service_fields;
   service_attach(s->fields, s);
   
-  ptr_obj = co_tree_find(s->fields, "lifetime", strlen("lifetime") + 1);
+  ptr_obj = co_tree_find(s->fields, "lifetime", sizeof("lifetime"));
   CHECK(ptr_obj, "Service doesn't contain lifetime field");
   s->lifetime = (long)*((int32_t*)co_obj_data_ptr(ptr_obj));
   
-  ptr_obj = co_tree_find(s->fields, "version", strlen("version") + 1);
+  ptr_obj = co_tree_find(s->fields, "version", sizeof("version"));
   if (ptr_obj) {
     char *version_str = strdup(co_obj_data_ptr(ptr_obj));
     char *dot = strchr(version_str, '.');
@@ -101,10 +101,12 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
     CHECK(csm_service_set_str(s, "version", version_str), "Failed to set version");
   }
   
-  ptr_obj = co_tree_find(s->fields, "signature", strlen("signature") + 1);
-  if (ptr_obj)
-    s->signature = co_obj_data_ptr(ptr_obj);
-  ptr_obj = co_tree_find(s->fields, "key", strlen("key") + 1);
+  ptr_obj = co_tree_find(s->fields, "signature", sizeof("signature"));
+  if (ptr_obj) {
+//     s->signature = co_obj_data_ptr(ptr_obj);
+    co_tree_delete(s->fields,"signature",sizeof("signature"));
+  }
+  ptr_obj = co_tree_find(s->fields, "key", sizeof("key"));
   if (ptr_obj) {
     s->key = co_obj_data_ptr(ptr_obj);
     // look for existing service in service list
@@ -116,9 +118,15 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
     if (!existing)
       INFO("Could not find service with provided key, creating new service");
     else {
-      // remove existing service from service list
+      // unpublish and remove existing service from service list
+      CHECK(!ENTRY_GROUP_EMPTY(existing->l.group),"EMPTY ENTRY GROUP");
+      s->l.group = existing->l.group;
+      s->l.uptodate = 0;
+//       CHECK(csm_unpublish_service(existing, ctx), "Failed to unpublish service");
       CHECK(csm_remove_service(ctx->service_list, existing), "Failed to remove old service");
-      csm_service_destroy(existing);
+      s->uuid = h_strdup(uuid);
+      CHECK_MEM(s->uuid);
+      service_attach(s->uuid, s);
     }
   }
   
@@ -126,8 +134,10 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   added = 1;
   if (!csm_publish_service(s, ctx))
     ERROR("Failed to publish service");
-  else
-    s->l.uptodate = 0; // flag used to indicate need to re-register w/ avahi server if it's an already existing service (otherwise ignored)
+  if (existing) {
+    existing->l.group = NULL;
+    csm_service_destroy(existing);
+  }
   
   // send back success, key, signature
   CHECK(s->key && s->signature && s->uuid, "Failed to get key and signature");
