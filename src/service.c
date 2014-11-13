@@ -231,10 +231,10 @@ csm_service_new(AvahiIfIndex interface,
 {
   // allocate a full co_service_t that contains the csm_service
   co_service_t *s_obj = (co_service_t*)co_service_create();
-//   csm_service *s = h_calloc(1, sizeof(csm_service));
+  csm_service *s = NULL;
   
   CHECK_MEM(s_obj);
-  csm_service *s = &(s_obj->service);
+  s = &(s_obj->service);
   
   s->interface = interface;
   s->protocol = protocol;

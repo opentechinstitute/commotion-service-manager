@@ -206,11 +206,11 @@ uci_read(AvahiTimeout *t, void *userdata)
 {
   csm_ctx *ctx = (csm_ctx*)userdata;
   co_obj_t *ctx_obj = NULL;
-//   int ret = 0;
-  CHECK(ctx && ctx->service_list, "Uninitialized context");
   struct uci_context *c = NULL;
-  struct uci_package *pkg = NULL;
   co_obj_t *fields = NULL, *params = NULL, *verdict = NULL, *val_obj = NULL;
+  struct uci_package *pkg = NULL;
+  
+  CHECK(ctx && ctx->service_list, "Uninitialized context");
   
   c = uci_alloc_context();
   CHECK_MEM(c);
