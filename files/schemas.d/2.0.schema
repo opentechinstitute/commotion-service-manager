@@ -23,7 +23,7 @@
 	"type": "string"
       },
       {
-	"field": "type",
+	"field": "tag",
 	"required": false,
 	"type": "list",
 	"subtype": "string"
