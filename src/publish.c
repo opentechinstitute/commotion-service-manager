@@ -209,6 +209,7 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
 					      s->port,
 					      t);
       CHECK(avahi_ret == AVAHI_OK, "Failed to add entry group: %s", AVAHI_ERROR);
+      CHECK(ENTRY_GROUP_COMMIT(s->l.group) == AVAHI_OK, "Failed to commit entry group: %s", AVAHI_ERROR);
     } else if (!s->l.uptodate) {
       int avahi_ret = ENTRY_GROUP_UPDATE_SERVICE(s->l.group,
 						 s->interface,
@@ -220,7 +221,6 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
 						 t);
       CHECK(avahi_ret == AVAHI_OK, "Failed to update entry group: %s", AVAHI_ERROR);
     }
-    CHECK(ENTRY_GROUP_COMMIT(s->l.group) == AVAHI_OK, "Failed to commit entry group");
     s->l.uptodate = 1;
     DEBUG("Successfully published service %s",s->uuid);
   }
