@@ -5,6 +5,14 @@ import sys
 
 hex_chars = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F")
 
+def print_services(services,key=None):
+  for s in services:
+    if key and s.key != key:
+      continue
+    print "Service: " + s.key
+    for (k,v) in s:
+      print "\t" + k + ": " + repr(v)
+
 if (len(sys.argv) == 2):
   config = CSMConfig(sys.argv[1])
 else:
@@ -72,14 +80,47 @@ for field in schema:
 	list.append(str)
     setattr(s,field.name,list)
 
+print "########## New Service ##########"
 s.commit()
+key = s.key
+print "key: " + key
 del s
-
 l.update()
-for s in l:
-  for (k,v) in s:
-    print "\t" + k + ": " + repr(v)
-  #s.remove()
+print_services(l,key)
+
+print "########## Changing description, new tag array ##########"
+s = l[key]
+s.description = "new description"
+s.tag = ["foo","bar","baz"]
+s.commit()
+l.update()
+print_services(l,key)
+
+print "########## Change item of tag array ##########"
+s = l[key]
+s.tag[1] = "blah"
+s.commit()
+l.update()
+print_services(l,key)
+
+print "########## Remove item of tag array ##########"
+s = l[key]
+del s.tag[1]
+s.commit()
+l.update()
+print_services(l,key)
+
+print "########## Remove tag fields ##########"
+s = l[key]
+del s.tag
+s.commit()
+l.update()
+print_services(l,key)
+
+print "########## Delete Service ##########"
+del l[key]
+l.update()
+print_services(l)
 
 del l
 del schema

@@ -111,6 +111,11 @@ libCSM.csm_field_get_list_string.argtypes = [c_void_p, c_int]
 libCSM.csm_field_get_list_string.restype = c_char_p
 libCSM.csm_field_get_list_string.errcheck = _check_char_pointer_error
 
+libCSM.csm_field_set_int_list_from_array.argtypes = [c_void_p, POINTER(c_long), c_int]
+libCSM.csm_field_set_int_list_from_array.errcheck = _check_simple_error
+libCSM.csm_field_set_string_list_from_array.argtypes = [c_void_p, POINTER(c_char_p), c_int]
+libCSM.csm_field_set_string_list_from_array.errcheck = _check_simple_error
+
 libCSM.csm_service_set_int.argtypes = [c_void_p, c_char_p, c_long]
 libCSM.csm_service_set_int.errcheck = _check_simple_error
 libCSM.csm_service_set_string.argtypes = [c_void_p, c_char_p, c_char_p]

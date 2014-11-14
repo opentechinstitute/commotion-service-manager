@@ -167,7 +167,6 @@ class CSMService(object):
         if not isinstance(config, CSMConfig):
 	    raise TypeError
 	self.__config = config
-        self.__dirty = False
         self.__local = 1
         if ptr:
             if type(ptr) != c_void_p:
@@ -186,19 +185,7 @@ class CSMService(object):
 		    libCSM.csm_field_get_int(field, byref(out))
 		    self.__dict__[key.value] = out.value
 		elif field_type == FieldType.LIST:
-		    field_subtype = libCSM.csm_field_get_list_subtype(field)
-		    list_len = libCSM.csm_field_get_list_length(field)
-		    self.__dict__[key.value] = []
-		    if field_subtype == FieldType.INT:
-			for i in range(list_len):
-			    out = c_long()
-			    libCSM.csm_field_get_list_int(field,i,byref(out))
-			    self.__dict__[key.value].append(out.value)
-		    elif field_subtype == FieldType.STRING or field_subtype == FieldType.HEX:
-			for i in range(list_len):
-			    self.__dict__[key.value].append(libCSM.csm_field_get_list_string(field,i))
-		    else:
-			raise TypeError
+		    self.__dict__[key.value] = CSMServiceFieldList(field)
 		else:
 		    raise TypeError
 		# get next field
@@ -216,20 +203,17 @@ class CSMService(object):
     def free(self):
 	libCSM.csm_service_destroy(self.ptr)
     
-    def is_current(self):
-	return not self.__dirty
-    
     def __len__(self):
 	return self.__len
     
     def __iter__(self):
 	for name,val in self.__dict__.iteritems():
-	    if name == "_CSMService__local" or name == "_CSMService__dirty" or name == "ptr" or name == "_CSMService__len" or name == "_CSMService__config":
+	    if name == "_CSMService__local" or name == "ptr" or name == "_CSMService__len" or name == "_CSMService__config":
 		continue
 	    yield (name,val)
     
     def __setattr__(self,name,value):
-	if name == "_CSMService__local" or name == "_CSMService__dirty" or name == "ptr" or name == "_CSMService__len" or name == "_CSMService__config":
+	if name == "_CSMService__local" or name == "ptr" or name == "_CSMService__len" or name == "_CSMService__config":
 	    self.__dict__[name] = value
 	    return
 	if not self.__local:
@@ -253,7 +237,7 @@ class CSMService(object):
 	    if field_type:
 		if field_type != FieldType.LIST:
 		    raise TypeError
-		field_subtype = libCSM.csm_field_get_list_subtype(self.ptr)
+		field_subtype = libCSM.csm_field_get_list_subtype(field)
 	    list_len = len(value)
 	    if list_len <= 0:
 		raise ValueError
@@ -275,10 +259,9 @@ class CSMService(object):
 		raise TypeError
 	else:
 	    raise TypeError
-	self.__dirty = True
     
     def __getattr__(self,name):
-	if name == "_CSMService__local" or name == "_CSMService__dirty" or name == "ptr" or name == "_CSMService__len" or name == "_CSMService__config":
+	if name == "_CSMService__local" or name == "ptr" or name == "_CSMService__len" or name == "_CSMService__config":
 	    return self.__dict__[name]
 	field = libCSM.csm_service_get_field_by_name(self.ptr, name)
 	if not field.value:
@@ -291,20 +274,7 @@ class CSMService(object):
 	elif field_type == FieldType.STRING or field_type == FieldType.HEX:
 	    return libCSM.csm_field_get_string(field)
 	elif field_type == FieldType.LIST:
-	    field_subtype = libCSM.csm_field_get_list_subtype(field)
-	    list_len = libCSM.csm_field_get_list_length(field)
-	    ret = []
-	    if field_subtype == FieldType.INT:
-		for i in range(list_len):
-		    out = c_long()
-		    libCSM.csm_field_get_list_int(field,i,byref(out))
-		    ret.append(out.value)
-	    elif field_subtype == FieldType.STRING or field_subtype == FieldType.HEX:
-		for i in range(list_len):
-		    ret.append(libCSM.csm_field_get_list_string(field,i))
-	    else:
-		raise TypeError
-	    return ret
+	    return CSMServiceFieldList(field)
 	else:
 	    raise LookupError
     
@@ -312,7 +282,6 @@ class CSMService(object):
 	if not self.__local:
 	    raise TypeError
 	libCSM.csm_service_remove_field(self.ptr,name, self.__config.ptr)
-	self.__dirty = True
     
     def __eq__(self, other):
         """Test equality of this service and another.
@@ -351,14 +320,91 @@ class CSMService(object):
         """Sets current service values to its pointer in the Commotion Service Manager """
         if not self.__local:
 	    raise TypeError
-        if not self.__dirty:
-	    return
 	# Upon commiting, key and signature will be set
 	libCSM.csm_service_commit(self.ptr, self.__config.ptr)
-	self.__dirty = False
     
     def remove(self):
         """Removes the service in both the Commotion Service Manager and locally."""
         if not self.__local:
 	    raise TypeError
         libCSM.csm_service_remove(self.ptr, self.__config.ptr)
+
+class CSMServiceFieldList(collections.MutableSequence):
+    def __init__(self,ptr):
+	if not ptr:
+	    raise TypeError
+	self.__ptr = ptr
+	self.__subtype = libCSM.csm_field_get_list_subtype(self.__ptr)
+	self.__len = libCSM.csm_field_get_list_length(self.__ptr)
+	self.__items = []
+	if self.__subtype == FieldType.INT:
+	    for i in range(self.__len):
+		out = c_long()
+		libCSM.csm_field_get_list_int(self.__ptr,i,byref(out))
+		self.__items.append(out.value)
+	elif self.__subtype == FieldType.STRING or self.__subtype == FieldType.HEX:
+	    for i in range(self.__len):
+		self.__items.append(libCSM.csm_field_get_list_string(self.__ptr,i))
+	else:
+	    raise TypeError
+    
+    def __update(self):
+	if self.__subtype == FieldType.STRING or self.__subtype == FieldType.HEX:
+	    new_list = (c_char_p * self.__len)(*self.__items)
+	    libCSM.csm_field_set_string_list_from_array(self.__ptr,new_list,self.__len)
+	elif self.__subtype == FieldType.INT:
+	    new_list = (c_long * self.__len)(*self.__items)
+	    libCSM.csm_field_set_int_list_from_array(self.__ptr,new_list,self.__len)
+	self.__init__(self.__ptr)
+    
+    def __getitem__(self,key):
+	if not key:
+	    raise KeyError
+	if not isinstance(key,int):
+	    raise TypeError
+	return self.__items[key]
+    
+    def __setitem__(self,key,value):
+	if not self.__getitem__(key):
+	    raise KeyError
+	if not value:
+	    raise RuntimeError
+	if self.__subtype == FieldType.STRING or self.__subtype == FieldType.HEX:
+	    if not isinstance(value,basestring):
+		raise TypeError
+	elif self.__subtype == FieldType.INT:
+	    if not isinstance(value,int) and not isinstance(value,long):
+		raise TypeError
+	self.__items[key] = value
+	self.__update()
+    
+    def __delitem__(self,key):
+	if not self.__getitem__(key):
+	    raise KeyError
+	del self.__items[key]
+	self.__len -= 1
+	self.__update()
+    
+    def __len__(self):
+	return self.__len
+    
+    def insert(self,key,value):
+	if not key or not value:
+	    raise RuntimeError
+	if not isinstance(key,int):
+	    raise TypeError
+	if self.__subtype == FieldType.STRING or self.__subtype == FieldType.HEX:
+	    if not isinstance(value,basestring):
+		raise TypeError
+	elif self.__subtype == FieldType.INT:
+	    if not isinstance(value,int) and not isinstance(value,long):
+		raise TypeError
+	self.__items.insert(key,value)
+	self.__len += 1
+	self.__update()
+    
+    def __str__(self):
+	return str(self.__items)
+    
+    def __repr__(self):
+	return repr(self.__items)

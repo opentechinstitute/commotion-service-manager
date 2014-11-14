@@ -596,7 +596,10 @@ csm_service_get_next_field(void *service, void *current, char **name)
   } else {
     next = co_tree_next((co_obj_t*)service, NULL);
   }
-  CHECK(next, "No more service fields, or current service field not found");
+  if (!next) {
+    DEBUG("No more service fields, or current service field not found");
+    return NULL;
+  }
   char *key = co_obj_data_ptr(next);
   if (name) *name = key;
   return (void*)co_tree_find_node(co_tree_root(service), key, strlen(key)+1);
