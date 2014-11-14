@@ -472,6 +472,9 @@ int csm_service_commit(void *service, void *config) {
   
   ret = CSM_OK;
 error:
+  if (co_list_contains(request, service))
+    co_list_delete(request,service);
+  
   if (request) co_free(request);
   
   if (response) co_free(response);
@@ -974,9 +977,11 @@ error:
 int csm_service_remove_field(void *service, const char *field)
 {
   CHECK(csm_service_is_local(service), "Cannot modify service");
-  co_obj_t *val = co_tree_delete(service, field, strlen(field) + 1);
-  if (val)
-    co_obj_free(val);
+  if (co_tree_find(service, field, strlen(field) + 1)) {
+    co_obj_t *val = co_tree_delete(service, field, strlen(field) + 1);
+    if (val)
+      co_obj_free(val);
+  }
   return CSM_OK;
 error:
   return CSM_ERROR;

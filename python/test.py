@@ -84,6 +84,7 @@ print "########## New Service ##########"
 s.commit()
 key = s.key
 print "key: " + key
+s.free()
 del s
 l.update()
 print_services(l,key)
