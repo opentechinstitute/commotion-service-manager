@@ -346,25 +346,41 @@ _l_csm_services_fetch(lua_State *L)
   lua_pushnumber(L,len);
   lua_rawset( L, -3 );
   
-  // add each service to service list's env table
-  lua_pushvalue(L,-2); // put copy of service list on stack
-  lua_pushnil(L); // put empty service on stack
-  int i = 0;
-  while (_l_csm_services_get_next_service(L) == 1) {
-    _csm_check_service(L,-1);
-    // service now on stack
-    lua_pushvalue(L, -1); // add another copy of current service userdata to stack
-    lua_rawseti(L, -5, i); // servicelist[i] = current service userdata, pops copy of service off stack
-    
-    lua_remove(L,-2); // remove previous service from stack, leaving current service on top
-    i++;
-  }
-  lua_pop(L,2); // remove last service and copy of service list from stack
-  
   lua_pop(L,1); // remove service list env from stack
   
   lua_pushnumber(L, len);
   return 2;
+}
+
+static int _l_csm_services_get_by_key(lua_State *L);
+
+static int _l_csm_servicelist_index( lua_State* L )
+{
+  /* servicelist, service key */
+  void *l = _csm_check_servicelist(L,1);
+  
+  /* first check list of services */
+  if (lua_isstring(L,2) && csm_services_get_by_key(l, (char*)luaL_checkstring(L,2)))
+    return _l_csm_services_get_by_key(L);
+  
+  /* second check the environment */ 
+  lua_getfenv( L, -2 );
+  lua_pushvalue( L, -2 );
+  lua_rawget( L, -2 );
+  if( lua_isnoneornil( L, -1 ) == 0 )
+  {
+    return 1;
+  }
+  
+  lua_pop( L, 2 );
+  
+  /* third check the metatable */
+  lua_getmetatable( L, -2 );
+  lua_pushvalue( L, -2 );
+  lua_rawget( L, -2 );
+  
+  /* nil or otherwise, we return here */
+  return 1;
 }
 
 // int csm_services_free(CSMServiceList *service_list);
@@ -519,7 +535,7 @@ _l_csm_service_newindex(lua_State *L)
     LUA_CHECK(csm_service_remove_field(s,key) == CSM_OK,
 	      "Failed to remove service field %s", key);
     DEBUG("Removing service field %s",key);
-  } else if (lua_isnumber(L,3)) {
+  } else if (lua_type(L,3) == LUA_TNUMBER) { // because lua_isnumber will return true for strings such as "2.0", not what we want
     LUA_CHECK(csm_service_set_int(s,key,luaL_checklong(L,3)) == CSM_OK,
 	      "Failed to set integer service field %s", key);
     DEBUG("Setting integer service field %s",key);
@@ -587,7 +603,7 @@ static int
 _l_csm_service_free(lua_State *L)
 {
   LUA_CHECK_N_ARGS(L,1);
-  csm_config_free(_csm_check_service(L,1));
+  csm_service_destroy(_csm_check_service(L,1));
   return 0;
 }
 
@@ -897,6 +913,7 @@ static const struct luaL_reg _l_csm_schema_m [] = {
 };
 
 static const struct luaL_reg _l_csm_servicelist_m [] = {
+  {"__index", _l_csm_servicelist_index},
   {"__next", _l_csm_services_get_next_service},
   {"get_by_index", _l_csm_services_get_by_index},
   {"get_by_key", _l_csm_services_get_by_key},
@@ -969,10 +986,10 @@ LUALIB_API int luaopen_csm (lua_State *L) {
   lua_pop(L,1); // remove schemafield metatable from stack
   
   luaL_newmetatable(L, "csm.servicelist");
-  lua_pushstring(L, "__index");
-  lua_pushstring(L, "__index");
-  lua_gettable(L, 1);  /* get csm.__index */
-  lua_settable(L, 2);  /* metatable.__index = csm.__index */
+//   lua_pushstring(L, "__index");
+//   lua_pushstring(L, "__index");
+//   lua_gettable(L, 1);  /* get csm.__index */
+//   lua_settable(L, 2);  /* metatable.__index = csm.__index */
   
   lua_pushstring(L, "__len");
   lua_pushstring(L, "__len");
