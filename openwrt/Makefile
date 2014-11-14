@@ -23,7 +23,7 @@ define Package/$(PKG_NAME)
   SUBMENU:=Utilities
   TITLE:=Commotion Service Manager
   MAINTAINER:=Open Technology Institute
-  DEPENDS:=+libavahi +libuci +commotiond +libcommotion +libcommotion_serval-sas +libm
+  DEPENDS:=+libavahi +libuci +commotiond +libcommotion +commotion-plugins +commotion-mdp-client +libm +argp-standalone +liblua
   URL:=https://commotionwireless.net/
 endef
 
@@ -32,11 +32,21 @@ define Package/$(PKG_NAME)/description
   local services on the mesh.local domain.
 endef
 
+define Build/InstallDev
+	$(INSTALL_DIR) $(1)/usr/include
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/src/commotion-service-manager.h $(1)/usr/include
+	$(INSTALL_DIR) $(1)/usr/lib
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/libcommotion-service-manager.so $(1)/usr/lib
+endef
+
 define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/commotion-service-manager $(1)/usr/sbin/commotion-service-manager
 	$(INSTALL_DIR) $(1)/usr/lib
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/libcommotion-service-manager.so $(1)/usr/lib
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/lua/libcsm_lua.so $(1)/usr/lib
+	$(INSTALL_DIR) $(1)/usr/lib/lua
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/lua/csm.lua $(1)/usr/lib/lua
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/openwrt/etc/init.d/commotion-service-manager $(1)/etc/init.d
 	$(INSTALL_DIR) $(1)/etc/commotion/csm/schemas.d
