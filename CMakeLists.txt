@@ -50,4 +50,4 @@ IF(LUA)
   ADD_SUBDIRECTORY(lua)
 ENDIF()
 
-INSTALL(DIRECTORY files/schemas.d DESTINATION ${CSM_SCHEMA_DIR})
+INSTALL(DIRECTORY files/schemas.d DESTINATION /etc/commotion/csm/schemas.d/)
