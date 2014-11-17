@@ -72,22 +72,11 @@ _csm_field_list_find_int_i(co_obj_t *data, co_obj_t *current, void *context)
 {
   if (IS_LIST(current)) return NULL;
   int32_t *val = (int32_t*)context;
-  int32_t *field_val = (int32_t*)co_obj_data_ptr(current);
+  int32_t *field_val = &((co_int32_t*)current)->data;
   if (*val == *field_val)
     return current;
   return NULL;
 }
-
-#if 0
-static co_obj_t *
-_csm_fields_find_by_key(co_obj_t *fields, co_obj_t *key, co_obj_t *val, void *context)
-{
-  char *field_name = co_obj_data_ptr(key);
-  if (strcmp(field_name, (char*)context) == 0)
-    return key;
-  return NULL;
-}
-#endif
 
 static int
 _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt, csm_ctx *ctx)
@@ -210,7 +199,7 @@ _csm_extract_from_txt_list(csm_service *s, AvahiStringList *txt, csm_ctx *ctx)
   s->signature = co_obj_data_ptr(obj);
   obj = co_tree_find(s->fields, "lifetime", strlen("lifetime") + 1);
   CHECK(obj, "Service doesn't contain lifetime field");
-  s->lifetime = (long)*((int32_t*)co_obj_data_ptr(obj));
+  s->lifetime = (long)((co_int32_t*)obj)->data;
   
   ret = 1;
 error:

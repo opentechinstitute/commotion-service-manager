@@ -85,7 +85,7 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   
   ptr_obj = co_tree_find(s->fields, "lifetime", sizeof("lifetime"));
   CHECK(ptr_obj, "Service doesn't contain lifetime field");
-  s->lifetime = (long)*((int32_t*)co_obj_data_ptr(ptr_obj));
+  s->lifetime = (long)((co_int32_t*)ptr_obj)->data;
   
   ptr_obj = co_tree_find(s->fields, "version", sizeof("version"));
   if (ptr_obj) {

@@ -151,7 +151,7 @@ csm_schema_get_major_version(void *config)
   co_obj_t *major = co_response_get(response,"major",sizeof("major"));
   CHECK(CO_TYPE(major) == _int8,"Invalid response");
   
-  ret = (int)*co_obj_data_ptr(major);
+  ret = (int)((co_int8_t*)major)->data;
 error:
   if (request) co_free(request);
   
@@ -185,7 +185,7 @@ csm_schema_get_minor_version(void *config)
   co_obj_t *minor = co_response_get(response,"minor",sizeof("minor"));
   CHECK(CO_TYPE(minor) == _float64,"Invalid response");
   
-  ret = (double)*co_obj_data_ptr(minor);
+  ret = ((co_float64_t*)minor)->data;
 error:
   if (request) co_free(request);
   
@@ -658,7 +658,7 @@ csm_field_get_int(void *field, long *out)
         && (val = co_node_value((_treenode_t*)field))
 	&& IS_INT(val),
 	"Invalid int field");
-  *out = (long)(*(int32_t*)co_obj_data_ptr(val));
+  *out = (long)((co_int32_t*)val)->data;
   return CSM_OK;
 error:
   return CSM_ERROR;
@@ -724,7 +724,7 @@ csm_field_get_list_int(void *field, int index, long *out)
   CHECK(index >= 0 && index < co_list_length(val), "Out of bounds index");
   co_obj_t *ret = co_list_element(val, (unsigned int)index);
   CHECK(IS_INT(ret), "Invalid int field");
-  *out = (long)(*(int32_t*)co_obj_data_ptr(ret));
+  *out = (long)((co_int32_t*)ret)->data;
   return CSM_OK;
 error:
   return CSM_ERROR;

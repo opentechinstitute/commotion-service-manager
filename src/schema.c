@@ -520,7 +520,7 @@ _csm_validate_field_i(co_obj_t *list, co_obj_t *current, void *context)
   co_obj_t *service_field = co_tree_find(entries, schema_field->name, strlen(schema_field->name) + 1);
   if (schema_field->required && !service_field) {
     co_obj_t *local = co_tree_find(entries, "local", sizeof("local"));
-    if (!local || (int32_t)*co_obj_data_ptr(local) != 1 || !schema_field->generated) { // local services don't need to provide generated fields
+    if (!local || ((co_int32_t*)local)->data != 1 || !schema_field->generated) { // local services don't need to provide generated fields
       ERROR("Missing required field %s", schema_field->name);
       return current;
     }
