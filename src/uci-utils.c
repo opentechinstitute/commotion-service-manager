@@ -167,8 +167,9 @@ _csm_store_uci_field(char *key, char *val, csm_ctx *ctx)
   co_obj_t *val_obj = NULL;
   CHECK(strlen(val) + strlen(key) < 256, "Service option length too long");
   csm_schema_field_t *field = csm_schema_get_field(ctx->schema, key);
+  int type = (field->type == CSM_FIELD_LIST) ? field->subtype : field->type;
   if (field) {
-    switch (field->type) {
+    switch (type) {
       case CSM_FIELD_STRING:
       case CSM_FIELD_HEX:
 	val_obj = co_str8_create(val, strlen(val) + 1, 0);
