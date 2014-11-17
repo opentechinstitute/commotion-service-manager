@@ -33,6 +33,7 @@
 #include "extern/halloc.h"
 
 #include "defs.h"
+#include "schema.h"
 #include "commotion-service-manager.h"
 
 static int

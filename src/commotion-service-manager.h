@@ -25,7 +25,16 @@
 #ifndef COMMOTION_SERVICE_MANAGER_H
 #define COMMOTION_SERVICE_MANAGER_H
 
-#include "schema.h"
+#include <stdbool.h>
+
+#ifndef CSM_SCHEMA_H
+typedef enum {
+  CSM_FIELD_STRING = 1,
+  CSM_FIELD_LIST,
+  CSM_FIELD_INT,  /** int32_t */
+  CSM_FIELD_HEX,
+} csm_field_type;
+#endif
 
 enum {
   CSM_OK = 0,

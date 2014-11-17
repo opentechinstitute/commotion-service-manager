@@ -3,6 +3,9 @@
 #include <string.h>
 #include <lua.h>
 #include <lauxlib.h>
+#include <malloc.h>
+
+#include <commotion/debug.h>
 
 #include "../src/commotion-service-manager.h"
 
