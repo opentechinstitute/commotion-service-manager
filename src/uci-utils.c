@@ -37,6 +37,7 @@
 #include <commotion/tree.h>
 #include <commotion.h>
 
+#include "config.h"
 #include "defs.h"
 #include "util.h"
 #include "cmd.h"
