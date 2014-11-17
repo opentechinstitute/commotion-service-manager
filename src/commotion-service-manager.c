@@ -573,7 +573,7 @@ csm_service_is_local(void *service)
 {
   CHECK(IS_TREE((co_obj_t*)service), "Invalid service");
   co_obj_t *local = co_tree_find((co_obj_t*)service, "local", strlen("local")+1);
-  if (local && (int32_t)*co_obj_data_ptr(local) == 1)
+  if (local && ((co_int32_t*)local)->data == 1)
     return 1;
 error:
   return 0;

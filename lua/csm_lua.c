@@ -594,7 +594,7 @@ _l_csm_service_create(lua_State *L)
   
   lua_getfenv( L, -1 ); // put fenv on stack, so we can set table entries
   lua_pushstring(L,"islocal");
-  lua_pushboolean(L, false);
+  lua_pushboolean(L, true);
   lua_rawset( L, -3 );
   lua_pop( L, 1 ); // remove fenv from stack, leaving stack as it was passed to us
   

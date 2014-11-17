@@ -4,10 +4,13 @@ configure which interface(s) to listen on
 make note in README that version, lifetime, key, and signature are required fields in the schema
 service updates registration/subscription and notifications for clients
 UCI-defaults script
-	delete /etc/avahi/services/*
-	for all local==1 apps in UCI, s/fingerprint/key and re-create signatures using alpha ordering of txt fields
-	s/type/tag
-	need to convert UUID?
+  in applications UCI:
+    delete local services
+    s/fingerprint/key
+    s/type/tag
+  foreach /etc/avahi/services/*, add to CSM using Lua, then delete file
+  update olsrd UCI config (lib version, ServiceFileDir -> CSMSocket)
+  remove /etc/avahi/services from sysupgrade.conf
 unit tests
 pull in gtest via makefile, don't include in repo
 pare down header includes
