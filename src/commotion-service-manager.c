@@ -349,7 +349,7 @@ csm_services_fetch(void **services, void *config) {
   co_obj_t *request = NULL,
 	    *response = NULL,
 	    *conn = NULL;
-  int ret = 0;
+  int ret = CSM_ERROR;
   
   co_init();
   conn = co_connect(((struct csm_config*)config)->csm_sock, strlen(((struct csm_config*)config)->csm_sock)+1);

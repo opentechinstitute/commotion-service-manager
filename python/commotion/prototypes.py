@@ -61,6 +61,7 @@ libCSM.csm_schema_field_get_max.argtypes = [c_void_p, POINTER(c_long)]
 libCSM.csm_schema_field_get_max.errcheck = _check_simple_error
 
 libCSM.csm_services_fetch.argtypes = [POINTER(c_void_p), c_void_p]
+libCSM.csm_services_fetch.errcheck = _check_simple_error
 libCSM.csm_services_free.argtypes = [c_void_p]
 #libCSM.csm_services_free.errcheck = _check_simple_error
 
