@@ -16,8 +16,6 @@ SET(COMMOTION_MANAGESOCK \"/var/run/commotiond.sock\")
 SET(CSM_MANAGESOCK \"/var/run/commotion-service-manager.sock\")
 SET(UCIPATH \"/var/run/uci\")
 
-CONFIGURE_FILE( "${CMAKE_SOURCE_DIR}/src/config.h.in" "${PROJECT_SOURCE_DIR}/src/config.h" )
-
 ADD_DEFINITIONS(-Os -Wall --std=gnu99 -Wmissing-declarations -DNDEBUG -DHAVE_STDINT_H)
 
 IF(DEBUG)
@@ -49,5 +47,7 @@ ADD_SUBDIRECTORY(src)
 IF(LUA)
   ADD_SUBDIRECTORY(lua)
 ENDIF()
+
+CONFIGURE_FILE( "${CMAKE_SOURCE_DIR}/src/config.h.in" "${PROJECT_SOURCE_DIR}/src/config.h" )
 
 INSTALL(DIRECTORY files/schemas.d DESTINATION /etc/commotion/csm/schemas.d/)

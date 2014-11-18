@@ -37,10 +37,6 @@ uci:foreach(
 	uci:set_list("applications",app[".name"],"tag",app.type)
 	uci:delete("applications",app[".name"],"type")
       end
-      if app.localapp then
-	uci:set("applications",app[".name"],"local",app.local)
-	uci:delete("applications",app[".name"],"localapp")
-      end
     end
   end
 )
