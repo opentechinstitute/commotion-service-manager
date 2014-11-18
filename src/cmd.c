@@ -149,6 +149,9 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
     size_t key_size = co_obj_data(&key, ptr_obj);
     char uuid[UUID_LEN + 1] = {0};
     CHECK(get_uuid(key,key_size - 1,uuid,UUID_LEN + 1) == UUID_LEN, "Failed to get UUID");
+    s->uuid = h_strdup(uuid);
+    CHECK_MEM(s->uuid);
+    service_attach(s->uuid, s);
     existing = csm_find_service(ctx->service_list, uuid);
     if (!existing)
       INFO("Could not find service with provided key, creating new service");
@@ -161,9 +164,6 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
       }
 //       CHECK(csm_unpublish_service(existing, ctx), "Failed to unpublish service");
       CHECK(csm_remove_service(ctx->service_list, existing), "Failed to remove old service");
-      s->uuid = h_strdup(uuid);
-      CHECK_MEM(s->uuid);
-      service_attach(s->uuid, s);
     }
   }
   
