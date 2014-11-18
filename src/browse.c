@@ -22,32 +22,28 @@
  * =====================================================================================
  */
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
-#include <stdlib.h>
-#include <assert.h>
-#include <time.h>
+#include "browse.h"
 
 #ifdef CLIENT
 #include <avahi-client/client.h>
-#include <avahi-client/lookup.h>
 #else
 #include <avahi-core/core.h>
-#include <avahi-core/lookup.h>
 #endif
-#include <avahi-common/malloc.h>
+#include <avahi-common/address.h>
+#include <avahi-common/defs.h>
 #include <avahi-common/error.h>
+#include <avahi-common/malloc.h>
 #include <avahi-common/simple-watch.h>
+#include <avahi-common/strlst.h>
 
 #include <commotion/debug.h>
-#include <commotion/obj.h>
 #include <commotion/list.h>
+#include <commotion/obj.h>
 #include <commotion/tree.h>
 
+#include "extern/halloc.h"
+
 #include "defs.h"
-#include "browse.h"
 #include "service.h"
 #include "service_list.h"
 #include "util.h"
@@ -307,7 +303,6 @@ void resolve_callback(
     
     assert(userdata);
     csm_ctx *ctx = (csm_ctx*)userdata;
-//     csm_service *s = ctx->service;
 #ifdef CLIENT
     AvahiClient *client = ctx->client;
 #else
@@ -358,9 +353,7 @@ void resolve_callback(
 	  break;
     }
 error:
-//     RESOLVER_FREE(s->r.resolver);
     RESOLVER_FREE(r);
-//     s->r.resolver = NULL;
     // if no signature is present, indicates service resolution failed
     if (event == AVAHI_RESOLVER_FOUND && s && !s->signature) {
       csm_remove_service(ctx->service_list, s);
@@ -407,12 +400,8 @@ void browse_service_callback(
 		  ERROR("Failed to isnert pending service");
 		  return;
 		}
-// 		ctx->service = s;
-// 		s->r.resolver = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, ctx);
 		RESOLVER *r = RESOLVER_NEW(interface, protocol, uuid, type, domain, AVAHI_PROTO_UNSPEC, 0, resolve_callback, ctx);
-// 		if (!s->r.resolver) {
 		if (!r) {
-// 		  csm_service_destroy(s);
 		  ERROR("Failed to create resolver for service '%s' of type '%s' in domain '%s': %s", uuid, type, domain, AVAHI_ERROR);
 		  return;
 		}

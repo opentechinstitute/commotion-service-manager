@@ -28,7 +28,6 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <sys/socket.h>
 
 #include <avahi-common/error.h>
 #include <avahi-common/malloc.h>
@@ -42,17 +41,15 @@
 #include <commotion/tree.h>
 #include <commotion/socket.h>
 #include <commotion/util.h>
-#include <commotion/profile.h>
 #include <commotion.h>
 
+#include "cmd.h"
+#include "config.h"
 #include "defs.h"
-#include "util.h"
-#include "service.h"
-#include "service_list.h"
 #include "browse.h"
 #include "publish.h"
 #include "schema.h"
-#include "cmd.h"
+#include "service_list.h"
 #if USE_UCI
 #include "uci-utils.h"
 #endif
@@ -409,7 +406,6 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 int main(int argc, char*argv[]) {
     csm_ctx ctx = {0};
     ctx.service_list = csm_services_init();
-//     ctx.schema = csm_schema_new();
 #ifndef CLIENT
     AvahiServerConfig avahi_config;
 #endif
@@ -518,12 +514,11 @@ int main(int argc, char*argv[]) {
     CHECK(create_service_browser(&ctx),"Failed to create service type browser");
 #endif
     
-    /*TODO*/
     /* Register commands */
     co_cmds_init(16);
     CMD_REGISTER(help, "help", "Print list of commands and usage information.");
-    CMD_REGISTER(commit_service, "commit_service ........", "Add or update local service.");
-    CMD_REGISTER(remove_service, "remove_service <key>", "Remove local service.");
+    CMD_REGISTER(commit_service, "commit_service <service fields [tree]> <local [boolean]>", "Add or update local service.");
+    CMD_REGISTER(remove_service, "remove_service <key [string]>", "Remove local service.");
     CMD_REGISTER(list_services, "list_services", "List services on local Commotion network.");
     CMD_REGISTER(get_schema, "get_schema", "Get the schema list of service fields");
     CMD_REGISTER(get_schema_version, "get_schema_version", "Get the schema version");

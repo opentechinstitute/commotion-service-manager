@@ -1,14 +1,41 @@
+/**
+ *       @file  cmd.c
+ *      @brief  command handlers for Commotion Service Manager
+ *
+ *     @author  Dan Staples (dismantl), danstaples@opentechinstitute.org
+ *
+ * This file is part of Commotion, Copyright (c) 2013, Josh King 
+ * 
+ * Commotion is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published 
+ * by the Free Software Foundation, either version 3 of the License, 
+ * or (at your option) any later version.
+ * 
+ * Commotion is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Commotion.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * =====================================================================================
+ */
+
+#include "cmd.h"
+
 #include <commotion/obj.h>
 #include <commotion/list.h>
 #include <commotion/tree.h>
 #include <commotion/cmd.h>
 
+#include "extern/halloc.h"
+
 #include "defs.h"
+#include "publish.h"
 #include "service.h"
 #include "service_list.h"
-#include "publish.h"
 #include "util.h"
-#include "cmd.h"
 
 static co_obj_t *
 _cmd_help_i(co_obj_t *data, co_obj_t *current, void *context) 
@@ -27,9 +54,6 @@ int
 cmd_help(co_obj_t *self, co_obj_t **output, co_obj_t *params)
 {
   CHECK(IS_LIST(params),"Received invalid params");
-//   co_obj_t *ctx_obj = co_list_element(params,0);
-//   CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
-//   csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
   
   *output = co_tree16_create();
   if (co_list_length(params) > 1)
@@ -108,7 +132,6 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   
   ptr_obj = co_tree_find(s->fields, "signature", sizeof("signature"));
   if (ptr_obj) {
-//     s->signature = co_obj_data_ptr(ptr_obj);
     if (s->local)
       co_tree_delete(s->fields,"signature",sizeof("signature"));
     else
@@ -216,14 +239,6 @@ cmd_list_services(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   co_obj_t *ctx_obj = co_list_element(params,0);
   CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
   csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
-  
-  // NOTE: if there are no services in list, it should still return successful
-//   if (csm_services_length(ctx->service_list) == 0) {
-//     co_obj_t *false_obj = co_bool_create(false,0);
-//     CHECK_MEM(false_obj);
-//     CMD_OUTPUT("success",false_obj);
-//     return 1;
-//   }
   
   CMD_OUTPUT("services",ctx->service_list->service_fields);
   CMD_OUTPUT("success",co_bool_create(true,0));  

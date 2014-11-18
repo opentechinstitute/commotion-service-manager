@@ -22,12 +22,13 @@
  * =====================================================================================
  */
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
+#include "service.h"
 
 #include <assert.h>
-#include <net/if.h>
+#include <malloc.h>
+
+#include <avahi-common/address.h>
+#include <avahi-common/strlst.h>
 
 #include <commotion/debug.h>
 #include <commotion/obj.h>
@@ -38,9 +39,8 @@
 #include "extern/halloc.h"
 
 #include "defs.h"
-#include "util.h"
-#include "service.h"
 #include "schema.h"
+#include "util.h"
 
 extern struct csm_config csm_config;
 
@@ -86,7 +86,6 @@ error:
   return ret;
 }
 
-// #if 0
 static co_obj_t *
 _csm_sort_list(co_obj_t *list, co_obj_t *current, void *context)
 {
@@ -122,35 +121,6 @@ error:
     co_obj_free(clone);
   return ret;
 }
-// #endif
-
-#if 0
-static co_obj_t *
-_csm_sort_list(co_obj_t *list, co_obj_t *current, void *context)
-{
-  DEBUG("sorting %s",co_obj_data_ptr(current));
-  co_obj_t *sorted_list = (co_obj_t*)context;
-  ssize_t llen = co_list_length(sorted_list);
-  CHECK(llen >= 0, "Invalid list");
-  if (llen == 0) {
-    co_list_append_unsafe(sorted_list,current);
-  } else {
-    for (int i = 0; i < llen; i++) {
-      int cmp = co_str_cmp(current,co_list_element(sorted_list,i));
-      if (cmp < 0) {
-	CHECK(co_list_insert_before_unsafe(sorted_list,current,co_list_element(sorted_list,i)),
-	      "Failed to insert service field into sorted_list");
-	current = NULL;
-      }
-    }
-    if (current)
-      CHECK(co_list_append_unsafe(sorted_list,current), "Failed to insert service field into sorted list");
-  }
-  return NULL;
-error:
-  return current;
-}
-#endif
 
 static size_t
 _csm_create_signing_template(csm_service *s, char **template)
@@ -200,14 +170,10 @@ _csm_create_signing_template(csm_service *s, char **template)
   
   ret = strlen(*template);
 error:
-//   if (fields.fields)
-//     h_free(fields.fields);
   if (txt_fields)
     free(txt_fields);
   return ret;
 }
-
-/* Public */
 
 static co_obj_t *
 co_service_create(void) {
@@ -216,11 +182,12 @@ co_service_create(void) {
   output->_header._type = _ext8;
   output->_exttype = _service;
   output->_len = (sizeof(co_service_t));
-//   output->service = service;
   return (co_obj_t*)output;
 error:
   return NULL;
 }
+
+/* Public */
 
 csm_service *
 csm_service_new(AvahiIfIndex interface,

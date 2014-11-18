@@ -22,10 +22,12 @@
  * =====================================================================================
  */
 
+#include "publish.h"
+
 #include <unistd.h>
 #include <limits.h>
+#include <assert.h>
 
-#include <avahi-common/error.h>
 #ifdef CLIENT
 #include <avahi-client/client.h>
 #include <avahi-client/publish.h>
@@ -33,6 +35,9 @@
 #include <avahi-core/core.h>
 #include <avahi-core/publish.h>
 #endif
+#include <avahi-common/defs.h>
+#include <avahi-common/error.h>
+#include <avahi-common/strlst.h>
 
 #include <commotion/debug.h>
 #include <commotion/obj.h>
@@ -42,11 +47,6 @@
 #include "service.h"
 #include "service_list.h"
 #include "util.h"
-#include "publish.h"
-
-#if 0
-extern ServiceInfo *services;
-#endif
 
 /* Private */
 

@@ -25,6 +25,8 @@
 #ifndef CSM_SCHEMA_H
 #define CSM_SCHEMA_H
 
+#include <stdbool.h>
+
 #include <commotion/obj.h>
 #include "defs.h"
 
@@ -32,12 +34,14 @@
 
 typedef struct csm_service csm_service;
 
+#ifndef COMMOTION_SERVICE_MANAGER_H
 typedef enum {
   CSM_FIELD_STRING = 1,
   CSM_FIELD_LIST,
   CSM_FIELD_INT,  /** int32_t */
   CSM_FIELD_HEX,
 } csm_field_type;
+#endif
 
 enum {
   CSM_LIMIT_MIN = (1 << 0),

@@ -26,12 +26,15 @@
 #define CSM_SERVICE_H
 
 #include <avahi-common/address.h>
+#include <avahi-common/defs.h>
+#include <avahi-common/strlst.h>
 #include <avahi-common/watch.h>
 
 #include <commotion/obj.h>
 
 #include "defs.h"
 #include "schema.h"
+#include "service_list.h"
 
 #define SAS_FETCH_RETRIES 3
 
@@ -77,17 +80,6 @@ typedef struct csm_service {
     struct csm_service_local l;
     struct csm_service_remote r;
   };
-#if 0
-  /** Local services only */
-  ENTRY_GROUP *group;
-  int uptodate;
-  
-  /** Remote services only */
-  char *host_name;
-  char address[AVAHI_ADDRESS_STR_MAX];
-  AvahiStringList *txt_lst; /**< Collection of all the user-defined txt fields */
-  RESOLVER *resolver;
-#endif
 } csm_service;
 
 csm_service *csm_service_new(AvahiIfIndex interface,
@@ -108,33 +100,6 @@ int csm_service_set_list(csm_service *s, const char *field, co_obj_t *list);
 int csm_service_append_str_to_list(csm_service *s, const char *field, const char *str);
 int csm_service_append_int_to_list(csm_service *s, const char *field, int32_t n);
 
-#if 0
-char *csm_service_get_name(csm_service *s);
-char *csm_service_get_description(csm_service *s);
-char *csm_service_get_uri(csm_service *s);
-char *csm_service_get_icon(csm_service *s);
-co_obj_t *csm_service_get_categories(csm_service *s);
-int csm_service_get_ttl(csm_service *s);
-long csm_service_get_lifetime(csm_service *s);
-char *csm_service_get_key(csm_service *s);
-char *csm_service_get_signature(csm_service *s);
-char *csm_service_get_version(csm_service *s);
-
-int csm_service_set_name(csm_service *s, const char *str);
-int csm_service_set_description(csm_service *s, const char *str);
-int csm_service_set_uri(csm_service *s, const char *str);
-int csm_service_set_icon(csm_service *s, const char *str);
-int csm_service_set_categories(csm_service *s, co_obj_t *categories);
-int csm_service_set_ttl(csm_service *s, int ttl);
-int csm_service_set_lifetime(csm_service *s, long lifetime);
-int csm_service_set_key(csm_service *s, const char *str);
-int csm_service_set_signature(csm_service *s, const char *str);
-int csm_service_set_version(csm_service *s, const char *str);
-#endif
-
-// void print_service(FILE *f, csm_service *s);
-// size_t csm_service_categories_to_array(csm_service *s, char ***cat_array);
-
 int csm_verify_signature(csm_service *service);
 int csm_create_signature(csm_service *service);
 
@@ -152,7 +117,5 @@ typedef struct {
 #define _service 254
 
 #define IS_SERVICE(J) (IS_EXT(J) && ((co_service_t *)J)->_exttype == _service)
-
-// co_obj_t *co_service_create(csm_service *service);
 
 #endif

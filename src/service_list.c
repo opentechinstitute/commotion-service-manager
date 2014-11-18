@@ -22,15 +22,10 @@
  * =====================================================================================
  */
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
+#include "service_list.h"
 
-#include <stdio.h>
 #include <assert.h>
-#include <stdlib.h>
 #include <time.h>
-#include <net/if.h>
 
 #include <avahi-common/error.h>
 #include <avahi-common/simple-watch.h>
@@ -40,15 +35,11 @@
 #include <commotion/profile.h>
 #include <commotion/list.h>
 
+#include "defs.h"
+#include "service.h"
 #ifdef USE_UCI
 #include "uci-utils.h"
 #endif
-
-#include "defs.h"
-#include "browse.h"
-#include "util.h"
-#include "service.h"
-#include "service_list.h"
 
 extern AvahiSimplePoll *simple_poll;
 extern struct csm_config csm_config;

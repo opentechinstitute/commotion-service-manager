@@ -22,20 +22,20 @@
  * =====================================================================================
  */
 
-#include <stdlib.h>
-#include <stdio.h>
+#include "schema.h"
+
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
 
-#include <commotion/obj.h>
+#include <commotion/debug.h>
 #include <commotion/list.h>
+#include <commotion/obj.h>
 #include <commotion/tree.h>
 
 #include "extern/jsmn.h"
 
-#include "util.h"
-#include "schema.h"
+#include "defs.h"
 #include "service.h"
 
 #define DEFAULT_TOKENS 128
@@ -296,7 +296,6 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
         state = VALUE;
         key = _co_json_token_stringify(buffer, t);
         klen = t->end - t->start;
-// 	DEBUG("Read in key: %s",key);
 
         break;
 
@@ -304,7 +303,6 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	assert(key != NULL && klen > 0);
 	
 	char *val = _co_json_token_stringify(buffer, t);
-// 	DEBUG("Read in val: %s",val);
 	CHECK(val, "Invalid schema version");
 	
 	if (strcmp(key, "version") == 0) {
@@ -323,7 +321,6 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	  // pass
 	  state = START;
 	} else { // field attributes
-// 	  assert(field);
 	  CHECK(t->type == JSMN_STRING || t->type == JSMN_PRIMITIVE, "Values must be strings or primitive");
 	  
 	  if (!field) {
@@ -395,8 +392,6 @@ _csm_import_schema(csm_schema_t *schema, const char *path)
 	    CHECK(field->subtype, "Invalid field subtype");
 	  
 	  // append field to schema
-// 	  field->_next = schema->fields;
-// 	  schema->fields = field;
 	  CHECK(co_list_append(schema->fields,(co_obj_t*)container_of(field,co_schema_field_t,field)),
 		"Failed to append schema field to schema");
 	  DEBUG("Read in field with key: %s", field->name);
@@ -558,23 +553,6 @@ csm_validate_fields(csm_ctx *ctx, csm_service *s)
   }
   return 1;
 }
-
-#if 0
-int
-csm_validate_field(csm_schema_t *schema, const char *field_name, csm_field_type type, co_obj_t *entry)
-{
-  csm_schema_field_t *schema_field = schema->fields;
-  for (; schema_field; schema_field = schema_field->_next) {
-    if (strcmp(schema_field->name, field_name) == 0)
-      break;
-  }
-  if (!schema_field) {
-    ERROR("Schema field name not found");
-    return 0;
-  }
-  return _csm_validate_field(schema_field, type, entry);
-}
-#endif
 
 csm_schema_t *
 csm_find_schema(csm_schema_t *list, int major_version, double minor_version)

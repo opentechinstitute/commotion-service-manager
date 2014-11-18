@@ -25,24 +25,12 @@
 #ifndef CSM_PUBLISH_H
 #define CSM_PUBLISH_H
 
-// typedef struct csm_update_services csm_update_services;
-// struct csm_update_services {
-//   int (*update)(void);
-// };
+#include "defs.h"
+#include "service.h"
 
 int csm_publish_service(csm_service *service, csm_ctx *ctx);
 int csm_unpublish_service(csm_service *service, csm_ctx *ctx);
 int csm_publish_all(csm_ctx *ctx);
 int csm_unpublish_all(csm_ctx *ctx);
-
-#if 0
-int register_service(ServiceInfo *service, void *avahi);
-
-int unregister_service(ServiceInfo *service);
-
-int register_all(void *avahi);
-
-int unregister_all(void);
-#endif
 
 #endif

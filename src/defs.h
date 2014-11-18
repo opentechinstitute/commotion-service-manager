@@ -26,22 +26,17 @@
 #define CSM_INTERNAL_H
 
 #ifdef CLIENT
-#include <avahi-client/publish.h>
+#include <avahi-client/client.h>
 #include <avahi-client/lookup.h>
+#include <avahi-client/publish.h>
 #else
 #include <avahi-core/core.h>
 #include <avahi-core/lookup.h>
 #include <avahi-core/publish.h>
 #endif
-#include <avahi-common/address.h>
-#include <avahi-common/watch.h>
-#include <avahi-common/strlst.h>
-#include <avahi-common/llist.h>
+#include <avahi-common/error.h>
 
 #include <commotion/obj.h>
-
-#include "extern/halloc.h"
-#include "config.h"
 
 /** Length (in hex chars) of Serval IDs */
 #define FINGERPRINT_LEN 64

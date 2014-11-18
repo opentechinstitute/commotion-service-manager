@@ -27,6 +27,7 @@
 
 #include <commotion/obj.h>
 
+#include "defs.h"
 #include "service.h"
 
 typedef struct csm_service_list {
@@ -68,19 +69,5 @@ int csm_add_service(csm_service_list *services, csm_service *service, csm_ctx *c
 int csm_update_service(csm_service_list *services, csm_service *service, csm_ctx *ctx, int validate);
 csm_service *csm_find_service(csm_service_list *services, const char *uuid);
 csm_service *csm_remove_service(csm_service_list *services, csm_service *s);
-// void csm_print_services(csm_service_list *services);
-
-#if 0
-ServiceInfo *find_service(const char *uuid);
-ServiceInfo *add_service(BROWSER *b, 
-			 AvahiIfIndex interface, 
-			 AvahiProtocol protocol, 
-			 const char *uuid, 
-			 const char *type, 
-			 const char *domain);
-int process_service(ServiceInfo *i);
-void remove_service(AvahiTimeout *t, void *userdata);
-void print_services(int signal);
-#endif
 
 #endif

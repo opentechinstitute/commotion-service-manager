@@ -25,7 +25,7 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include <avahi-core/core.h>
+#include <commotion/obj.h>
 
 #ifndef _GNU_SOURCE
 #define asprintf(B,T,...) ({ \
@@ -39,24 +39,7 @@ typedef void (*_csm_iter_t)(co_obj_t *data, co_obj_t *key, co_obj_t *val, void *
 
 int isHex(const char *str, size_t len);
 int isNumeric (const char *s);
-int isUCIEncoded(const char *s, size_t s_len);
-int isValidTtl(int ttl);
-int isValidLifetime(long lifetime);
 int isValidFingerprint(const char *sid, size_t sid_len);
-int isValidSignature(const char *sig, size_t sig_len);
-
-// TODO implement these
-int validate_int(int n, uint32_t min, uint32_t max);
-int validate_long(long n, uint32_t min, uint32_t max);
-int validate_str(const char *str, size_t len);
-int validate_hex(const char *str, size_t len);
-
-/**
- * Compare strings alphabetically, used in qsort
- */
-int cmpstringp(const void *p1, const void *p2);
-
-int tohex(unsigned char *str, size_t str_len, char *buf, size_t buf_size);
 
 /**
  * Derives the UUID of a service, as a base32 encoding of the service's key
@@ -67,27 +50,6 @@ int tohex(unsigned char *str, size_t str_len, char *buf, size_t buf_size);
  * @return length of UUID on success, 0 on error
  */
 int get_uuid(char *key, size_t key_len, char *buf, size_t buf_size);
-
-/**
- * UCI-escape a string. Alphanum and underscores are only chars allowed in UCI section titles
- * @param[in] to_escape the string to escape
- * @param[in] to_escape_len the length of the string to escape
- * @param[out] escaped_len length of escaped string
- * @return pointer to escaped string
- * @warning returned string must be freed by caller
- */
-char *uci_escape(char *to_escape, size_t to_escape_len, size_t *escaped_len);
-
-/**
- * Escape a string for use in printing service to file. Escapes ",\n,\r.
- * @param[in] to_escape the string to escape
- * @param[out] escaped_len length of escaped string
- * @return pointer to escaped string
- * @warning returned string must be freed by caller
- */
-char *escape(char *to_escape, size_t *escaped_len);
-
-char *csm_txt_list_to_string(char *cur, size_t *cur_len, char *append, size_t append_len);
 
 int csm_tree_process(co_obj_t *tree, const _csm_iter_t iter, void *context);
 int csm_list_parse(co_obj_t *list, co_obj_t *key, _csm_iter_t iter, void *context);

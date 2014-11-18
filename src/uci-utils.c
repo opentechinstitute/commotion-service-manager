@@ -22,12 +22,9 @@
  * =====================================================================================
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#ifdef USESYSLOG
-#include <syslog.h>
-#endif
+#include "uci-utils.h"
+
+#include <assert.h>
 
 #include <uci.h>
 
@@ -37,12 +34,12 @@
 #include <commotion/tree.h>
 #include <commotion.h>
 
-#include "config.h"
 #include "defs.h"
-#include "util.h"
 #include "cmd.h"
+#include "config.h"
 #include "schema.h"
-#include "uci-utils.h"
+#include "service.h"
+#include "util.h"
 
 #define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
 #define UCI_WARN(M, ...) char *err = NULL; uci_get_errorstr(c,&err,NULL); WARN(M ": %s", ##__VA_ARGS__, err); free(err);
@@ -293,7 +290,6 @@ uci_read(AvahiTimeout *t, void *userdata)
     }
   }
   
-//   ret = 1;
 error:
   if (c)
     uci_free_context(c);
@@ -307,7 +303,6 @@ error:
     co_obj_free(val_obj);
   if (list)
     co_obj_free(list);
-//   return ret;
 }
 
 struct uci_write_ctx {
@@ -355,15 +350,6 @@ int uci_write(csm_service *s) {
 #endif
   int ret = 0;
   struct uci_package *pak = NULL;
-//   struct uci_element *e = NULL;
-#if 0
-  enum {
-    NO_TYPE_SECTION,
-    NO_TYPE_MATCHES,
-    TYPE_MATCH_FOUND,
-  };
-  int type_state = NO_TYPE_SECTION;
-#endif
   
   assert(s);
   
@@ -413,47 +399,6 @@ int uci_write(csm_service *s) {
   if (s->local)
     UCI_SET(c,s,local,"1");
   
-#if 0
-  // uci set options/values
-  UCI_SET_STR(c,s,name);
-  UCI_SET_STR(c,s,uri);
-  UCI_SET_STR(c,s,description);
-  UCI_SET_STR(c,s,icon);
-  UCI_SET_STR(c,s,signature);
-  UCI_SET(c,s,fingerprint,csm_service_get_key(s));
-  UCI_SET_STR(c,s,version);
-  UCI_SET(c,s,uuid,s->uuid);
-  if (s->local)
-    UCI_SET(c,s,local,"1");
-  
-  char *ttl_str = NULL, *lifetime_str = NULL;
-  CHECK_MEM(asprintf(&ttl_str, "%d", csm_service_get_ttl(s)) != -1);
-  CHECK_MEM(asprintf(&lifetime_str, "%ld", csm_service_get_lifetime(s)) != -1);
-  UCI_SET(c,s,ttl,ttl_str);
-  UCI_SET(c,s,lifetime,lifetime_str);
-  
-  /* set type_ptr to lookup the 'type' list */
-  co_obj_t *cat_obj = csm_service_get_categories(s);
-  if (cat_obj) {
-  CHECK(get_uci_section(c,&type_ptr,"applications",12,s->uuid,strlen(s->uuid),"type",4) > 0,"Failed type lookup");
-    for (int j = 0; j < co_list_length(cat_obj); j++) {
-      // NOTE: the version of UCI packaged with LuCI doesn't have uci_del_list, so here's a workaround
-      //uci_ret = uci_del_list(c, &sec_ptr);
-      type_state = NO_TYPE_MATCHES;
-      if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
-	uci_foreach_element(&(type_ptr.o->v.list), e) {
-	  if (!strcmp(e->name, _LIST_ELEMENT(cat_obj, j))) {
-	    type_state = TYPE_MATCH_FOUND;
-	    break;
-	  }
-	}
-      }
-      if (type_state != TYPE_MATCH_FOUND)
-	UCI_SET_CAT(c, s, _LIST_ELEMENT(cat_obj, j));
-    }
-  }
-#endif
-  
 #ifdef OPENWRT
   // For OpenWRT: check known_applications list, approved or blacklisted
   if (get_uci_section(c,&approved_ptr,"applications",12,"known_apps",10,s->uuid,strlen(s->uuid)) == -1) {
@@ -469,15 +414,6 @@ int uci_write(csm_service *s) {
   UCI_SET(c, s, approved, "1");
 #endif
   
-#if 0
-  // if no type fields in new announcement, remove section from UCI (part of workaround)
-  if (type_state == NO_TYPE_SECTION) {
-    if (type_ptr.o && type_ptr.o->type == UCI_TYPE_LIST) {
-      UCI_CHECK(uci_delete(c, &type_ptr) == UCI_OK,"(UCI) Failed to delete type section");
-    }
-  }
-#endif
-  
   // uci_save
   UCI_CHECK(uci_save(c, pak) == UCI_OK,"(UCI) Failed to save");
   INFO("(UCI) Save succeeded");
@@ -489,12 +425,6 @@ int uci_write(csm_service *s) {
   
 error:
   if (c) uci_free_context(c);
-#if 0
-  if (ttl_str)
-    free(ttl_str);
-  if (lifetime_str)
-    free(lifetime_str);
-#endif
   return ret;
 }
 

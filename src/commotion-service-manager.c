@@ -22,7 +22,10 @@
  * =====================================================================================
  */
 
+#include "commotion-service-manager.h"
+
 #include <ctype.h>
+#include <stdbool.h>
 
 #include <commotion/debug.h>
 #include <commotion/obj.h>
@@ -33,8 +36,8 @@
 #include "extern/halloc.h"
 
 #include "defs.h"
+#include "config.h"
 #include "schema.h"
-#include "commotion-service-manager.h"
 
 static int
 is_hex(const char *str, size_t len)
@@ -431,7 +434,6 @@ int csm_service_commit(void *service, void *config) {
   int ret = CSM_ERROR;
   
   CHECK(IS_TREE(service),"Invalid service");
-//   co_tree_print_indent(service,0);
   
   co_obj_t *current_key = co_tree_find(service,"key",sizeof("key"));
   
@@ -455,7 +457,6 @@ int csm_service_commit(void *service, void *config) {
   // response should contain key and signature
   CHECK(CO_TYPE(co_response_get(response,"success",sizeof("success"))) == _true,"Failed to add/update service");
   
-  // TODO we may just want to skip this, since the client should update its service list with csm_services_fetch() anyway
   char *key = NULL, *signature = NULL;
   CHECK(co_response_get_str(response,&key,"key",sizeof("key")) != -1,"Failed to fetch key from response");
   CHECK(co_response_get_str(response,&signature,"signature",sizeof("signature")) != -1,"Failed to fetch signature from response");

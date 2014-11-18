@@ -25,9 +25,11 @@
 #ifndef UCI_UTILS_H
 #define UCI_UTILS_H
 
+#include <avahi-common/watch.h>
 #include <uci.h>
 
-#include "defs.h"
+#include <commotion/obj.h>
+
 #include "service.h"
 
 int uci_service_updater(co_obj_t *data, co_obj_t **output, co_obj_t *service_list);
