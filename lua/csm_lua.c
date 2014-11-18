@@ -1,3 +1,27 @@
+/**
+ *       @file  csm_lua.c
+ *      @brief  Lua bindings for Commotion Service Manager
+ *
+ *     @author  Dan Staples (dismantl), danstaples@opentechinstitute.org
+ *
+ * This file is part of Commotion, Copyright (c) 2013, Josh King 
+ * 
+ * Commotion is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published 
+ * by the Free Software Foundation, either version 3 of the License, 
+ * or (at your option) any later version.
+ * 
+ * Commotion is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with Commotion.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * =====================================================================================
+ */
+
 #define LUA_LIB
 #include <assert.h>
 #include <string.h>
@@ -989,10 +1013,6 @@ LUALIB_API int luaopen_csm (lua_State *L) {
   lua_pop(L,1); // remove schemafield metatable from stack
   
   luaL_newmetatable(L, "csm.servicelist");
-//   lua_pushstring(L, "__index");
-//   lua_pushstring(L, "__index");
-//   lua_gettable(L, 1);  /* get csm.__index */
-//   lua_settable(L, 2);  /* metatable.__index = csm.__index */
   
   lua_pushstring(L, "__len");
   lua_pushstring(L, "__len");
