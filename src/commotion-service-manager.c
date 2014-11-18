@@ -444,6 +444,10 @@ int csm_service_commit(void *service, void *config) {
   
   CHECK(co_request_append(request,service),"Failed to append service to request");
   
+  co_obj_t *local = co_bool_create(true,1);
+  CHECK_MEM(local);
+  CHECK(co_request_append(request,local),"Failed to append local to request");
+  
   co_call(conn, &response, "commit_service", sizeof("commit_service"), request);
   CHECK(response != NULL, "Invalid response");
   
@@ -453,8 +457,8 @@ int csm_service_commit(void *service, void *config) {
   
   // TODO we may just want to skip this, since the client should update its service list with csm_services_fetch() anyway
   char *key = NULL, *signature = NULL;
-  CHECK(co_response_get_str(response,&key,"key",sizeof("key")),"Failed to fetch key from response");
-  CHECK(co_response_get_str(response,&signature,"signature",sizeof("signature")),"Failed to fetch signature from response");
+  CHECK(co_response_get_str(response,&key,"key",sizeof("key")) != -1,"Failed to fetch key from response");
+  CHECK(co_response_get_str(response,&signature,"signature",sizeof("signature")) != -1,"Failed to fetch signature from response");
   
   if (!current_key) {
     co_obj_t *key_obj = co_str8_create(key,strlen(key)+1,0);

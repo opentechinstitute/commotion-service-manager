@@ -475,9 +475,9 @@ csm_create_signature(csm_service *s)
 	"Failed to sign service announcement");
   
   char *signature = NULL, *key = NULL;
-  CHECK(co_response_get_str(co_resp,&signature,"signature",sizeof("signature")),
+  CHECK(co_response_get_str(co_resp,&signature,"signature",sizeof("signature")) != -1,
 	"Failed to fetch signature from response");
-  CHECK(co_response_get_str(co_resp,&key,"SID",sizeof("SID")),
+  CHECK(co_response_get_str(co_resp,&key,"SID",sizeof("SID")) != -1,
 	"Failed to fetch SID from response");
   CHECK(csm_service_set_str(s, "signature", signature), "Failed to set signature");
   s->signature = co_obj_data_ptr(co_tree_find(s->fields, "signature", sizeof("signature")));

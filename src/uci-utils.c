@@ -167,6 +167,8 @@ _csm_store_uci_field(char *key, char *val, csm_ctx *ctx)
   co_obj_t *val_obj = NULL;
   CHECK(strlen(val) + strlen(key) < 256, "Service option length too long");
   csm_schema_field_t *field = csm_schema_get_field(ctx->schema, key);
+  if (!field)
+    SENTINEL("Service option %s not in schema", key);
   int type = (field->type == CSM_FIELD_LIST) ? field->subtype : field->type;
   if (field) {
     switch (type) {
@@ -209,8 +211,9 @@ uci_read(AvahiTimeout *t, void *userdata)
   csm_ctx *ctx = (csm_ctx*)userdata;
   co_obj_t *ctx_obj = NULL;
   struct uci_context *c = NULL;
-  co_obj_t *fields = NULL, *params = NULL, *verdict = NULL, *val_obj = NULL;
+  co_obj_t *fields = NULL, *params = NULL, *verdict = NULL, *val_obj = NULL, *list = NULL;
   struct uci_package *pkg = NULL;
+  int local = 0;
   
   CHECK(ctx && ctx->service_list, "Uninitialized context");
   
@@ -235,13 +238,17 @@ uci_read(AvahiTimeout *t, void *userdata)
 	char *key = o->name, *val = NULL;
 	if (option->type == UCI_TYPE_STRING) {
 	  val = option->v.string;
+	  if (strcmp(key, "local") == 0 && strcmp(val,"1") == 0)
+	    local = 1;
 	  val_obj = _csm_store_uci_field(key, val, ctx);
+	  if (!val_obj)
+	    continue;
 	  CHECK(co_tree_insert(fields, key, strlen(key) + 1, val_obj), "Failed to add field to imported service");
 	  DEBUG("Read service field %s : %s", key, val);
 	  val_obj = NULL;
 	} else { // option->type == UCI_TYPE_LIST
 	  struct uci_element *l = NULL;
-	  co_obj_t *list = co_tree_find(fields, key, strlen(key) + 1);
+	  list = co_tree_find(fields, key, strlen(key) + 1);
 	  if (!list) {
 	    list = co_list16_create();
 	    CHECK_MEM(list);
@@ -249,35 +256,40 @@ uci_read(AvahiTimeout *t, void *userdata)
 	  uci_foreach_element(&option->v.list, l) {
 	    val = l->name;
 	    val_obj = _csm_store_uci_field(key, val, ctx);
+	    if (!val_obj)
+	      continue;
 	    CHECK(co_list_append(list, val_obj), "Failed to add list field to new service");
 	    DEBUG("Read service list field %s : %s", key, val);
 	    val_obj = NULL;
 	  }
-	  CHECK(co_tree_insert(fields, key, strlen(key) + 1, list), "Failed to add list field to new service");
+	  if (co_list_length(list) > 0)
+	    CHECK(co_tree_insert(fields, key, strlen(key) + 1, list), "Failed to add list field to new service");
+	  else
+	    co_obj_free(list);
+	  list = NULL;
 	}
       }
-      // if service has local=1, create co_list = [ctx, service_fields] and call cmd_commit_service() (which will do validation against schema)
-//       co_obj_t *local = co_tree_find(fields,"local",sizeof("local"));
-//       if (local && strcmp(co_obj_data_ptr(local), "1") == 0) {
-	verdict = NULL;
-	params = co_list16_create();
-	CHECK_MEM(params);
-	ctx_obj = co_ctx_create(ctx);
-	CHECK_MEM(ctx_obj);
-	CHECK(co_list_append(params, ctx_obj), "Failed to append ctx to command params");
-	CHECK(co_list_append(params, fields), "Failed to append service fields to command params");
-	fields = NULL;
-	CHECK(cmd_commit_service(NULL, &verdict, params), "Failed to commit service from UCI");
-	bool result;
-	CHECK(co_response_get_bool(verdict, &result, "success", sizeof("success")), "Failed to fetch result from command");
-	if (!result) { // perhaps service didn't validate against schema, don't want to hard error here
-	  WARN("Error committing service %s from UCI", e->name);
-	} else {
-	  char *key = NULL;
-	  CHECK(co_response_get_str(verdict, &key, "key", sizeof("key")), "Failed to fetch key from response");
-	  INFO("Successfully added local service with key %s", key);
-	}
-//       }
+      verdict = NULL;
+      params = co_list16_create();
+      CHECK_MEM(params);
+      ctx_obj = co_ctx_create(ctx);
+      CHECK_MEM(ctx_obj);
+      CHECK(co_list_append(params, ctx_obj), "Failed to append ctx to command params");
+      CHECK(co_list_append(params, fields), "Failed to append service fields to command params");
+      fields = NULL;
+      co_obj_t *local_obj = co_bool_create(local,0);
+      CHECK_MEM(local_obj);
+      CHECK(co_list_append(params, local_obj), "Failed to append local to command params");
+      CHECK(cmd_commit_service(NULL, &verdict, params), "Failed to commit service from UCI");
+      bool result;
+      CHECK(co_response_get_bool(verdict, &result, "success", sizeof("success")), "Failed to fetch result from command");
+      if (!result) { // perhaps service didn't validate against schema, don't want to hard error here
+	WARN("Error committing service %s from UCI", e->name);
+      } else {
+	char *key = NULL;
+	CHECK(co_response_get_str(verdict, &key, "key", sizeof("key")) != -1, "Failed to fetch key from response");
+	INFO("Successfully added local service with key %s", key);
+      }
     }
   }
   
@@ -293,6 +305,8 @@ error:
     co_obj_free(verdict);
   if (val_obj)
     co_obj_free(val_obj);
+  if (list)
+    co_obj_free(list);
 //   return ret;
 }
 

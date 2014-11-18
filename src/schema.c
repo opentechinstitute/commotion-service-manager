@@ -515,12 +515,12 @@ _csm_validate_field_i(co_obj_t *list, co_obj_t *current, void *context)
     ERROR("Invalid schema field");
     return current;
   }
-  co_obj_t *entries = (co_obj_t*)context;
+  csm_service *s = (csm_service*)context;
+  co_obj_t *entries = s->fields;
   csm_schema_field_t *schema_field = &((co_schema_field_t*)current)->field;
   co_obj_t *service_field = co_tree_find(entries, schema_field->name, strlen(schema_field->name) + 1);
   if (schema_field->required && !service_field) {
-    co_obj_t *local = co_tree_find(entries, "local", sizeof("local"));
-    if (!local || ((co_int32_t*)local)->data != 1 || !schema_field->generated) { // local services don't need to provide generated fields
+    if (!s->local || !schema_field->generated) { // local services don't need to provide generated fields
       ERROR("Missing required field %s", schema_field->name);
       return current;
     }
@@ -552,7 +552,7 @@ csm_validate_fields(csm_ctx *ctx, csm_service *s)
   if (!schema) schema = ctx->schema;
   
   // iterate through schema fields
-  if (co_list_parse(schema->fields, _csm_validate_field_i, entries) != NULL) {
+  if (co_list_parse(schema->fields, _csm_validate_field_i, s) != NULL) {
     WARN("Service fields did not validate");
     return 0;
   }

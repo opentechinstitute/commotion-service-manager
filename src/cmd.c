@@ -65,7 +65,7 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   co_obj_t *key_obj = NULL, *sig_obj = NULL, *ptr_obj = NULL;
   int added = 0;
   
-  CHECK(IS_LIST(params),"Received invalid params");
+  CHECK(IS_LIST(params) && co_list_length(params) == 3,"Received invalid params");
   co_obj_t *ctx_obj = co_list_element(params,0);
   CHECK(IS_CTX(ctx_obj),"Received invalid ctx");
   csm_ctx *ctx = ((co_ctx_t*)ctx_obj)->ctx;
@@ -73,10 +73,15 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   co_obj_t *service_fields = co_list_element(params,1);
   CHECK(IS_TREE(service_fields),"Received invalid service fields");
   
+  co_obj_t *local = co_list_element(params,2);
+  CHECK(IS_BOOL(local),"Received invalid local param");
+  
   // create new service
   s = csm_service_new(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, NULL, "_commotion._tcp", "mesh.local");
   CHECK_MEM(s);
-  s->local = 1;
+  
+  if (IS_TRUE(local))
+    s->local = 1;
   
   // attach passed list of service fields to our newly created/updated service
   CHECK(co_list_delete(params, service_fields), "Failed to remove service fields from cmd params list");
@@ -104,7 +109,10 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   ptr_obj = co_tree_find(s->fields, "signature", sizeof("signature"));
   if (ptr_obj) {
 //     s->signature = co_obj_data_ptr(ptr_obj);
-    co_tree_delete(s->fields,"signature",sizeof("signature"));
+    if (s->local)
+      co_tree_delete(s->fields,"signature",sizeof("signature"));
+    else
+      s->signature = co_obj_data_ptr(ptr_obj);
   }
   ptr_obj = co_tree_find(s->fields, "key", sizeof("key"));
   if (ptr_obj) {
@@ -119,9 +127,11 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
       INFO("Could not find service with provided key, creating new service");
     else {
       // unpublish and remove existing service from service list
-      CHECK(!ENTRY_GROUP_EMPTY(existing->l.group),"EMPTY ENTRY GROUP");
-      s->l.group = existing->l.group;
-      s->l.uptodate = 0;
+      if (s->local) {
+	CHECK(!ENTRY_GROUP_EMPTY(existing->l.group),"EMPTY ENTRY GROUP");
+	s->l.group = existing->l.group;
+	s->l.uptodate = 0;
+      }
 //       CHECK(csm_unpublish_service(existing, ctx), "Failed to unpublish service");
       CHECK(csm_remove_service(ctx->service_list, existing), "Failed to remove old service");
       s->uuid = h_strdup(uuid);
@@ -132,7 +142,7 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   
   CHECK(csm_add_service(ctx->service_list, s, ctx), "Failed to add service");
   added = 1;
-  if (!csm_publish_service(s, ctx))
+  if (s->local && !csm_publish_service(s, ctx))
     ERROR("Failed to publish service");
   if (existing) {
     existing->l.group = NULL;
