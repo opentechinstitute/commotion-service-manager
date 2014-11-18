@@ -58,7 +58,7 @@ endef
 define Package/$(PKG_NAME)/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
-	( /etc/uci-defaults/CSMv2-upgrade.lua ) && rm -f /etc/uci-defaults/CSMv2-upgrade.lua
+	( . /etc/uci-defaults/CSMv2-upgrade.lua ) && rm -f /etc/uci-defaults/CSMv2-upgrade.lua
 }
 endef
 

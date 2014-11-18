@@ -1,3 +1,6 @@
+#!/bin/sh
+
+cat > /tmp/CSMv2-upgrade.lua << EOF
 #!/usr/bin/lua
 
 require "luci.model.uci"
@@ -72,3 +75,8 @@ uci:save("olsrd")
 uci:commit("olsrd")
 
 luci.sys.exec("/etc/init.d/olsrd restart")
+EOF
+
+chmod +x /tmp/CSMv2-upgrade.lua
+/tmp/CSMv2-upgrade.lua
+rm /tmp/CSMv2-upgrade.lua
