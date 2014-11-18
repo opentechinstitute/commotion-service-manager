@@ -52,13 +52,13 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/etc/commotion/csm/schemas.d
 	$(CP) $(PKG_BUILD_DIR)/files/schemas.d/* $(1)/etc/commotion/csm/schemas.d
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/openwrt/etc/uci-defaults/CSMv2-upgrade $(1)/etc/uci-defaults
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/openwrt/etc/uci-defaults/CSMv2-upgrade.lua $(1)/etc/uci-defaults
 endef
 
 define Package/$(PKG_NAME)/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
-	( /etc/uci-defaults/CSMv2-upgrade ) && rm -f /etc/uci-defaults/CSMv2-upgrade
+	( /etc/uci-defaults/CSMv2-upgrade.lua ) && rm -f /etc/uci-defaults/CSMv2-upgrade.lua
 }
 endef
 
