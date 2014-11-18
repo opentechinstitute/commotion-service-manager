@@ -53,7 +53,7 @@
     sec_ptr.option = #FLD; \
     sec_ptr.value = VAL; \
     int uci_ret = F(C, &sec_ptr); \
-    UCI_CHECK(uci_ret == 0,"Failed to set UCI field " #FLD); \
+    UCI_CHECK(uci_ret == UCI_OK,"Failed to set UCI field " #FLD); \
   } while (0)
 #define UCI_SET(C,SRV,FLD,VAL) _UCI_SET(uci_set,C,SRV,FLD,VAL)
 
@@ -317,7 +317,6 @@ static void
 _csm_write_uci_field(co_obj_t *container, co_obj_t *key, co_obj_t *val, void *context)
 {
   char *val_str = NULL;
-  int uci_ret = -1;
   struct uci_write_ctx *uci_ctx = (struct uci_write_ctx*)context;
   struct uci_context *c = uci_ctx->c;
   struct uci_ptr sec_ptr = {0};
@@ -327,12 +326,10 @@ _csm_write_uci_field(co_obj_t *container, co_obj_t *key, co_obj_t *val, void *co
   if (IS_INT(val)) {
     CHECK_MEM(asprintf(&val_str, "%"PRId32, ((co_int32_t*)val)->data) != -1);
     sec_ptr.value = val_str;
-    uci_ret = uci_ctx->uci_setter(uci_ctx->c, &sec_ptr);
-    UCI_CHECK(uci_ret == 0, "Failed to set UCI field %s", val_str);
+    UCI_CHECK(uci_ctx->uci_setter(uci_ctx->c, &sec_ptr) == UCI_OK, "Failed to set UCI field %s", val_str);
   } else if (IS_STR(val)) {
     sec_ptr.value = co_obj_data_ptr(val);
-    uci_ret = uci_ctx->uci_setter(uci_ctx->c, &sec_ptr);
-    UCI_CHECK(uci_ret == 0, "Failed to set UCI field %s", co_obj_data_ptr(val));
+    UCI_CHECK(uci_ctx->uci_setter(uci_ctx->c, &sec_ptr) == UCI_OK, "Failed to set UCI field %s", co_obj_data_ptr(val));
   } else { // IS_LIST
     uci_ctx->uci_setter = uci_add_list;
     csm_list_parse(val, key, _csm_write_uci_field, context);
@@ -374,7 +371,7 @@ int uci_write(csm_service *s) {
     }
     // signatures differ: delete existing app
     INFO("(UCI) Signature differs, updating");
-    UCI_CHECK(uci_delete(c, &sec_ptr), "Failed to delete out-of-date application from UCI");
+    UCI_CHECK(uci_delete(c, &sec_ptr) == UCI_OK, "Failed to delete out-of-date application from UCI");
   } else {
     INFO("(UCI) Application not found, creating");
   }
@@ -386,7 +383,7 @@ int uci_write(csm_service *s) {
   sec_ptr.package = "applications";
   sec_ptr.section = s->uuid;
   sec_ptr.value = "application";
-  UCI_CHECK(!uci_set(c, &sec_ptr),"(UCI) Failed to set section");
+  UCI_CHECK(uci_set(c, &sec_ptr) == UCI_OK,"(UCI) Failed to set section");
   INFO("(UCI) Section set succeeded");
   
   // parse elements of s->field
