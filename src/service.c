@@ -22,9 +22,12 @@
  * =====================================================================================
  */
 
+#define _GNU_SOURCE         /* asprintf */
+
 #include "service.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <malloc.h>
 
 #include <avahi-common/address.h>

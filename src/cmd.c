@@ -22,7 +22,11 @@
  * =====================================================================================
  */
 
+#define _GNU_SOURCE         /* asprintf */
+
 #include "cmd.h"
+
+#include <stdio.h>
 
 #include <commotion/obj.h>
 #include <commotion/list.h>

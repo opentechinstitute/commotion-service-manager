@@ -22,10 +22,12 @@
  * =====================================================================================
  */
 
+#define _GNU_SOURCE         /* asprintf */
+
 #include "uci-utils.h"
 
 #include <assert.h>
-
+#include <stdio.h>
 #include <uci.h>
 
 #include <commotion/debug.h>

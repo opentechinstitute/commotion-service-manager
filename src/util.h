@@ -27,14 +27,6 @@
 
 #include <commotion/obj.h>
 
-#ifndef _GNU_SOURCE
-#define asprintf(B,T,...) ({ \
-  int n = snprintf(NULL,0,T,##__VA_ARGS__); \
-  *B = calloc(n+1,sizeof(char)); \
-  snprintf(*B,n,T,##__VA_ARGS__); \
-})
-#endif
-
 typedef void (*_csm_iter_t)(co_obj_t *data, co_obj_t *key, co_obj_t *val, void *context);
 
 int isHex(const char *str, size_t len);
