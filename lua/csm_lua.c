@@ -640,9 +640,13 @@ _l_csm_service_commit(lua_State *L)
 {
   LUA_CHECK_N_ARGS(L,1);
   void *config = _csm_fetch_config_from_registry(L);
-  LUA_CHECK(csm_service_commit(_csm_check_service(L,1), config) == CSM_OK,
-	    "Failed to commit service");
-  return 0;
+  if (csm_service_commit(_csm_check_service(L,1), config) != CSM_OK) {
+    DEBUG("Failed to commit service");
+    lua_pushboolean(L,false);
+  } else {
+    lua_pushboolean(L,true);
+  }
+  return 1;
 }
 
 // int csm_service_remove(CSMService *service, CSMConfig *config);
@@ -651,9 +655,13 @@ _l_csm_service_remove(lua_State *L)
 {
   LUA_CHECK_N_ARGS(L,1);
   void *config = _csm_fetch_config_from_registry(L);
-  LUA_CHECK(csm_service_remove(_csm_check_service(L,1), config) == CSM_OK,
-	    "Failed to remove service");
-  return 0;
+  if (csm_service_remove(_csm_check_service(L,1), config) != CSM_OK) {
+    DEBUG("Failed to remove service");
+    lua_pushboolean(L,false);
+  } else {
+    lua_pushboolean(L,true);
+  }
+  return 1;
 }
 
 /**
@@ -780,7 +788,10 @@ _l_csm_service_get_field_by_name(lua_State *L)
   LUA_CHECK_N_ARGS(L,2);
   void *s = _csm_check_service(L,1);
   void *field = csm_service_get_field_by_name(s, luaL_checkstring(L,2));
-  LUA_CHECK(field, "Failed to get service field of name %s", luaL_checkstring(L,2));
+  if (!field) {
+    DEBUG("Failed to get service field of name %s", luaL_checkstring(L,2));
+    return 0;
+  }
   
   void **f = lua_newuserdata(L, sizeof(void*));
   LUA_CHECK_MEM(f);

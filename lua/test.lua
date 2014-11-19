@@ -131,7 +131,7 @@ for v in pairs(schema) do
 end
 
 print("########## New Service ##########")
-s:commit()
+if not s:commit() then error("Failed to commit service") end
 key = s.key.value
 s:free()
 print("key: " .. key)
@@ -142,33 +142,33 @@ print "########## Changing description, new tag array ##########"
 s = l[key]
 s.description = "new description"
 s.tag = {"foo","bar","baz"}
-s:commit()
+if not s:commit() then error("Failed to commit service") end
 l, slen = csm.fetch_services()
 print_services(l,key)
 
 print "########## Change item of tag array ##########"
 s = l[key]
 s.tag[2] = "blah"
-s:commit()
+if not s:commit() then error("Failed to commit service") end
 l, slen = csm.fetch_services()
 print_services(l,key)
 
 print "########## Remove item of tag array ##########"
 s = l[key]
 s.tag[2] = nil
-s:commit()
+if not s:commit() then error("Failed to commit service") end
 l, slen = csm.fetch_services()
 print_services(l,key)
 
 print "########## Remove tag fields ##########"
 s = l[key]
 s.tag = nil
-s:commit()
+if not s:commit() then error("Failed to commit service") end
 l, slen = csm.fetch_services()
 print_services(l,key)
 
 print "########## Delete Service ##########"
-l[key]:remove()
+if not l[key]:remove() then error("Failed to remove service") end
 l, slen = csm.fetch_services()
 print_services(l)
 
