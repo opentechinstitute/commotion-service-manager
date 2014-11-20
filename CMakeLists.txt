@@ -16,11 +16,11 @@ SET(COMMOTION_MANAGESOCK \"/var/run/commotiond.sock\")
 SET(CSM_MANAGESOCK \"/var/run/commotion-service-manager.sock\")
 SET(UCIPATH \"/var/run/uci\")
 
-ADD_DEFINITIONS(-Os -Wall --std=gnu99 -Wmissing-declarations -DNDEBUG -DHAVE_STDINT_H)
+ADD_DEFINITIONS(-Os -Wall --std=gnu99 -Wmissing-declarations -DNDEBUG -DHAVE_STDINT_H -DUSESYSLOG)
 
 IF(DEBUG)
   ADD_DEFINITIONS(-g3)
-  REMOVE_DEFINITIONS(-DNDEBUG)
+  REMOVE_DEFINITIONS(-DNDEBUG -DUSESYSLOG)
   IF(NO_OPTIMIZE)
     ADD_DEFINITIONS(-O0)
   ENDIF()
