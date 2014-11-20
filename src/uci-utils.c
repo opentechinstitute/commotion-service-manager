@@ -117,6 +117,13 @@ uci_service_updater(co_obj_t *data, co_obj_t **output, co_obj_t *service_list)
   CHECK(co_list_parse(service_list, _uci_write_service, NULL) == NULL,
 	"Failed to write service list to UCI");
   
+  // uci_save
+  CHECK(uci_save(c, pkg) == UCI_OK,"Failed to save");
+  INFO("Save succeeded");
+  
+  CHECK(uci_commit(c,&pkg,false) == UCI_OK,"Failed to commit");
+  INFO("Commit succeeded");
+  
   ret =  1;
 error:
   if (c) uci_free_context(c);
