@@ -43,8 +43,22 @@
 #include "service.h"
 #include "util.h"
 
-#define UCI_CHECK(A, M, ...) if(!(A)) { char *err = NULL; uci_get_errorstr(c,&err,NULL); ERROR(M ": %s", ##__VA_ARGS__, err); free(err); errno=0; goto error; }
-#define UCI_WARN(M, ...) char *err = NULL; uci_get_errorstr(c,&err,NULL); WARN(M ": %s", ##__VA_ARGS__, err); free(err);
+#define UCI_CHECK(A, M, ...) \
+  if(!(A)) { \
+    char *err = NULL; \
+    uci_get_errorstr(c,&err,NULL); \
+    ERROR(M ": %s", ##__VA_ARGS__, err); \
+    free(err); \
+    errno=0; \
+    goto error; \
+  }
+#define UCI_WARN(M, ...) \
+  do { \
+    char *err = NULL; \
+    uci_get_errorstr(c,&err,NULL); \
+    WARN(M ": %s", ##__VA_ARGS__, err); \
+    free(err); \
+  } while (0)
 #define _UCI_SET(F,C,SRV,FLD,VAL) \
   do { \
     struct uci_ptr sec_ptr = {0}; \
@@ -121,14 +135,16 @@ error:
  * @param op_len length of option name
  * @return -1 = fail, > 0 success/sec_ptr flags
  */
-int get_uci_section(struct uci_context *c,
-		    struct uci_ptr *sec_ptr,
-		    const char *file, 
-		    const size_t file_len,
-		    const char *sec, 
-		    const size_t sec_len,
-		    const char *op,
-		    const size_t op_len) {
+int 
+get_uci_section(struct uci_context *c,
+		struct uci_ptr *sec_ptr,
+		const char *file, 
+		const size_t file_len,
+		const char *sec, 
+		const size_t sec_len,
+		const char *op,
+		const size_t op_len)
+{
   char *lookup_str = NULL;
   int ret = -1;
   
@@ -149,7 +165,8 @@ int get_uci_section(struct uci_context *c,
   } else
     lookup_str[file_len + sec_len + 1] = '\0';
   
-  UCI_CHECK(uci_lookup_ptr(c, sec_ptr, lookup_str, false) == UCI_OK,"(UCI) Failed section lookup: %s",lookup_str);
+  UCI_CHECK(uci_lookup_ptr(c, sec_ptr, lookup_str, false) == UCI_OK,
+	    "Failed section lookup: %s",lookup_str);
   ret = (*sec_ptr).flags;
 
 error:
@@ -210,7 +227,11 @@ uci_read(AvahiTimeout *t, void *userdata)
   csm_ctx *ctx = (csm_ctx*)userdata;
   co_obj_t *ctx_obj = NULL;
   struct uci_context *c = NULL;
-  co_obj_t *fields = NULL, *params = NULL, *verdict = NULL, *val_obj = NULL, *list = NULL;
+  co_obj_t *fields = NULL,
+	   *params = NULL,
+	   *verdict = NULL,
+	   *val_obj = NULL,
+	   *list = NULL;
   struct uci_package *pkg = NULL;
   int local = 0;
   
@@ -242,7 +263,8 @@ uci_read(AvahiTimeout *t, void *userdata)
 	  val_obj = _csm_store_uci_field(key, val, ctx);
 	  if (!val_obj)
 	    continue;
-	  CHECK(co_tree_insert(fields, key, strlen(key) + 1, val_obj), "Failed to add field to imported service");
+	  CHECK(co_tree_insert(fields, key, strlen(key) + 1, val_obj),
+		"Failed to add field to imported service");
 	  DEBUG("Read service field %s : %s", key, val);
 	  val_obj = NULL;
 	} else { // option->type == UCI_TYPE_LIST
@@ -257,12 +279,14 @@ uci_read(AvahiTimeout *t, void *userdata)
 	    val_obj = _csm_store_uci_field(key, val, ctx);
 	    if (!val_obj)
 	      continue;
-	    CHECK(co_list_append(list, val_obj), "Failed to add list field to new service");
+	    CHECK(co_list_append(list, val_obj),
+		  "Failed to add list field to new service");
 	    DEBUG("Read service list field %s : %s", key, val);
 	    val_obj = NULL;
 	  }
 	  if (co_list_length(list) > 0)
-	    CHECK(co_tree_insert(fields, key, strlen(key) + 1, list), "Failed to add list field to new service");
+	    CHECK(co_tree_insert(fields, key, strlen(key) + 1, list),
+		  "Failed to add list field to new service");
 	  else
 	    co_obj_free(list);
 	  list = NULL;
@@ -281,12 +305,14 @@ uci_read(AvahiTimeout *t, void *userdata)
       CHECK(co_list_append(params, local_obj), "Failed to append local to command params");
       CHECK(cmd_commit_service(NULL, &verdict, params), "Failed to commit service from UCI");
       bool result;
-      CHECK(co_response_get_bool(verdict, &result, "success", sizeof("success")), "Failed to fetch result from command");
+      CHECK(co_response_get_bool(verdict, &result, "success", sizeof("success")),
+	    "Failed to fetch result from command");
       if (!result) { // perhaps service didn't validate against schema, don't want to hard error here
 	WARN("Error committing service %s from UCI", e->name);
       } else {
 	char *key = NULL;
-	CHECK(co_response_get_str(verdict, &key, "key", sizeof("key")) != -1, "Failed to fetch key from response");
+	CHECK(co_response_get_str(verdict, &key, "key", sizeof("key")) != -1,
+	      "Failed to fetch key from response");
 	INFO("Successfully added local service with key %s", key);
       }
     }
@@ -326,10 +352,12 @@ _csm_write_uci_field(co_obj_t *container, co_obj_t *key, co_obj_t *val, void *co
   if (IS_INT(val)) {
     CHECK_MEM(asprintf(&val_str, "%"PRId32, ((co_int32_t*)val)->data) != -1);
     sec_ptr.value = val_str;
-    UCI_CHECK(uci_ctx->uci_setter(uci_ctx->c, &sec_ptr) == UCI_OK, "Failed to set UCI field %s", val_str);
+    UCI_CHECK(uci_ctx->uci_setter(uci_ctx->c, &sec_ptr) == UCI_OK, 
+	      "Failed to set UCI field %s", val_str);
   } else if (IS_STR(val)) {
     sec_ptr.value = co_obj_data_ptr(val);
-    UCI_CHECK(uci_ctx->uci_setter(uci_ctx->c, &sec_ptr) == UCI_OK, "Failed to set UCI field %s", co_obj_data_ptr(val));
+    UCI_CHECK(uci_ctx->uci_setter(uci_ctx->c, &sec_ptr) == UCI_OK, 
+	      "Failed to set UCI field %s", co_obj_data_ptr(val));
   } else { // IS_LIST
     uci_ctx->uci_setter = uci_add_list;
     csm_list_parse(val, key, _csm_write_uci_field, context);
@@ -341,7 +369,9 @@ error:
     free(val_str);
 }
 
-int uci_write(csm_service *s) {
+int
+uci_write(csm_service *s)
+{
   struct uci_context *c = NULL;
   struct uci_ptr sec_ptr,sig_ptr;
 #ifdef OPENWRT
@@ -358,22 +388,39 @@ int uci_write(csm_service *s) {
   uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
 
   /* Lookup application by name (concatenation of URI + port) */
-  CHECK(get_uci_section(c,&sec_ptr,"applications",12,s->uuid,strlen(s->uuid),NULL,0) > 0, "Failed application lookup");
+  CHECK(get_uci_section(c,
+			&sec_ptr,
+			"applications",
+			strlen("applications"),
+			s->uuid,
+			strlen(s->uuid),
+			NULL,
+			0) > 0,
+	"Failed application lookup");
   if (sec_ptr.flags & UCI_LOOKUP_COMPLETE) {
-    INFO("(UCI) Found application: %s",s->uuid);
+    INFO("Found application: %s",s->uuid);
     // check for service == fingerprint. if sig different, update it
-    CHECK(get_uci_section(c,&sig_ptr,"applications",12,s->uuid,strlen(s->uuid),"signature",9) > 0,"Failed signature lookup");
-    if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && s->signature && !strcmp(s->signature,sig_ptr.o->v.string)) {
+    CHECK(get_uci_section(c,
+			  &sig_ptr,
+			  "applications",
+			  strlen("applications"),
+			  s->uuid,
+			  strlen(s->uuid),
+			  "signature",
+			  strlen("signature")) > 0,
+	  "Failed signature lookup");
+    if (sig_ptr.flags & UCI_LOOKUP_COMPLETE && s->signature && strcmp(s->signature,sig_ptr.o->v.string) == 0) {
       // signatures equal: do nothing
-      INFO("(UCI) Signature the same, not updating");
+      INFO("Signature the same, not updating");
       ret = 1;
       goto error;
     }
     // signatures differ: delete existing app
-    INFO("(UCI) Signature differs, updating");
-    UCI_CHECK(uci_delete(c, &sec_ptr) == UCI_OK, "Failed to delete out-of-date application from UCI");
+    INFO("Signature differs, updating");
+    UCI_CHECK(uci_delete(c, &sec_ptr) == UCI_OK,
+	      "Failed to delete out-of-date application from UCI");
   } else {
-    INFO("(UCI) Application not found, creating");
+    INFO("Application not found, creating");
   }
   
   pak = sec_ptr.p;
@@ -383,8 +430,8 @@ int uci_write(csm_service *s) {
   sec_ptr.package = "applications";
   sec_ptr.section = s->uuid;
   sec_ptr.value = "application";
-  UCI_CHECK(uci_set(c, &sec_ptr) == UCI_OK,"(UCI) Failed to set section");
-  INFO("(UCI) Section set succeeded");
+  UCI_CHECK(uci_set(c, &sec_ptr) == UCI_OK,"Failed to set section");
+  INFO("Section set succeeded");
   
   // parse elements of s->field
   struct uci_write_ctx uci_ctx = {
@@ -400,12 +447,33 @@ int uci_write(csm_service *s) {
   
 #ifdef OPENWRT
   // For OpenWRT: check known_applications list, approved or blacklisted
-  if (get_uci_section(c,&approved_ptr,"applications",12,"known_apps",10,s->uuid,strlen(s->uuid)) == -1) {
-    WARN("(UCI) Failed known_apps lookup");
+  if (get_uci_section(c,
+		      &approved_ptr,
+		      "applications",
+		      strlen("applications"),
+		      "known_apps",
+		      strlen("known_apps"),
+		      s->uuid,
+		      strlen(s->uuid)) == -1) {
+    WARN("Failed known_apps lookup");
+    if (get_uci_section(c,
+			&approved_ptr,
+			"applications",
+			strlen("applications"),
+			"settings",
+			strlen("settings"),
+			"autoapprove",
+			strlen("autoapprove")) == -1) {
+      WARN("Failed autoapprove lookup");
+    } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
+      if (strcmp(approved_ptr.o->v.string,"1") == 0) {
+	UCI_SET(c, s, approved, "1");
+      }
+    }
   } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
-    if (!strcmp(approved_ptr.o->v.string,"approved")) {
+    if (strcmp(approved_ptr.o->v.string,"approved") == 0) {
       UCI_SET(c, s, approved, "1");
-    } else if (!strcmp(approved_ptr.o->v.string,"blacklisted")) {
+    } else if (strcmp(approved_ptr.o->v.string,"blacklisted") == 0) {
       UCI_SET(c, s, approved, "0");
     }
   }
@@ -414,11 +482,11 @@ int uci_write(csm_service *s) {
 #endif
   
   // uci_save
-  UCI_CHECK(uci_save(c, pak) == UCI_OK,"(UCI) Failed to save");
-  INFO("(UCI) Save succeeded");
+  UCI_CHECK(uci_save(c, pak) == UCI_OK,"Failed to save");
+  INFO("Save succeeded");
   
-  UCI_CHECK(uci_commit(c,&pak,false) == UCI_OK,"(UCI) Failed to commit");
-  INFO("(UCI) Commit succeeded");
+  UCI_CHECK(uci_commit(c,&pak,false) == UCI_OK,"Failed to commit");
+  INFO("Commit succeeded");
 
   ret = 1;
   
@@ -445,7 +513,14 @@ int uci_remove(csm_service *s) {
   uci_set_confdir(c, getenv("UCI_INSTANCE_PATH") ? : UCIPATH);
   
   /* Lookup application by UUID */
-  CHECK(get_uci_section(c,&sec_ptr,"applications",12,s->uuid,strlen(s->uuid),NULL,0) > 0,
+  CHECK(get_uci_section(c,
+			&sec_ptr,
+			"applications",
+			strlen("applications"),
+			s->uuid,
+			strlen(s->uuid),
+			NULL,
+			0) > 0,
 	"(UCI_Remove) Failed application lookup");
   
   CHECK(sec_ptr.flags & UCI_LOOKUP_COMPLETE,"(UCI_Remove) Application not found: %s",s->uuid);
@@ -479,13 +554,30 @@ long default_lifetime(void) {
   struct uci_ptr allow, exp;
   struct uci_context *c = uci_alloc_context();
   
-  CHECK(get_uci_section(c,&allow,"applications",12,"settings",8,"allowpermanent",14) > 0 &&
-    allow.flags & UCI_LOOKUP_COMPLETE, "Failed settings lookup");
+  CHECK(get_uci_section(c,
+			&allow,
+			"applications",
+			strlen("applications"),
+			"settings",
+			strlen("settings"),
+			"allowpermanent",
+			strlen("allowpermanent")) > 0
+	  && allow.flags & UCI_LOOKUP_COMPLETE, 
+	"Failed settings lookup");
   
   if (strcmp(allow.o->v.string,"0") == 0) {  // force applications to expire
-    CHECK(get_uci_section(c,&exp,"applications",12,"settings",8,"lifetime",8) > 0 &&
-      exp.flags & UCI_LOOKUP_COMPLETE, "Failed settings lookup");
-    CHECK(isNumeric(exp.o->v.string) && atol(exp.o->v.string) >= 0,"Invalid default lifetime");
+    CHECK(get_uci_section(c,
+			  &exp,
+			  "applications",
+			  strlen("applications"),
+			  "settings",
+			  strlen("settings"),
+			  "lifetime",
+			  strlen("lifetime")) > 0
+	    && exp.flags & UCI_LOOKUP_COMPLETE,
+	  "Failed settings lookup");
+    CHECK(isNumeric(exp.o->v.string) && atol(exp.o->v.string) >= 0,
+	  "Invalid default lifetime");
     lifetime = atol(exp.o->v.string);
   }
   
