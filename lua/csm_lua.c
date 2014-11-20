@@ -506,7 +506,10 @@ _l_csm_services_get_by_key(lua_State *L)
   LUA_CHECK_N_ARGS(L,2);
   void *schema = _csm_check_servicelist(L,1);
   void *service = csm_services_get_by_key(schema, (char*)luaL_checkstring(L,2));
-  LUA_CHECK(service, "Failed to get service of key %s", luaL_checkstring(L,2));
+  if (!service) {
+    DEBUG("Failed to get service of key %s", luaL_checkstring(L,2));
+    return 0;
+  }
   
   void **s = lua_newuserdata(L, sizeof(void*));
   LUA_CHECK_MEM(s);
