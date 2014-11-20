@@ -478,7 +478,7 @@ int csm_service_commit(void *service, void *config) {
   
   ret = CSM_OK;
 error:
-  if (co_list_contains(request, service))
+  if (request && service && co_list_contains(request, service))
     co_list_delete(request,service);
   
   if (request) co_free(request);
@@ -496,9 +496,10 @@ csm_service_remove(void *service, void *config) {
 	    *response = NULL,
 	    *conn = NULL;
   int ret = CSM_ERROR;
+  co_obj_t *key_obj = NULL;
   
   CHECK(IS_TREE(service),"Invalid service");
-  co_obj_t *key_obj = co_tree_find(service,"key",sizeof("key"));
+  key_obj = co_tree_find(service,"key",sizeof("key"));
   CHECK(key_obj,"Service doesn't have valid key");
   char *key = co_obj_data_ptr(key_obj);
   
@@ -520,6 +521,9 @@ csm_service_remove(void *service, void *config) {
   
   ret = CSM_OK;
 error:
+  if (request && key_obj && co_list_contains(request, key_obj))
+    co_list_delete(request,key_obj);
+
   if (request) co_free(request);
   
   if (response) co_free(response);
