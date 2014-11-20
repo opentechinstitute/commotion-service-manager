@@ -58,7 +58,7 @@ luci.sys.exec("/etc/init.d/commotion-service-manager restart")
 
 local avahi_services = luci.fs.dir("/etc/avahi/services")
 if avahi_services then
-  for _,f in pairs() do
+  for _,f in pairs(avahi_services) do
     if f and f ~= "." and f ~= ".." then
       luci.fs.unlink("/etc/avahi/services/"..f)
     end
