@@ -24,7 +24,6 @@
  */
 ]]--
 
-local inspect = require('inspect')
 require("csm")
 
 hex_chars = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F"}
@@ -135,6 +134,7 @@ if not s:commit() then error("Failed to commit service") end
 key = s.key.value
 s:free()
 print("key: " .. key)
+l:free()
 l, slen = csm.fetch_services()
 print_services(l,key)
 
@@ -143,6 +143,7 @@ s = l[key]
 s.description = "new description"
 s.tag = {"foo","bar","baz"}
 if not s:commit() then error("Failed to commit service") end
+l:free()
 l, slen = csm.fetch_services()
 print_services(l,key)
 
@@ -150,6 +151,7 @@ print "########## Change item of tag array ##########"
 s = l[key]
 s.tag[2] = "blah"
 if not s:commit() then error("Failed to commit service") end
+l:free()
 l, slen = csm.fetch_services()
 print_services(l,key)
 
@@ -157,6 +159,7 @@ print "########## Remove item of tag array ##########"
 s = l[key]
 s.tag[2] = nil
 if not s:commit() then error("Failed to commit service") end
+l:free()
 l, slen = csm.fetch_services()
 print_services(l,key)
 
@@ -164,11 +167,13 @@ print "########## Remove tag fields ##########"
 s = l[key]
 s.tag = nil
 if not s:commit() then error("Failed to commit service") end
+l:free()
 l, slen = csm.fetch_services()
 print_services(l,key)
 
 print "########## Delete Service ##########"
 if not l[key]:remove() then error("Failed to remove service") end
+l:free()
 l, slen = csm.fetch_services()
 print_services(l)
 
