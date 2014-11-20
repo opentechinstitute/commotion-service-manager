@@ -468,6 +468,13 @@ uci_write(csm_service *s)
     } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
       if (strcmp(approved_ptr.o->v.string,"1") == 0) {
 	UCI_SET(c, s, approved, "1");
+	memset(&sec_ptr, 0, sizeof(struct uci_ptr));
+	sec_ptr.package = "applications";
+	sec_ptr.section = "known_apps";
+	sec_ptr.option = s->uuid;
+	sec_ptr.value = "approved";
+	int uci_ret = uci_set(c, &sec_ptr);
+	UCI_CHECK(uci_ret == UCI_OK,"Failed to set known_apps entry for service %s", s->uuid);
       }
     }
   } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
