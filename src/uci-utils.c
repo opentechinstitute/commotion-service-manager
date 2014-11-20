@@ -113,16 +113,16 @@ uci_service_updater(co_obj_t *data, co_obj_t **output, co_obj_t *service_list)
     }
   }
   
-  // write out all services using uci_write
-  CHECK(co_list_parse(service_list, _uci_write_service, NULL) == NULL,
-	"Failed to write service list to UCI");
-  
   // uci_save
   CHECK(uci_save(c, pkg) == UCI_OK,"Failed to save");
   INFO("Save succeeded");
   
   CHECK(uci_commit(c,&pkg,false) == UCI_OK,"Failed to commit");
   INFO("Commit succeeded");
+  
+  // write out all services using uci_write
+  CHECK(co_list_parse(service_list, _uci_write_service, NULL) == NULL,
+	"Failed to write service list to UCI");
   
   ret =  1;
 error:
@@ -463,6 +463,13 @@ uci_write(csm_service *s)
 		      s->uuid,
 		      strlen(s->uuid)) == -1) {
     WARN("Failed known_apps lookup");
+  } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
+    if (strcmp(approved_ptr.o->v.string,"approved") == 0) {
+      UCI_SET(c, s, approved, "1");
+    } else if (strcmp(approved_ptr.o->v.string,"blacklisted") == 0) {
+      UCI_SET(c, s, approved, "0");
+    }
+  } else { // not in known_apps table, so check for autoapprove
     if (get_uci_section(c,
 			&approved_ptr,
 			"applications",
@@ -483,12 +490,6 @@ uci_write(csm_service *s)
 	int uci_ret = uci_set(c, &sec_ptr);
 	UCI_CHECK(uci_ret == UCI_OK,"Failed to set known_apps entry for service %s", s->uuid);
       }
-    }
-  } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
-    if (strcmp(approved_ptr.o->v.string,"approved") == 0) {
-      UCI_SET(c, s, approved, "1");
-    } else if (strcmp(approved_ptr.o->v.string,"blacklisted") == 0) {
-      UCI_SET(c, s, approved, "0");
     }
   }
 #else
