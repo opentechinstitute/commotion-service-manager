@@ -482,6 +482,23 @@ uci_write(csm_service *s)
     } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
       if (strcmp(approved_ptr.o->v.string,"1") == 0) {
 	UCI_SET(c, s, approved, "1");
+	struct uci_ptr *known_apps = NULL;
+	if (get_uci_section(c,
+			    &known_apps,
+			    "applications",
+			    strlen("applications"),
+			    "known_apps",
+			    strlen("known_apps"),
+			    NULL, 
+			    0) == -1) {
+	  // add known_apps section
+	  memset(&sec_ptr, 0, sizeof(struct uci_ptr));
+	  sec_ptr.package = "applications";
+	  sec_ptr.section = "known_apps";
+	  sec_ptr.value = "known_apps";
+	  UCI_CHECK(uci_set(c, &sec_ptr) == UCI_OK,"Failed to add known_apps section");
+	  UCI_CHECK(uci_save(c, pak) == UCI_OK,"Failed to save");
+	}
 	memset(&sec_ptr, 0, sizeof(struct uci_ptr));
 	sec_ptr.package = "applications";
 	sec_ptr.section = "known_apps";
