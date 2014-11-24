@@ -482,7 +482,7 @@ uci_write(csm_service *s)
     } else if (approved_ptr.flags & UCI_LOOKUP_COMPLETE) {
       if (strcmp(approved_ptr.o->v.string,"1") == 0) {
 	UCI_SET(c, s, approved, "1");
-	struct uci_ptr *known_apps = NULL;
+	struct uci_ptr known_apps;
 	if (get_uci_section(c,
 			    &known_apps,
 			    "applications",
@@ -491,7 +491,7 @@ uci_write(csm_service *s)
 			    strlen("known_apps"),
 			    NULL, 
 			    0) != -1
-	    && known_apps.flags ~& UCI_LOOKUP_COMPLETE) {
+	    && !(known_apps.flags & UCI_LOOKUP_COMPLETE)) {
 	  // add known_apps section
 	  memset(&sec_ptr, 0, sizeof(struct uci_ptr));
 	  sec_ptr.package = "applications";
