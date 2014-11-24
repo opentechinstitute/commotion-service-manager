@@ -408,8 +408,12 @@ void browse_service_callback(
             }
             if (event == AVAHI_BROWSER_REMOVE) {
                 /* remove the service.*/
-		if (found_service)
-		  csm_remove_service(ctx->service_list, found_service);
+		if (found_service) {
+		  if (!csm_remove_service(ctx->service_list, found_service))
+		    ERROR("Failed to remove service %s", uuid);
+		  else
+		    csm_service_destroy(found_service);
+		}
 		_csm_remove_pending_service(ctx, uuid);
             }
             break;

@@ -299,19 +299,17 @@ csm_remove_service(csm_service_list *services, csm_service *s)
   if (fields && services && co_list_contains(services->service_fields, fields)) {
     co_list_delete(services->service_fields, fields);
     service_attach(s->fields, s);
-  }
-  
-  // remove service from service list
-  if (services) {
-//     co_obj_t *service_obj = co_list_parse(services->services, _csm_service_list_find_service, s);
+    
+    // remove service from service list
     co_obj_t *service_obj = (co_obj_t*)container_of(s, co_service_t, service);
     if (co_list_contains(services->services, service_obj))
       co_list_delete(services->services, service_obj);
+    
+    // finalize removal by running update handlers
+    csm_services_commit(services);
+    
+    return s;
   }
   
-  // finalize removal by running update handlers
-  if (services)
-    csm_services_commit(services);
-  
-  return s;
+  return NULL;
 }
