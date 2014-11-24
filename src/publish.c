@@ -177,6 +177,10 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
   CHECK(state == AVAHI_CLIENT_S_RUNNING, "Avahi server in bad state");
 #else
   AvahiServer *server = ctx->server;
+  if (!server) {
+    WARN("Server not running, cannot publish service");
+    return 1;
+  }
   AvahiServerState state = avahi_server_get_state(server);
   CHECK(state == AVAHI_SERVER_RUNNING, "Avahi server in bad state");
 #endif

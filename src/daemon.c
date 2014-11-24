@@ -527,17 +527,6 @@ main(int argc, char*argv[])
 
     /* Allocate main loop object */
     CHECK((simple_poll = avahi_simple_poll_new()),"Failed to create simple poll object.");
-    
-#ifdef USE_UCI
-    // read in list of local services from UCI
-    if (csm_config.uci) {
-      struct timeval uci_tv = {0}; // timeout is zeroed so callback is called as soon as Avahi even loop is started
-      avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll),
-						      &uci_tv,
-						      uci_read,
-						      &ctx);
-    }
-#endif
 
 #ifdef CLIENT
     /* Allocate a new client */
@@ -558,8 +547,18 @@ main(int argc, char*argv[])
     avahi_config.reflect_ipv = 0;
     
     struct timeval server_tv = {0};
-    avahi_elapse_time(&server_tv, 0, 0);
     avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll), &server_tv, start_server, &ctx);
+#endif
+    
+#ifdef USE_UCI
+    // read in list of local services from UCI
+    if (csm_config.uci) {
+      struct timeval uci_tv = {0}; // timeout is zeroed so callback is called as soon as Avahi even loop is started
+      avahi_simple_poll_get(simple_poll)->timeout_new(avahi_simple_poll_get(simple_poll),
+						      &uci_tv,
+						      uci_read,
+						      &ctx);
+    }
 #endif
     
     /* Register commands */
