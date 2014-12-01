@@ -399,6 +399,8 @@ start_server(AvahiTimeout *t, void *userdata)
   int error;
   csm_ctx *ctx = (csm_ctx*)userdata;
   
+  csm_unpublish_all(ctx);
+  
   /* Free service type browser */
   if (ctx->stb) {
     avahi_s_service_type_browser_free(ctx->stb);

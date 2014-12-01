@@ -64,7 +64,7 @@
 #define RESOLVER_NEW(A,B,C,D,E,F,G,H,I) avahi_service_resolver_new(client,A,B,C,D,E,F,G,H,I)
 #define RESOLVER_FREE(J) avahi_service_resolver_free(J)
 #define ENTRY_GROUP AvahiEntryGroup
-#define ENTRY_GROUP_NEW(A,B) avahi_entry_group_new(client,A,B)
+#define ENTRY_GROUP_STATE avahi_entry_group_get_state
 #define ENTRY_GROUP_EMPTY avahi_entry_group_is_empty
 #define ENTRY_GROUP_ADD_SERVICE(A,B,C,D,E,F,G,H,I,J) avahi_entry_group_add_service_strlst(A,B,C,D,E,F,G,H,I,J)
 #define ENTRY_GROUP_UPDATE_SERVICE(A,B,C,D,E,F,G,H) avahi_entry_group_update_service_txt_strlst(A,B,C,D,E,F,G,H)
@@ -85,7 +85,7 @@
 #define RESOLVER_NEW(A,B,C,D,E,F,G,H,I) avahi_s_service_resolver_new(server,A,B,C,D,E,F,G,H,I)
 #define RESOLVER_FREE(J) avahi_s_service_resolver_free(J)
 #define ENTRY_GROUP AvahiSEntryGroup
-#define ENTRY_GROUP_NEW(A,B) avahi_s_entry_group_new(server,A,B)
+#define ENTRY_GROUP_STATE avahi_s_entry_group_get_state
 #define ENTRY_GROUP_EMPTY avahi_s_entry_group_is_empty
 #define ENTRY_GROUP_ADD_SERVICE(A,B,C,D,E,F,G,H,I,J) avahi_server_add_service_strlst(server,A,B,C,D,E,F,G,H,I,J)
 #define ENTRY_GROUP_UPDATE_SERVICE(A,B,C,D,E,F,G,H) avahi_server_update_service_txt_strlst(server,A,B,C,D,E,F,G,H)

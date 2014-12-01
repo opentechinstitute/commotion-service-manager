@@ -131,14 +131,16 @@ int
 csm_unpublish_service(csm_service *s, csm_ctx *ctx)
 {
   if (s->local && s->l.group) {
+    if (ENTRY_GROUP_STATE(s->l.group) != AVAHI_ENTRY_GROUP_UNCOMMITED) {
 #ifdef CLIENT
-    if (avahi_entry_group_reset(s->l.group) != AVAHI_OK) {
-      ERROR("Failed to reset entry group");
-      return 0;
-    }
+      if (avahi_entry_group_reset(s->l.group) != AVAHI_OK) {
+	ERROR("Failed to reset entry group");
+	return 0;
+      }
 #else
-    avahi_s_entry_group_reset(s->l.group);
+      avahi_s_entry_group_reset(s->l.group);
 #endif
+    }
     ENTRY_GROUP_FREE(s->l.group);
     s->l.group = NULL;
     s->l.uptodate = 0;
@@ -188,9 +190,9 @@ csm_publish_service(csm_service *s, csm_ctx *ctx)
   if (s->local) { // only remote services have address set
     if (!s->l.group) {
 #ifdef CLIENT
-      s->l.group = ENTRY_GROUP_NEW(client_entry_group_callback, NULL);
+      s->l.group = avahi_entry_group_new(client_entry_group_callback, NULL);
 #else
-      s->l.group = ENTRY_GROUP_NEW(server_entry_group_callback, NULL);
+      s->l.group = avahi_s_entry_group_new(server, server_entry_group_callback, NULL);
 #endif
       CHECK(s->l.group,"ENTRY_GROUP_NEW failed: %s", AVAHI_ERROR);
 //       service_attach(s->l.group, s);
