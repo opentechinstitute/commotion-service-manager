@@ -1,47 +1,5 @@
 TODO
+unit tests
 test avahi client while restarting avahi daemon
 configure which interface(s) to listen on
-make note in README that version, lifetime, key, and signature are required fields in the schema
 service updates registration/subscription and notifications for clients
-UCI-defaults script
-  in applications UCI:
-    delete local services
-    s/fingerprint/key
-    s/type/tag
-  foreach /etc/avahi/services/*, add to CSM using Lua, then delete file
-  update olsrd UCI config (lib version, ServiceFileDir -> CSMSocket)
-  remove /etc/avahi/services from sysupgrade.conf
-unit tests
-pull in gtest via makefile, don't include in repo
-pare down header includes
-code cleanup
-update README
-
-DONE
-hook on service commit/change to write out to UCI
-convert services and service lists into commotion objects
-update UCI functions to not use txt_lst
-actually multicast added apps
-change UUID calculation in luci-commotion-apps
-	UUID should be base32 encoding of key
-	for version 1.0 remote services, calculate UUID as hash of concat of URI, key
-add version property to services
-redo print services
-finish client commands
-replace avahi_malloc/avahi_strdup w/ halloc
-input validation in commotion-service-manager.c (set functions), CMD(commit_service) in main.c
-update get_uuid function
-  - pass buffer instead of mallocing string in function
-use i->host_name in get_uuid, instead of using local box's hostname
-TTL field isn't functional for CSM, so remove it from csm_service_t
-write schema-generic setters/getters in service.h/c
-ctx should have all available versions of schema (maybe linked list with most recent first?)
-convert functions to use schema system: _csm_extract_from_txt_list, _csm_create_signing_template, csm_update_service, csm_publish_service, cmd_commit_service, uci_read, uci_write
-make csm_schema_t a co_list since it will need to be sent to clients
-client API should have standard error return value
-Add CSM API method for fetching schema
-add "generated" option to schema fields, so while required for remote services, locally created services don't have to provide them when committing
-don't hardcode service protocol, instead make runtime protocol configuration using config file
-create error/return code enum and use that for all return code checking
-redo commotion-service-manager.h/c to use schema
-validate service fields so length of "<field name>=<field value>" < 256
