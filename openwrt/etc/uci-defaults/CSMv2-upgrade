@@ -17,36 +17,27 @@ uci:foreach(
   "applications",
   "application",
   function(app)
-    if not app.version then
-      if app.localapp == "1" then
-	print("local app: " .. app[".name"])
-	local s = csm.new_service()
-	s.version = "2.0"
-	s.name = app.name
-	s.description = app.description
-	s.ttl = tonumber(app.ttl)
-	s.lifetime = tonumber(app.lifetime)
-	s.uri = app.uri
-	s.icon = app.icon
-	s.tag = app.type
-	if s:commit() then
-	  if not uci:delete("applications", app[".name"]) then
-	    print("Failed to delete app: "..app[".name"])
-	  end
-	else
-	  print("Failed to convert app: "..app[".name"])
+    if not app.version and app.localapp == "1" then
+      print("local app: " .. app[".name"])
+      local s = csm.new_service()
+      s.version = "2.0"
+      s.name = app.name
+      s.description = app.description
+      s.ttl = tonumber(app.ttl)
+      s.lifetime = tonumber(app.lifetime)
+      s.uri = app.uri
+      s.icon = app.icon
+      s.tag = app.type
+      if s:commit() then
+	if not uci:delete("applications", app[".name"]) then
+	  print("Failed to delete app: "..app[".name"])
 	end
-	s:free()
       else
-	if app.fingerprint then
-	  uci:set("applications",app[".name"],"key",app.fingerprint)
-	  uci:delete("applications",app[".name"],"fingerprint")
-	end
-	if app.type then
-	  uci:set_list("applications",app[".name"],"tag",app.type)
-	  uci:delete("applications",app[".name"],"type")
-	end
+	print("Failed to convert app: "..app[".name"])
       end
+      s:free()
+    elseif app.version and tonumber(app.version) < 2.0 then
+      uci:delete("applications",app[".name"])
     end
   end
 )
