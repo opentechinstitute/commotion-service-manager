@@ -69,17 +69,4 @@ void browse_service_callback(
   AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
   void* userdata);
 
-/**
- * Handler for creating Avahi service browser
- */
-void browse_type_callback(
-  TYPE_BROWSER *b,
-  AvahiIfIndex interface,
-  AvahiProtocol protocol,
-  AvahiBrowserEvent event,
-  const char *type,
-  const char *domain,
-  AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
-  void* userdata);
-
 #endif

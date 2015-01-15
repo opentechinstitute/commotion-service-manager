@@ -268,7 +268,7 @@ create_service_browser(csm_ctx *ctx)
 #endif
   
   /* Create the service browser */
-  CHECK((ctx->stb = TYPE_BROWSER_NEW(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "mesh.local", 0, browse_type_callback, ctx)),
+  CHECK((ctx->sb = BROWSER_NEW(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, CSM_SERVICE_TYPE, CSM_SERVICE_DOMAIN, 0, browse_service_callback, ctx)),
 	"Failed to create service browser: %s", AVAHI_ERROR);
   return 1;
 error:
@@ -290,7 +290,7 @@ client_callback(AvahiClient *c, AvahiClientState state, void *userdata)
 	INFO("CSM client started successfully, publishing services");
 	/* The server has startup successfully and registered its host
 	 * name on the network, so it's time to create our services */
-	if (!ctx->stb) {
+	if (!ctx->sb) {
 	  if (!create_service_browser(ctx)) {
 	    ERROR("Failed to create service type browser");
 	    avahi_simple_poll_quit(simple_poll);
@@ -322,9 +322,9 @@ client_callback(AvahiClient *c, AvahiClientState state, void *userdata)
 	  /* Remove all local services */
 	  csm_unpublish_all(ctx);
 	  
-	  /* Free service type browser */
-	  if (ctx->stb)
-	    avahi_service_type_browser_free(ctx->stb);
+	  /* Free service browser */
+	  if (ctx->sb)
+	    avahi_service_browser_free(ctx->sb);
 	  
 	  /* Free client */
 	  FREE_AVAHI(ctx);
@@ -402,9 +402,9 @@ start_server(AvahiTimeout *t, void *userdata)
   csm_unpublish_all(ctx);
   
   /* Free service type browser */
-  if (ctx->stb) {
-    avahi_s_service_type_browser_free(ctx->stb);
-    ctx->stb = NULL;
+  if (ctx->sb) {
+    avahi_s_service_browser_free(ctx->sb);
+    ctx->sb = NULL;
   }
   
   if (ctx->server) {
@@ -604,8 +604,8 @@ error:
     
     avahi_server_config_free(&avahi_config);
     
-    if (ctx.stb)
-        TYPE_BROWSER_FREE(ctx.stb);
+    if (ctx.sb)
+        BROWSER_FREE(ctx.sb);
 
     /* Free server/client */
     csm_ctx *ctx_ptr = &ctx;

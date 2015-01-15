@@ -44,6 +44,10 @@
 #define SIG_LENGTH 128
 /** Length of UUID (which is base32 encoding of Serval ID) */
 #define UUID_LEN 52
+/** mDNS DNS-SD service type for Commotion services */
+#define CSM_SERVICE_TYPE "_commotion._tcp"
+/** mDNS domain to use for browsing and publishing */
+#define CSM_SERVICE_DOMAIN "mesh.local"
 
 #ifndef container_of
 #define container_of(ptr, type, member) ({ \
@@ -55,11 +59,12 @@
   
 #ifdef CLIENT
 
-#define TYPE_BROWSER AvahiServiceTypeBrowser
-#define TYPE_BROWSER_NEW(A,B,C,D,E,F) avahi_service_type_browser_new(client,A,B,C,D,E,F)
-#define TYPE_BROWSER_FREE(J) avahi_service_type_browser_free(J)
+// #define TYPE_BROWSER AvahiServiceTypeBrowser
+// #define TYPE_BROWSER_NEW(A,B,C,D,E,F) avahi_service_type_browser_new(client,A,B,C,D,E,F)
+// #define TYPE_BROWSER_FREE(J) avahi_service_type_browser_free(J)
 #define BROWSER AvahiServiceBrowser
 #define BROWSER_NEW(A,B,C,D,E,F,G) avahi_service_browser_new(client,A,B,C,D,E,F,G)
+#define BROWSER_FREE(A) avahi_service_browser_free(A)
 #define RESOLVER AvahiServiceResolver
 #define RESOLVER_NEW(A,B,C,D,E,F,G,H,I) avahi_service_resolver_new(client,A,B,C,D,E,F,G,H,I)
 #define RESOLVER_FREE(J) avahi_service_resolver_free(J)
@@ -76,11 +81,12 @@
 
 #else
 
-#define TYPE_BROWSER AvahiSServiceTypeBrowser
-#define TYPE_BROWSER_NEW(A,B,C,D,E,F) avahi_s_service_type_browser_new(server,A,B,C,D,E,F)
-#define TYPE_BROWSER_FREE(J) avahi_s_service_type_browser_free(J)
+// #define TYPE_BROWSER AvahiSServiceTypeBrowser
+// #define TYPE_BROWSER_NEW(A,B,C,D,E,F) avahi_s_service_type_browser_new(server,A,B,C,D,E,F)
+// #define TYPE_BROWSER_FREE(J) avahi_s_service_type_browser_free(J)
 #define BROWSER AvahiSServiceBrowser
 #define BROWSER_NEW(A,B,C,D,E,F,G) avahi_s_service_browser_new(server,A,B,C,D,E,F,G)
+#define BROWSER_FREE(A) avahi_s_service_browser_free(A)
 #define RESOLVER AvahiSServiceResolver
 #define RESOLVER_NEW(A,B,C,D,E,F,G,H,I) avahi_s_service_resolver_new(server,A,B,C,D,E,F,G,H,I)
 #define RESOLVER_FREE(J) avahi_s_service_resolver_free(J)
@@ -118,20 +124,13 @@ typedef struct csm_pending_service {
   struct csm_pending_service *_next;
 } csm_pending_service;
 
-typedef struct csm_service_browser {
-  char name[256];
-  BROWSER *browser;
-  struct csm_service_browser *_next;
-} csm_service_browser;
-
 typedef struct {
 #ifdef CLIENT
   AvahiClient *client;
 #else
   AvahiServer *server;
 #endif
-  TYPE_BROWSER *stb;
-  csm_service_browser *sb;
+  BROWSER *sb;
   
   struct csm_pending_service *pending;
   

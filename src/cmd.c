@@ -105,7 +105,7 @@ cmd_commit_service(co_obj_t *self, co_obj_t **output, co_obj_t *params)
   CHECK(IS_BOOL(local),"Received invalid local param");
   
   // create new service
-  s = csm_service_new(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, NULL, "_commotion._tcp", "mesh.local");
+  s = csm_service_new(AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, NULL, CSM_SERVICE_TYPE, CSM_SERVICE_DOMAIN);
   CHECK_MEM(s);
   
   if (IS_TRUE(local))
