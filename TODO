@@ -1,0 +1,5 @@
+TODO
+unit tests
+test avahi client while restarting avahi daemon
+configure which interface(s) to listen on
+service updates registration/subscription and notifications for clients

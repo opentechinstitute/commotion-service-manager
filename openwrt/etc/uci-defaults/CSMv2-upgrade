@@ -1,0 +1,102 @@
+#!/bin/sh
+
+LUA_SCRIPT=/tmp/CSMv2-upgrade.lua
+
+cat > $LUA_SCRIPT << EOF
+#!/usr/bin/lua
+
+require "luci.model.uci"
+require "luci.fs"
+require "luci.sys"
+require "csm"
+
+local uci = luci.model.uci.cursor()
+
+new_apps = {}
+
+csm.init()
+uci:foreach(
+  "applications",
+  "application",
+  function(app)
+    if not app.version and app.localapp == "1" then
+      print("local app: " .. app[".name"])
+      local s = csm.new_service()
+      s.version = "2.0"
+      s.name = app.name
+      s.description = app.description
+      s.ttl = tonumber(app.ttl)
+      s.lifetime = tonumber(app.lifetime)
+      s.uri = app.uri
+      s.icon = app.icon
+      s.tag = app.type
+      new_apps[app[".name"]] = s
+    elseif app.version and tonumber(app.version) < 2.0 then
+      uci:delete("applications",app[".name"])
+    end
+  end
+)
+
+repeat
+  luci.sys.exec("sleep 1")
+until luci.sys.call("ps w |grep /usr/sbin/commotion-service-manager |grep -v grep") == 0
+  and luci.sys.call("ps w |grep /usr/sbin/commotiond |grep -v grep") == 0
+  and luci.sys.call("/usr/bin/commotion help") == 0
+  and luci.sys.call("/usr/bin/commotion -b /var/run/commotion-service-manager.sock list_services") == 0
+
+for name,s in pairs(new_apps) do
+  if s:commit() then
+    if not uci:delete("applications", name) then
+      print("Failed to delete app: "..name)
+    end
+  else
+    print("Failed to convert app: "..name)
+  end
+  s:free()
+end
+
+uci:save("applications")
+uci:commit("applications")
+csm.shutdown()
+
+local avahi_services = luci.fs.dir("/etc/avahi/services")
+if avahi_services then
+  for _,f in pairs(avahi_services) do
+    if f and f ~= "." and f ~= ".." then
+      luci.fs.unlink("/etc/avahi/services/"..f)
+    end
+  end
+  luci.fs.rmdir("/etc/avahi/services")
+end
+
+luci.sys.exec("sed -i -e \'/\\\/etc\\\/avahi\\\/services\\\//d\' /etc/sysupgrade.conf")
+
+local old_dnssd, new_dnssd
+uci:foreach(
+  "olsrd",
+  "LoadPlugin",
+  function(plugin)
+    if plugin.library == "olsrd_dnssd.so.0.1.2" then
+      old_dnssd = plugin[".name"]
+      uci:set("olsrd",plugin[".name"],"library","olsrd_dnssd.so.0.1.3")
+      uci:delete("olsrd",plugin[".name"],"ServiceFileDir")
+      uci:set("olsrd",plugin[".name"],"CSMSocket","/var/run/commotion-service-manager.sock")
+    elseif plugin.library == "olsrd_dnssd.so.0.1.3" then
+      new_dnssd = plugin[".name"]
+    end
+  end
+)
+if old_dnssd and new_dnssd then
+  uci:delete("olsrd",new_dnssd)
+end
+uci:save("olsrd")
+uci:commit("olsrd")
+
+luci.sys.exec("/etc/init.d/olsrd restart")
+
+luci.fs.unlink("$LUA_SCRIPT")
+
+EOF
+
+chmod +x $LUA_SCRIPT
+$LUA_SCRIPT &

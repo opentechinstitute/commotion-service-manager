@@ -4,13 +4,13 @@ START=66
 
 NAME=commotion-service-manager
 EXEC=/usr/sbin/${NAME}
-OUTPUT_FILE=/tmp/local-services.out
+SCHEMA_DIR=/etc/commotion/csm/schemas.d/
 PID_DIR=/var/run
 SERVICE_PID_FILE=${PID_DIR}/${NAME}.pid
-DAEMON_ARGS="-u -o $OUTPUT_FILE -p $SERVICE_PID_FILE"
+DAEMON_ARGS="-u -p $SERVICE_PID_FILE -s $SCHEMA_DIR"
 
 boot() {
-  mkdir -m 0755 -p $PID_DIR
+  mkdir -m 0755 -p $PID_DIR $SCHEMA_DIR
   start
 }
 
