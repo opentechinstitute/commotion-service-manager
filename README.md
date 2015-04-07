@@ -5,6 +5,8 @@ Commotion Service Manager
 
 The Commotion Service Manager publishes, receives, parses, verifies, and caches service announcements on a local Commotion mesh network. It implements a multicast DNS (mDNS) stack using the [Avahi][] library, and uses the [commotiond][] API for cryptographically signing and verifying service announcements.
 
+Commotion Service Manager is selected as a default build option in [Commotion-Router](https://github.com/opentechinstitute/commotion-router).
+
 Components
 ==========
 
@@ -47,8 +49,6 @@ Additionally, each schema **must** include the following fields, as they relate 
 * `{ "field": "version", "required": true, "type": "string" }`
 
 Schema version numbers should follow [Semantic Versioning][semver]. CSM daemons will only accept the announcements of services with the same major version number as the latest schema it has on file; other announcements will be discarded. To make different minor version of schemas compatible, newer minor versions can only add additional fields, not remove or modify existing fields.
-
-Commotion Service Manager is selected as a default build option in [Commotion-Router](https://github.com/opentechinstitute/commotion-router).
 
 Changelog
 =========
